@@ -1,16 +1,3 @@
-# Keep LF in source on every system, so shell scripts run on Windows checkouts.
-* text=auto
-*.ts text eol=lf
-*.tsx text eol=lf
-*.md text eol=lf
-*.json text eol=lf
-*.sh text eol=lf
-*.py text eol=lf
-*.mjs text eol=lf
-*.yml text eol=lf
-*.png binary
-*.jpg binary
-*.jpeg binary
-*.gif binary
-*.webp binary
-*.ico binary
+# Files are stored with LF line endings and checked out exactly as stored, on every system, so shell scripts run on Windows too.
+# No conversion at checkout: the plugin directory refuses attributes that rewrite files.
+* -text
