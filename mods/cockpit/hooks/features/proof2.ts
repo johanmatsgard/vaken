@@ -1,6 +1,7 @@
 // Proof (Settings > Safety): drift watch, diff of intent, confidence score, anomaly sentinel, risk-ordered review queue and reviewer heat.
 import { tr } from '../core/lang'
 import type { EngineInterface, On } from 'claude-code'
+import { fieldsOf } from '../core/eventfields'
 
 import { postBand } from '../core/band'
 import { holdNote, readNote } from '../core/flush'
@@ -75,7 +76,7 @@ export function registerProof2(on: On): void {
     // Nothing below may throw: a failure after next must not run the tool twice.
     try {
       if (result.deny !== undefined) return result
-      const input = e as unknown as Record<string, unknown>
+      const input = fieldsOf(e)
       const tool = String(e.tool)
       const helper = e.agentId !== undefined
       if (helper && !(isEditTool(tool) && result.isError !== true)) return result
@@ -148,9 +149,9 @@ export function registerProof2(on: On): void {
     return r
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-help' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'run', 'intent')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'run', 'intent')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     try {
       const p = await loadProof(i)
@@ -160,9 +161,9 @@ export function registerProof2(on: On): void {
     }
   })
 
-  on('command.run', { command: 'vaken-help' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'run', 'confidence')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'run', 'confidence')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     try {
       if ((await readSetting(i, 'proof.confidence')) === 'off') return { text: 'The confidence score is off. Turn it on: Settings > Safety.' } // en-only: plain answer of a slash command (text twin)
@@ -173,9 +174,9 @@ export function registerProof2(on: On): void {
     }
   })
 
-  on('command.run', { command: 'vaken-ship' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'queue')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-ship' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'queue')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     try {
       const p = await loadProof(i)
@@ -185,9 +186,9 @@ export function registerProof2(on: On): void {
     }
   })
 
-  on('command.run', { command: 'vaken-ship' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'heat')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-ship' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'heat')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     try {
       const s = await load2(i)

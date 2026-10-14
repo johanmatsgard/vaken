@@ -120,18 +120,17 @@ export function registerCacheKeeper(on: On): void {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-help' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'run', 'keeper')
-    if (rest0 === undefined) return next(e0)
-    const e = { ...e0, args: rest0 }
+  on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'run', 'keeper')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     const id = await i.sessionId()
-    if (e.args.trim().toLowerCase() === 'test') {
+    if (rest0.trim().toLowerCase() === 'test') {
       testUntil = (await i.now()) + TEST_LAST_MS
       pings = 0
       return { text: `Short test for 10 minutes: the keeper treats the cache as stale after ${Math.round(TEST_TTL_MS / 1000)} seconds and ignores the size limit. It needs Keep session cheap set to On, in Settings > Money and plan. Within about a minute it should read the cache, up to ${KEEPER_MAX_PINGS} times. Run /vaken-help run keeper to see.` }
     }
-    if (e.args.trim().toLowerCase() === 'now') {
+    if (rest0.trim().toLowerCase() === 'now') {
       $.clock.after(TEST_DELAY_MS, () => {
         void (async () => {
           const r = await pingOnce($, id, pings + 1)

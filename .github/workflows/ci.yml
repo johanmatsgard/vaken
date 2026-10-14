@@ -70,4 +70,4 @@ jobs:
       - name: Plugin validate
         run: claude plugin validate mods/cockpit
       - name: Plugin test
-        run: claude plugin test mods/cockpit
+        run: sh scripts/test-cockpit.sh

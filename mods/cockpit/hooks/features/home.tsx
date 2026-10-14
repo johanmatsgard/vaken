@@ -14,6 +14,7 @@ import { noteActive } from '../core/quiet'
 import { forgetLeader, releaseLease } from '../core/leader'
 import { markSelfStart, noteCall, noteRun } from '../core/selfcost'
 import { hasProgress } from './agentboard'
+import { ROLES, ROLE_PROMPT, roleDescription } from '../core/orchestra'
 import { runnerOpsOf } from './orchestra'
 import type { RunnerOps } from './orchestra'
 import { PROJECT_OF_KEY } from '../core/projects'
@@ -102,7 +103,10 @@ function ioWithExists($: EngineInterface): Io {
 // The task runner's engine calls, for the pane's buttons and the heartbeat (core/orchestra.ts
 function runnerOps($: EngineInterface): RunnerOps {
   return runnerOpsOf({
-    spawn: a => $.agent.spawn(a) as Promise<{ agentId?: string; deny?: unknown; model?: unknown }>,
+    spawn: async a => {
+      const got = await $.agent.spawn(a)
+      return got as { agentId?: string; deny?: unknown; model?: unknown }
+    },
     stop: agentId => $.tool.call({ tool: 'TaskStop', task_id: agentId } as never),
     send: (agentId, text) => $.session.send({ to: { agentId }, text } as never),
     run: (argv, init) => {
@@ -114,7 +118,10 @@ function runnerOps($: EngineInterface): RunnerOps {
     list: () => $.agent.list(),
     submit: text => $.prompt.submit({ text, asUser: true }),
     after: (ms, f) => $.clock.after(ms, f),
-    register: spec => $.agent.register(spec),
+    register: (r, m) => {
+      if (ROLES[r].tools === undefined) return $.agent.register({ name: r, description: roleDescription(r), prompt: ROLE_PROMPT(r), model: m })
+      return $.agent.register({ name: r, description: roleDescription(r), prompt: ROLE_PROMPT(r), model: m, tools: ROLES[r].tools })
+    },
     seen: hasProgress,
     io: ioSys($),
   })
@@ -135,7 +142,10 @@ function engineOf($: EngineInterface): HomeEngine {
     command: args => $.command.run(args),
     submit: text => $.prompt.submit({ text, asUser: true }),
     fill: (text, mode) => $.prompt.fill({ text, ...(mode === undefined ? {} : { mode }) }),
-    boxText: async () => (await $.prompt.read()).text,
+    boxText: async () => {
+      const box = await $.prompt.read()
+      return box.text
+    },
     cwd: () => $.session.cwd(),
     commandList: () => $.command.list(),
     after: (ms, f) => $.clock.after(ms, f),
@@ -156,14 +166,18 @@ function engineOf($: EngineInterface): HomeEngine {
       },
       list: async dir => {
         try {
-          return (await $.fs.list(dir)).filter(e => e.kind === 'dir').map(e => e.name)
+          const entries = await $.fs.list(dir)
+          return entries.filter(e => e.kind === 'dir').map(e => e.name)
         } catch {
           return []
         }
       },
       read: path => $.fs.read(path),
       run: (argv, init) => $.process.run(argv, init),
-      win: async () => procPlatformOf(await $.env.get('OS')) === 'win32',
+      win: async () => {
+        const os = await $.env.get('OS')
+        return procPlatformOf(os) === 'win32'
+      },
     }),
     probe: async path => {
       try {
@@ -173,11 +187,17 @@ function engineOf($: EngineInterface): HomeEngine {
         return undefined
       }
     },
-    agentsRunning: async () => (await $.agent.list()).filter(a => a.status === 'running').length,
+    agentsRunning: async () => {
+      const list = await $.agent.list()
+      return list.filter(a => a.status === 'running').length
+    },
   }
 }
 
-const paneShown = async ($: EngineInterface): Promise<boolean> => (await $.ui.panes()).some(p => p.id === PANE && p.isShown)
+async function paneShown($: EngineInterface): Promise<boolean> {
+  const panes = await $.ui.panes()
+  return panes.some(p => p.id === PANE && p.isShown)
+}
 
 export function registerHome(on: On): void {
   on('session.start', { cwd: /(?<cockpit>)/ }, async ($, e, next) => {
@@ -192,16 +212,21 @@ export function registerHome(on: On): void {
       collector.local = undefined
       // Hot notes (core/flush.ts) are saved a few seconds later by the engine's timer
       useLater((ms, run) => $.clock.after(ms, run))
-      noteActive(await $.clock.now())
-      markSelfStart(await $.clock.now())
+      const startAt = await $.clock.now()
+      noteActive(startAt)
+      markSelfStart(startAt)
       forgetLeader()
       try {
-        setWordSystem(procPlatformOf(await $.env.get('OS')))
+        const sysName = await $.env.get('OS')
+        setWordSystem(procPlatformOf(sysName))
       } catch {
       }
       try {
         const win = wordSystemNow() === 'win32'
-        const env = { LANG: await $.env.get('LANG'), LC_ALL: win ? await $.env.get('LC_ALL') : undefined, LANGUAGE: win ? await $.env.get('LANGUAGE') : undefined }
+        const langVar = await $.env.get('LANG')
+        const lcAll = win ? await $.env.get('LC_ALL') : undefined
+        const languageVar = win ? await $.env.get('LANGUAGE') : undefined
+        const env = { LANG: langVar, LC_ALL: lcAll, LANGUAGE: languageVar }
         flags.macLang = systemLanguage(env, wordSystemNow())
         // Windows with no language variable: one PowerShell read of the UI language, once per session
         if (win) {
@@ -215,7 +240,8 @@ export function registerHome(on: On): void {
       await ensureBundles(i)
       await seedCardHistory(i)
       try {
-        await i.set(PROJECT_OF_KEY(await i.sessionId()), (await $.session.root()) || e.cwd)
+        const rootNow = await $.session.root()
+        await i.set(PROJECT_OF_KEY(await i.sessionId()), rootNow || e.cwd)
       } catch {
       }
       await ensure(i, e.cwd)
@@ -235,7 +261,8 @@ export function registerHome(on: On): void {
       })
       let model = 'unknown'
       try {
-        model = String(await $.session.model())
+        const modelNow = await $.session.model()
+        model = String(modelNow)
       } catch {
       }
       await write(i, { model, state: 'idle' })
@@ -291,16 +318,18 @@ export function registerHome(on: On): void {
   }).catch(($, e, next) => next(e))
 
   on('turn.start', { turnId: /(?<cockpit>)/ }, async ($, e, next) => {
-    noteActive(await $.clock.now())
-    if (settleCompactAsk(await $.clock.now(), true)) io($).invalidate()
+    const startedAt = await $.clock.now()
+    noteActive(startedAt)
+    if (settleCompactAsk(startedAt, true)) io($).invalidate()
     await collect(() => io($), { state: 'working', ask: undefined })
     return next(e)
   }).catch(($, e, next) => next(e))
 
   on('tool.call', { tool: /(?<cockpit>)/ }, async ($, e, next) => {
     const isMain = e.agentId === undefined
-    noteActive(await $.clock.now())
-    if (isMain) await collect(() => io($), e.tool === 'AskUserQuestion' ? { state: 'working', ask: { kind: 'question', tool: e.tool, since: await $.clock.now() } } : { state: 'working' })
+    const calledAt = await $.clock.now()
+    noteActive(calledAt)
+    if (isMain) await collect(() => io($), e.tool === 'AskUserQuestion' ? { state: 'working', ask: { kind: 'question', tool: e.tool, since: calledAt } } : { state: 'working' })
     const result = await next(e)
     // Nothing below may throw: a failure after next must not run the tool twice.
     try {
@@ -315,7 +344,8 @@ export function registerHome(on: On): void {
     const verdict = await next(e)
     try {
       if (e.tool_use_id !== undefined && e.agentId === undefined && e.tool !== 'AskUserQuestion' && verdict.decision === 'ask' && !decidedByClassifier(verdict)) {
-        await collect(() => io($), { ask: { kind: 'permission', tool: label(e.tool, 40), since: await $.clock.now() } })
+        const askedAt = await $.clock.now()
+        await collect(() => io($), { ask: { kind: 'permission', tool: label(e.tool, 40), since: askedAt } })
       }
     } catch {
     }
@@ -332,17 +362,20 @@ export function registerHome(on: On): void {
   })
 
   on('turn.complete', { turnId: /(?<cockpit>)/ }, async ($, e, next) => {
-    noteActive(await $.clock.now())
+    const doneAt = await $.clock.now()
+    noteActive(doneAt)
     if (e.agentId === undefined) {
       let isWatched = collector.local?.isWatched ?? true
       if (!isWatched) {
         try {
-          isWatched = (await $.session.surfaces()).length > 0
+          const surfaces = await $.session.surfaces()
+          isWatched = surfaces.length > 0
         } catch {
           isWatched = false
         }
       }
-      const cache = cacheFromUsage(e.usage, await $.clock.now())
+      const cacheAt = await $.clock.now()
+      const cache = cacheFromUsage(e.usage, cacheAt)
       await collect(() => io($), { state: e.reason === 'aborted' || !isWatched ? 'idle' : 'waiting', ask: undefined, ...(cache === undefined ? {} : { cache }), ...(await donePatch(io($), true)) })
       const r = await next(e)
       await flushNotes(false)
@@ -398,9 +431,9 @@ export function registerHome(on: On): void {
     return { text: await compactText(engineOf($), e.args) }
   })
 
-  on('command.run', { command: 'vaken-help' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'run', 'popout')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'run', 'popout')
+    if (rest0 === undefined) return next(e)
     return { text: (await popOut(engineOf($), s => s)).text }
   })
 
@@ -420,7 +453,8 @@ export function registerHome(on: On): void {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const el = elementsFor($.ui.resolve(e), e.surface)
+    const resolved = $.ui.resolve(e)
+    const el = elementsFor(resolved, e.surface)
     // The pane's own load: a view with no cards (Settings, Help
     const { view, prefs } = await loadView(ioWithExists($), true)
     remember('home', paneSignature(view, prefs))
@@ -431,7 +465,8 @@ export function registerHome(on: On): void {
 
   on('ui.press', { element: /(?<quiet>)/ }, async ($, e, next) => {
     try {
-      noteActive(await $.clock.now())
+      const pressedAt = await $.clock.now()
+      noteActive(pressedAt)
     } catch {
     }
     return next(e)
@@ -481,7 +516,8 @@ export function registerHome(on: On): void {
 
   on('ui.render', { component: 'AbovePrompt', surface: /(?<cockpit>)/ }, async ($, e, next) => {
     const theirs = await next(e)
-    const el = elementsFor($.ui.resolve(e), e.surface)
+    const resolved = $.ui.resolve(e)
+    const el = elementsFor(resolved, e.surface)
     const { view, detail } = await loadView(ioWithExists($))
     remember('band', bandSignature(view, detail))
     const { Box } = el

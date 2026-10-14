@@ -105,7 +105,10 @@ const freshRecord = (rec: SessionRecord | undefined, now: number): SessionRecord
 
 type PrKept = { at?: number; branch?: string; none?: boolean; view?: { number?: number; state?: string; isDraft?: boolean; url?: string } }
 
-const briefFacts = async ($: EngineInterface, i: Io): Promise<BriefFacts> => briefFactsAt(i, await $.session.cwd())
+async function briefFacts($: EngineInterface, i: Io): Promise<BriefFacts> {
+  const cwd = await $.session.cwd()
+  return briefFactsAt(i, cwd)
+}
 
 export async function briefFactsAt(i: Io, cwd: string): Promise<BriefFacts> {
   const sid = await i.sessionId()
@@ -161,7 +164,9 @@ export async function saveBeforeAuto(i: Io, sessionId: string, cwd: string, prob
 }
 
 // The engine's file calls a safe write needs (core/safewrite.ts).
-const safeFs = ($: EngineInterface): SafeFs => ({ stat: (path, options) => $.fs.stat(path, options), list: path => $.fs.list(path) })
+function safeFs($: EngineInterface): SafeFs {
+  return { stat: (path, options) => $.fs.stat(path, options), list: path => $.fs.list(path) }
+}
 
 async function packetText($: EngineInterface, i: Io): Promise<string> {
   const facts = await briefFacts($, i)
@@ -200,7 +205,7 @@ async function timelineFacts(i: Io): Promise<TimelineFacts> {
     proof: readState(await readNote(i, stateKey(sid))),
     proof2: readState2(await readNote(i, state2Key(sid))),
     cmds: parseEntries(await readNote(i, commandsKey(sid))),
-    ledger: (await readLog(i, LEDGER_KEY)).filter(e => e.session === sid),
+    ledger: (await readLog(i, LEDGER_KEY)).filter(x => x.session === sid),
   }
 }
 
@@ -208,12 +213,12 @@ async function storyText(i: Io): Promise<string> {
   const sid = await i.sessionId()
   const now = await i.now()
   const proof = readState(await readNote(i, stateKey(sid)))
-  const mine = (await readLog(i, LEDGER_KEY)).filter(e => e.session === sid)
+  const mine = (await readLog(i, LEDGER_KEY)).filter(x => x.session === sid)
   const rec = freshRecord(await readRecord(i, sid), now)
   return storyLines({
     proof,
-    anomalies: mine.filter(e => e.what === ANOMALY_WHAT || e.what === DRIFT_WHAT).length,
-    unproven: mine.filter(e => e.what === UNPROVEN_WHAT).length,
+    anomalies: mine.filter(x => x.what === ANOMALY_WHAT || x.what === DRIFT_WHAT).length,
+    unproven: mine.filter(x => x.what === UNPROVEN_WHAT).length,
     ...(rec?.ask?.kind === 'question' ? { askingSince: rec.ask.since } : {}),
   }).join('\n')
 }
@@ -344,40 +349,38 @@ export function registerContinuity(on: On): void {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-help' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'run', 'brief')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'run', 'brief')
+    if (rest0 === undefined) return next(e)
     return { text: await briefCommand($, io($)) }
   })
-  on('command.run', { command: 'vaken-help' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'run', 'packet')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'run', 'packet')
+    if (rest0 === undefined) return next(e)
     return { text: await packetCommand($, io($)) }
   })
   on('command.run', { command: 'vaken-resume' }, async ($, e, next) => {
     if (isFolded(e.command, e.args)) return next(e)
     return { text: await resumeCommand($, io($), e.args.trim()) }
   })
-  on('command.run', { command: 'vaken-resume' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'find')
-    if (rest0 === undefined) return next(e0)
-    const e = { ...e0, args: rest0 }
-    return { text: await findCommand($, io($), e.args.trim()) }
+  on('command.run', { command: 'vaken-resume' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'find')
+    if (rest0 === undefined) return next(e)
+    return { text: await findCommand($, io($), rest0.trim()) }
   })
-  on('command.run', { command: 'vaken-today' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'standup')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-today' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'standup')
+    if (rest0 === undefined) return next(e)
     return { text: await standupCommand($, io($)) }
   })
-  on('command.run', { command: 'vaken-help' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'run', 'story')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'run', 'story')
+    if (rest0 === undefined) return next(e)
     return { text: await storyCommand(io($)) }
   })
-  on('command.run', { command: 'vaken-resume' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'timeline')
-    if (rest0 === undefined) return next(e0)
-    const e = { ...e0, args: rest0 }
-    return { text: await timelineCommand(io($), e.args.trim()) }
+  on('command.run', { command: 'vaken-resume' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'timeline')
+    if (rest0 === undefined) return next(e)
+    return { text: await timelineCommand(io($), rest0.trim()) }
   })
 }

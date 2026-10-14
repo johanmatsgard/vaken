@@ -344,6 +344,8 @@ export function taskPrompt(t: Task): string {
   return [`You are the agent for task ${t.n} of a task list.`, `The task: ${t.text}`, where, 'End with a short report of at most 8 lines: what you did, what you checked, and what is left.'].join('\n')
 }
 
+// The description a role is registered with
+export const roleDescription = (r: Role): string => `Task runner ${ROLES[r].label.toLowerCase()}: ${ROLES[r].about} Started by vaken's task runner.`
 export const ROLE_PROMPT = (r: Role): string =>
   [`You are a ${ROLES[r].label.toLowerCase()} agent. ${ROLES[r].about}`, 'Keep to your one task. Use short plain words in your report.'].join(' ')
 

@@ -59,16 +59,15 @@ export function registerShape(on: On): void {
     return result
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-settings' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'shape')
-    if (rest0 === undefined) return next(e0)
-    const e = { ...e0, args: rest0 }
+  on('command.run', { command: 'vaken-settings' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'shape')
+    if (rest0 === undefined) return next(e)
     const i = io($)
-    const ask = parseAsk(e.args)
+    const ask = parseAsk(rest0)
     if (ask.kind === 'bad') return { text: ask.why }
     if (ask.kind === 'show') return { text: shapeLines(await current(i)) }
     // A shape adds words to Claude's system prompt, so only the person typing here may change it (core/origin.ts)
-    if (!byPerson(e0.origin)) return { text: BY_PERSON_ONLY }
+    if (!byPerson(e.origin)) return { text: BY_PERSON_ONLY }
     if ((await current(i)) === ask.shape) return { text: `Answer shape is already ${shapeLabel(ask.shape)}.` }
     await save(i, ask.shape)
     await pushLog(i, LEDGER_KEY, { at: await i.now(), session: await i.sessionId(), what: 'Changed the answer shape', detail: `Answer shape: ${shapeLabel(ask.shape)}.`, how: 'typed', did: true })

@@ -189,9 +189,9 @@ export function registerRoute(on: On): void {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-tasks' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'route')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-tasks' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'route')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     const mode = routeMode(await readSetting(i, 'route.mode'))
     const cheap = await lookupOf(i)

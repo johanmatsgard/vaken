@@ -41,7 +41,7 @@ export async function didRows(i: Io): Promise<DidRow[]> {
   const audit = parseAudit(await i.get(AUDIT_KEY))
   const seen = new Set(audit.map(r => `${r.at}|${r.what}`))
   const out: DidRow[] = audit.map(r => ({ at: r.at, what: r.what, ...(r.detail === undefined ? {} : { detail: r.detail }) }))
-  for (const e of await readLog(i, LEDGER_KEY)) if (e.did === true && !seen.has(`${e.at}|${e.what}`)) out.push({ at: e.at, what: e.what, ...(e.detail === undefined ? {} : { detail: e.detail }) })
+  for (const entry of await readLog(i, LEDGER_KEY)) if (entry.did === true && !seen.has(`${entry.at}|${entry.what}`)) out.push({ at: entry.at, what: entry.what, ...(entry.detail === undefined ? {} : { detail: entry.detail }) })
   return out
 }
 

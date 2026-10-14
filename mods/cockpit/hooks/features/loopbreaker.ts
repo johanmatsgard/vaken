@@ -1,6 +1,7 @@
 // The loop breaker (Settings > Safety: Off, Warn, Stop): when Claude runs the same step again and again and it fails the same way
 import { tr } from '../core/lang'
 import type { EngineInterface, On } from 'claude-code'
+import { fieldsOf } from '../core/eventfields'
 
 import { BLOCK_WHAT, LOOP_FAILS, LOOP_WHAT, THRASH_WHAT, afterCall, beforeCall, blockedDetail, caughtDetail, errKey, fileWord, newThrash, nudgeText, stepKey, thrashClear, thrashDetail, thrashEdit, thrashFailure, thrashNote, toastText } from '../core/loopbreaker'
 import type { Seen } from '../core/loopbreaker'
@@ -67,7 +68,7 @@ export function registerLoopBreaker(on: On): void {
     try {
       mode = await readSetting(i, SETTING_KEY)
       if (mode !== 'off') {
-        const args = { ...(e as unknown as Record<string, unknown>) }
+        const args = { ...fieldsOf(e) }
         delete args.tool
         delete args.tool_use_id
         delete args.agentId
@@ -102,7 +103,7 @@ export function registerLoopBreaker(on: On): void {
         // Failing steps and edits of one file, over and over: one calm note, never a refusal (Stop mode too).
         if (failed) thrashFailure(thrash)
         else if (isEditTool(e.tool)) {
-          const input = e as unknown as Record<string, unknown>
+          const input = fieldsOf(e)
           const path = input.file_path ?? input.notebook_path ?? input.path
           const round = typeof path === 'string' && path !== '' ? thrashEdit(thrash, path, await i.now()) : undefined
           if (round !== undefined && typeof path === 'string') {
@@ -119,10 +120,9 @@ export function registerLoopBreaker(on: On): void {
     return result
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-help' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'run', 'loops')
-    if (rest0 === undefined) return next(e0)
-    const e = { ...e0, args: rest0 }
+  on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'run', 'loops')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     const mode = await readSetting(i, SETTING_KEY)
     const last = logLines((await readLog(i, LEDGER_KEY)).filter(x => x.what === LOOP_WHAT || x.what === BLOCK_WHAT || x.what === THRASH_WHAT), 3)

@@ -163,7 +163,18 @@ async function envOf($: EngineInterface): Promise<Env> {
 function tellClaude($: EngineInterface, note: string): boolean {
   // The note holds a command's output, so it is put in the prompt box for the person to read and send with Enter
   const failed = (): void => $.ui.toast(tr(DO_T_TELL_FAILED))
-  $.clock.after(1_500, () => void $.prompt.fill({ text: note, mode: 'append' }).then(r => (r.isFilled ? undefined : failed()), failed))
+  $.clock.after(1_500, () => {
+    void (async () => {
+      let filled
+      try {
+        filled = await $.prompt.fill({ text: note, mode: 'append' })
+      } catch {
+        failed()
+        return
+      }
+      if (!filled.isFilled) failed()
+    })()
+  })
   return true
 }
 
@@ -179,10 +190,9 @@ export function registerPhoneDo(on: On): void {
     return r
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-help' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'run', 'do')
-    if (rest0 === undefined) return next(e0)
-    const e = { ...e0, args: rest0 }
-    return { text: await doText(io($), await envOf($), e.args, note => tellClaude($, note), byPerson(e0.origin)) }
+  on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'run', 'do')
+    if (rest0 === undefined) return next(e)
+    return { text: await doText(io($), await envOf($), rest0, note => tellClaude($, note), byPerson(e.origin)) }
   })
 }

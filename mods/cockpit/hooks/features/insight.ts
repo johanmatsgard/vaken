@@ -1,5 +1,6 @@
 // Insight runtime: the audit export, wait tracking, the quota planner, review by story and cost per outcome.
 import type { EngineInterface, On } from 'claude-code'
+import { fieldsOf } from '../core/eventfields'
 
 import { parseStoredUsage, APP_USAGE_KEY } from '../core/appusage'
 import { parseState as parseCost, spendOf } from '../core/cost'
@@ -42,7 +43,9 @@ function io($: EngineInterface): Io {
 // IO-BLOCK-END
 
 // The engine's file calls a safe write needs (core/safewrite.ts).
-const safeFs = ($: EngineInterface): SafeFs => ({ stat: (path, options) => $.fs.stat(path, options), list: path => $.fs.list(path) })
+function safeFs($: EngineInterface): SafeFs {
+  return { stat: (path, options) => $.fs.stat(path, options), list: path => $.fs.list(path) }
+}
 
 let askOpen: { since: number; kind: 'question' | 'permission' } | undefined
 const COST_PREFIX = 'cockpit:cost:s:'
@@ -106,7 +109,7 @@ export function registerInsight(on: On): void {
   on('tool.call', { tool: /(?<insight>)/ }, async ($, e, next) => {
     const result = await next(e)
     try {
-      if (isShellTool(e.tool) && e.agentId === undefined && result.deny === undefined && result.isError !== true && /(^|[;&|]\s*)gh\s+pr\s+merge\b/.test(String((e as unknown as { command?: unknown }).command ?? ''))) await noteOutcome(io($), 'merged')
+      if (isShellTool(e.tool) && e.agentId === undefined && result.deny === undefined && result.isError !== true && /(^|[;&|]\s*)gh\s+pr\s+merge\b/.test(String(fieldsOf(e).command ?? ''))) await noteOutcome(io($), 'merged')
     } catch {
     }
     return result
@@ -132,13 +135,12 @@ export function registerInsight(on: On): void {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-help' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'run', 'audit')
-    if (rest0 === undefined) return next(e0)
-    const e = { ...e0, args: rest0 }
+  on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'run', 'audit')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     const rows = parseAudit(await i.get(AUDIT_KEY))
-    if (e.args.trim().toLowerCase() === 'export') {
+    if (rest0.trim().toLowerCase() === 'export') {
       if (rows.length === 0) return { text: 'Nothing to export yet.' } // en-only: plain answer of a slash command (text twin)
       // An export never overwrites a file that is there: it takes the next free name (cockpit-audit-2.md).
       const root = await $.session.root()
@@ -151,24 +153,23 @@ export function registerInsight(on: On): void {
     return { text: auditText(rows) }
   })
 
-  on('command.run', { command: 'vaken-today' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'waits')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-today' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'waits')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     return { text: waitsText(parseWaits(await i.get(waitsKey()), await i.now())) }
   })
 
-  on('command.run', { command: 'vaken-usage' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'fit')
-    if (rest0 === undefined) return next(e0)
-    const e = { ...e0, args: rest0 }
+  on('command.run', { command: 'vaken-usage' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'fit')
+    if (rest0 === undefined) return next(e)
     const i = io($)
-    return { text: fitText(parseStoredUsage(await i.get(APP_USAGE_KEY)), Number(e.args.trim().replace('%', '')), await i.now()) }
+    return { text: fitText(parseStoredUsage(await i.get(APP_USAGE_KEY)), Number(rest0.trim().replace('%', '')), await i.now()) }
   })
 
-  on('command.run', { command: 'vaken-ship' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'review-story')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-ship' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'review-story')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     try {
       const r = await i.run(['git', 'diff', '--numstat', 'HEAD'], { cwd: await $.session.cwd(), timeoutMs: 5_000 })
@@ -179,21 +180,20 @@ export function registerInsight(on: On): void {
     }
   })
 
-  on('command.run', { command: 'vaken-help' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'run', 'outcomes')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'run', 'outcomes')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     return { text: outcomesText(parseOutcomes(await i.get(OUTCOMES_KEY)), await i.now()) }
   })
 
-  on('command.run', { command: 'vaken-help' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'run', 'tidy')
-    if (rest0 === undefined) return next(e0)
-    const e = { ...e0, args: rest0 }
+  on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'run', 'tidy')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     const live = [...(await listRecords(i)).map(r => r.sessionId), await i.sessionId()]
     const keys = tidyKeys(await i.keys(), live)
-    if (e.args.trim().toLowerCase() !== 'yes') return { text: tidyText(keys, false) }
+    if (rest0.trim().toLowerCase() !== 'yes') return { text: tidyText(keys, false) }
     for (const k of keys) await i.del(k)
     return { text: tidyText(keys, true) }
   })

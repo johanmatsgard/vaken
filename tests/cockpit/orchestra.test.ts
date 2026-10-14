@@ -672,7 +672,7 @@ test('the roles are registered on the chosen models, and again when one changes'
     list: async () => [],
     submit: async () => undefined,
     after: () => undefined,
-    register: async spec => void registered.push(`${spec.name} ${spec.model}`),
+    register: async (r, m) => void registered.push(`${r} ${m}`),
     io,
   })
   forgetRoles()
@@ -782,7 +782,7 @@ test('the roles are registered by a forgetting re-register when the map changes'
     list: async () => [],
     submit: async () => undefined,
     after: () => undefined,
-    register: async spec => void registered.push(`${spec.name} ${spec.model}`),
+    register: async (r, m) => void registered.push(`${r} ${m}`),
     io: w.io,
   })
   forgetRoles()

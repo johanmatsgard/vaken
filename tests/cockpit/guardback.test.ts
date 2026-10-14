@@ -13,9 +13,9 @@ import { SLOW, test } from './slow'
 import { viaParent } from './viaparent'
 
 // Fake secrets, built in pieces so the repository scan does not take them for real ones.
-const GH = 'ghp' + '_abcdefghijklmnopqrstuvwxyz0123'
-const AWS = 'AKIA' + 'ABCDEFGHIJKLMNOP'
-const SK = 'sk' + '-live_abcdefghijklmnop'
+const GH = 'ghp' + '_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+const AWS = 'AKIA' + 'IOSFODNN7EXAMPLE'
+const SK = 'sk' + '-live_xxxxxxxxxxxxxxxxxxxxxxxx'
 const AT = '@'
 
 const NOW = Date.parse('2026-10-10T12:00:00Z')

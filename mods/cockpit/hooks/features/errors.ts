@@ -1,5 +1,6 @@
 // Error translator runtime: when a tool result is an error, keep its kind (never its text), and answer /vaken-explain error.
 import type { EngineInterface, On } from 'claude-code'
+import { fieldsOf } from '../core/eventfields'
 
 import { withToastGate } from '../core/io'
 import { isShellTool } from '../core/tools'
@@ -48,7 +49,7 @@ export function registerErrors(on: On): void {
     // Nothing below may throw: a failure after next must not run the tool twice.
     try {
       const i = io($)
-      const input = e as unknown as { command?: unknown; file_path?: unknown; notebook_path?: unknown; path?: unknown }
+      const input = fieldsOf(e)
       if (result.deny === undefined && result.isError === true && e.agentId === undefined && (await readSetting(i, 'errors.mode')) !== 'off') {
         const known = classify(result.text ?? '')
         const at = await i.now()
@@ -67,9 +68,9 @@ export function registerErrors(on: On): void {
     return result
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-explain' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'error')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-explain' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'error')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     return { text: errorWords((await i.get(lastKey(await i.sessionId()))) as Last | undefined, await i.now()) }
   })

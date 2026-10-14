@@ -142,7 +142,7 @@ export function HomePane(el: El, view: View, own: Prefs, innerPt: number, onFlip
   const makers: Record<CardId, (grow: boolean) => Drawn> = glanceOn
     ? (Object.fromEntries(CARD_IDS.map(id => [id, (grow: boolean): Drawn => (closed(id) ? Card(el, id, titleOf(id), '', null, { grow: false, glance: glanceOf(id) }) : flipped(id) ? flippedCard(id, grow) : forms[id](grow))])) as Record<CardId, (grow: boolean) => Drawn>)
     : forms
-  const Client = el.Client // only the desktop has one (elementsFor), so it also tells the desktop from the rest
+  const drag = el.drag // only the desktop drags (elementsFor), so it also tells the desktop from the rest
   const groupRows = (groups: LineGroup[]): number => groups.reduce((n, g, i) => n + 1 + (g.rows.length * LIST_ROW_H) / ROW_PT + (i === 0 ? 0 : GROUP_GAP / ROW_PT), 0)
   const { blocks, limit, d: dLimit } = limitM
   const { d: dHere, lines, contextRow, here } = hereM
@@ -193,13 +193,13 @@ export function HomePane(el: El, view: View, own: Prefs, innerPt: number, onFlip
   const boardHeights = { ...heights, [NEEDS_SLOT]: Math.max(ARRANGE_MIN_ROWS, Math.ceil((CARD_INSET_Y_PT + ROW_PT + Math.max(1, needsN) * LIST_ROW_H) / ROW_PT)) }
   const boardCells = Math.max(ARRANGE_MIN_CELLS, Math.floor(bodyColumns))
   const board =
-    prefs.arrange && fixed === undefined && Client !== undefined && visible.length > 0 ? (
-      <Client key="arrange-board" module="../../arrange.tsx" width="100%" height={boardRows(slots, boardHeights, ncol, boardCells, ARRANGE_GAP)} props={{ order: slots, bucket, tiles: [...(slots[0] === NEEDS_SLOT ? [{ id: NEEDS_SLOT, title: tr('Needs you'), zone: tr('Fixed'), figure: needsN === 0 ? tr('Nothing needs you.') : String(needsN) }] : []), ...tiles.filter(t => visible.includes(t.id as CardId)).map(t => ({ ...t, zone: tr(ZONE_WORD[ZONE_OF[t.id as CardId]]) }))], heights: boardHeights, columns: ncol, rows: boardRows(slots, boardHeights, ncol, boardCells, ARRANGE_GAP) }} />
+    prefs.arrange && fixed === undefined && drag && visible.length > 0 ? (
+      <el.Client key="arrange-board" module="../../arrange.tsx" width="100%" height={boardRows(slots, boardHeights, ncol, boardCells, ARRANGE_GAP)} props={{ order: slots, bucket, tiles: [...(slots[0] === NEEDS_SLOT ? [{ id: NEEDS_SLOT, title: tr('Needs you'), zone: tr('Fixed'), figure: needsN === 0 ? tr('Nothing needs you.') : String(needsN) }] : []), ...tiles.filter(t => visible.includes(t.id as CardId)).map(t => ({ ...t, zone: tr(ZONE_WORD[ZONE_OF[t.id as CardId]]) }))], heights: boardHeights, columns: ncol, rows: boardRows(slots, boardHeights, ncol, boardCells, ARRANGE_GAP) }} />
     ) : undefined
   const moreCards = board !== undefined ? 0 : fixed === undefined ? Math.max(1, prefs.autoHidden?.length ?? 0) : 0
   const acts: { key: string; label: string; onPress: () => void }[] = [
-    ...(Client === undefined || visible.length < 2 ? [] : [{ key: 'arrange', label: tr('Arrange cards'), onPress: () => act.arrange(true) }]),
-    ...(Client === undefined ? [] : [{ key: 'popout', label: tr(POPOUT_BUTTON), onPress: () => act.popOut() }]),
+    ...(!drag || visible.length < 2 ? [] : [{ key: 'arrange', label: tr('Arrange cards'), onPress: () => act.arrange(true) }]),
+    ...(!drag ? [] : [{ key: 'popout', label: tr(POPOUT_BUTTON), onPress: () => act.popOut() }]),
     { key: 'help', label: tr('Help'), onPress: () => act.openHelp(true) },
     { key: 'settings', label: tr('Settings'), onPress: () => act.openSettings(true) },
   ]

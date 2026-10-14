@@ -36,13 +36,13 @@ function io($: EngineInterface): Io {
 const SETTING_KEY = 'fresh.nudge'
 
 // Never stores the message.
-export async function freshCheck(i: Io, e: { text: string; origin?: { kind?: string } }): Promise<void> {
+export async function freshCheck(i: Io, msg: { text: string; origin?: { kind?: string } }): Promise<void> {
   const mode = await readSetting(i, SETTING_KEY)
   if (mode !== 'on') return
   const id = await i.sessionId()
   const now = await i.now()
   const state = readFresh(await readNote(i, freshKey(id)))
-  const v = judgeFresh({ mode, text: e.text, origin: e.origin, tokens: (await readRecord(i, id))?.ctx?.tokens, now, state })
+  const v = judgeFresh({ mode, text: msg.text, origin: msg.origin, tokens: (await readRecord(i, id))?.ctx?.tokens, now, state })
   if (!v.record) return
   // A hot note (core/flush.ts): on by default now
   await holdNote(i, freshKey(id), advanceFresh(state, v, now), 'own')
@@ -69,9 +69,9 @@ export function registerFreshStart(on: On): void {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-explain' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'fresh')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-explain' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'fresh')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     return { text: freshLine(await readSetting(i, SETTING_KEY), readFresh(await readNote(i, freshKey(await i.sessionId())))) }
   })

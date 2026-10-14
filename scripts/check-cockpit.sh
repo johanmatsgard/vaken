@@ -3,7 +3,7 @@
 cd "$(dirname "$0")/.." || exit 1
 T=${TMPDIR:-/tmp}; T=${T%/}
 claude plugin validate mods/cockpit >"$T/cockpit-validate.txt" 2>&1 || { cat "$T/cockpit-validate.txt"; echo "check-cockpit: validate FAILED"; exit 1; }
-claude plugin test mods/cockpit >"$T/cockpit-test.txt" 2>&1 || { grep -A8 "(fail)" "$T/cockpit-test.txt" | head -40; echo "check-cockpit: tests FAILED"; exit 1; }
+sh scripts/test-cockpit.sh >"$T/cockpit-test.txt" 2>&1 || { grep -A8 "(fail)" "$T/cockpit-test.txt" | head -40; echo "check-cockpit: tests FAILED"; exit 1; }
 sh scripts/typecheck.sh >"$T/cockpit-types.txt" 2>&1 || { cat "$T/cockpit-types.txt"; echo "check-cockpit: types FAILED"; exit 1; }
 sh scripts/check-names.sh || { echo "check-cockpit: names FAILED"; exit 1; }
 sh scripts/check-commands.sh || { echo "check-cockpit: duplicate commands FAILED"; exit 1; }

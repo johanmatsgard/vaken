@@ -69,11 +69,11 @@ test('the surface helpers: Svg not in a terminal, Input not on mobile, dragging 
   expect(['terminal', 'desktop', 'vscode', 'mobile'].map(s => canDrag(s as never))).toEqual([false, true, false, false])
   const all = { Box: 1, Text: 2, Button: 3, Svg: 4, Input: 5, Client: 6 } as never
   const term = elementsFor(all, 'terminal')
-  expect([term.Svg, term.Input !== undefined, term.Client]).toEqual([undefined, true, undefined])
+  expect([term.Svg, term.Input !== undefined, term.drag]).toEqual([undefined, true, false])
   const desk = elementsFor(all, 'desktop')
-  expect([desk.Svg !== undefined, desk.Input !== undefined, desk.Client !== undefined]).toEqual([true, true, true])
+  expect([desk.Svg !== undefined, desk.Input !== undefined, desk.drag]).toEqual([true, true, true])
   const mob = elementsFor(all, 'mobile')
-  expect([mob.Svg !== undefined, mob.Input, mob.Client]).toEqual([true, undefined, undefined])
+  expect([mob.Svg !== undefined, mob.Input, mob.drag]).toEqual([true, undefined, false])
 })
 
 test('the pane in a terminal has no pictures, the words stand in, and no Arrange cards; the desktop is unchanged', SLOW, async ($, on) => {

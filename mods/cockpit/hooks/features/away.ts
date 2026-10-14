@@ -60,13 +60,13 @@ async function costNow(i: Io, now: number): Promise<Record<string, number>> {
 async function collectEvents(i: Io, run: Run) {
   const { rows } = await liveRows(i)
   const known = parseEvents(await i.get(AWAY_EVENTS_KEY))
-  const next = watchEvents(
+  const events = watchEvents(
     rows.map(r => ({ sid: r.rec.sessionId, name: r.name, kind: r.kind, since: r.kind === 'needs' && r.rec.ask !== undefined ? r.rec.ask.since : r.rec.stateSince })),
     run.at,
     known,
   )
-  if (next.length !== known.length) await i.set(AWAY_EVENTS_KEY, next)
-  return next
+  if (events.length !== known.length) await i.set(AWAY_EVENTS_KEY, events)
+  return events
 }
 
 async function digestNow(i: Io, run: Run, ended: boolean, to: number): Promise<Digest> {
@@ -174,7 +174,8 @@ export function registerAway(on: On): void {
     try {
       armOnce('away', $.clock.every(CHECK_MS, () => void awayCheck(io($))))
       const run = parseRun(await io($).get(AWAY_RUN_KEY))
-      if (run?.until !== undefined) arm($, run.until - (await $.clock.now()))
+      const nowMs = await $.clock.now()
+      if (run?.until !== undefined) arm($, run.until - nowMs)
     } catch {
       // the digest and the timer are optional: a failure shows less, never breaks the session
     }
@@ -239,9 +240,9 @@ export function registerAway(on: On): void {
     return r
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-away' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'digest')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-away' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'digest')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     const now = await i.now()
     const run = parseRun(await i.get(AWAY_RUN_KEY))

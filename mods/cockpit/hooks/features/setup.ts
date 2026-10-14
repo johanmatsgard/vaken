@@ -121,13 +121,13 @@ export function registerSetup(on: On): void {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-help' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'run', 'setup')
-    if (rest0 === undefined) return next(e0)
-    const e = { ...e0, args: rest0 }
+  on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'run', 'setup')
+    if (rest0 === undefined) return next(e)
     setSetupExists(path => $.fs.exists(path))
     // A write never follows a link (core/safewrite.ts).
     const i = bindSafeFs(io($), { stat: (path, options) => $.fs.stat(path, options), list: path => $.fs.list(path) })
-    return { text: await setupRun(i, await $.session.cwd(), e.args) }
+    const cwd = await $.session.cwd()
+    return { text: await setupRun(i, cwd, rest0) }
   })
 }

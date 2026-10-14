@@ -36,13 +36,13 @@ function io($: EngineInterface): Io {
 const SETTING_KEY = 'plan.first'
 
 // Stores a time and a sentence, never the message.
-export async function planCheck(i: Io, e: { text: string; origin?: { kind?: string } }): Promise<string | undefined> {
+export async function planCheck(i: Io, msg: { text: string; origin?: { kind?: string } }): Promise<string | undefined> {
   const mode = await readSetting(i, SETTING_KEY)
   if (mode === 'off') return undefined
   const id = await i.sessionId()
   const now = await i.now()
   const state = readPlan(await readNote(i, planKey(id)))
-  const v = judgePlan({ mode, text: e.text, origin: e.origin, edits: readState(await readNote(i, stateKey(id))).edits, now, state })
+  const v = judgePlan({ mode, text: msg.text, origin: msg.origin, edits: readState(await readNote(i, stateKey(id))).edits, now, state })
   if (!v.record) return undefined
   // A hot note (core/flush.ts): on by default now
   await holdNote(i, planKey(id), advancePlan(state, v, now), 'own')
@@ -79,9 +79,9 @@ export function registerPlanFirst(on: On): void {
     return next(note === undefined ? e : { ...e, context: [...(e.context ?? []), note] })
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-explain' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'planfirst')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-explain' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'planfirst')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     return { text: planLine(await readSetting(i, SETTING_KEY), readPlan(await readNote(i, planKey(await i.sessionId())))) }
   })

@@ -65,9 +65,9 @@ export function registerPromptCheck(on: On): void {
     return next(note === undefined ? e : { ...e, context: [...(e.context ?? []), note] })
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-explain' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'promptcheck')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-explain' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'promptcheck')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     const mode = checkMode(await readSetting(i, PROMPT_CHECK_KEY))
     return { text: explainLast(parseLast(await readNote(i, lastKey(await i.sessionId()))), mode) }

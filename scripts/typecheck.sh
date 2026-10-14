@@ -60,8 +60,8 @@ if [ -n "$WIN" ] && command -v cygpath >/dev/null 2>&1; then
   TYPES=$(cygpath -m "$TYPES"); ROOT=$(cygpath -m "$ROOT"); WDIR=$(cygpath -m "$DIR")
 fi
 cat > "$DIR/tsconfig.json" <<JSON
-{ "compilerOptions": { "noEmit": true, "strict": true, "target": "ES2022", "lib": ["ES2022"], "module": "ESNext", "moduleResolution": "Bundler", "jsx": "react", "jsxFactory": "h", "jsxFragmentFactory": "Fragment", "skipLibCheck": true, "types": [], "allowImportingTsExtensions": true },
-  "files": ["$TYPES", "$WDIR/globals.d.ts"], "include": ["$ROOT/mods/cockpit/hooks", "$ROOT/mods/cockpit/tests"] }
+{ "compilerOptions": { "noEmit": true, "strict": true, "target": "ES2022", "lib": ["ES2022"], "module": "ESNext", "moduleResolution": "Bundler", "jsx": "react", "jsxFactory": "h", "jsxFragmentFactory": "Fragment", "skipLibCheck": true, "types": [], "allowImportingTsExtensions": true, "rootDirs": ["$ROOT/mods/cockpit/tests", "$ROOT/tests/cockpit"] },
+  "files": ["$TYPES", "$WDIR/globals.d.ts"], "include": ["$ROOT/mods/cockpit/hooks", "$ROOT/tests/cockpit"] }
 JSON
 echo 'declare const h: any; declare namespace JSX { interface IntrinsicElements { [k: string]: any } interface ElementChildrenAttribute { children: {} } }' > "$DIR/globals.d.ts"
 # tr strips the carriage returns a Windows tsc prints. The output goes to a file so tsc's own exit code is kept (a pipe would hide it).
@@ -76,7 +76,7 @@ rm -rf "$DIR"
 # (a variable used and never declared).
 BAD=$(echo "$OUT" | grep -E "^mods/cockpit/hooks/[^(]*\.tsx?\(|TS2304|TS2552")
 # Any "error TS" line that is not in a test file also fails (for example a bad config or a file outside hooks and tests).
-OTHER=$(echo "$OUT" | grep "error TS" | grep -vE "^mods/cockpit/tests/")
+OTHER=$(echo "$OUT" | grep "error TS" | grep -vE "^tests/cockpit/")
 if [ -n "$TYPECHECK_SHOW" ]; then echo "$OUT" | head -${TYPECHECK_LINES:-40}; fi
 if [ -n "$BAD" ] || [ -n "$OTHER" ]; then printf '%s\n%s\n' "$BAD" "$OTHER" | grep -v '^$' | sort -u | head -${TYPECHECK_LINES:-40}; echo "typecheck: FAILED"; exit 1; fi
 # tsc failed (exit not 0) with no error line at all: it did not run or it crashed. With error lines only in test files, exit 1 is the tolerated noise.

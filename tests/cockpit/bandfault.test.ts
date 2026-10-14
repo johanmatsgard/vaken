@@ -11,7 +11,7 @@ import { FAULT_REST_MS, faulted, noteFault } from '../hooks/ui/firstclick'
 
 type N = { type: string; props: Record<string, unknown> }
 const mk = (type: string) => (p: Record<string, unknown>): N => ({ type, props: p ?? {} })
-const el = { Box: mk('Box'), Text: mk('Text'), Button: mk('Button'), Svg: mk('Svg'), Client: mk('Client') } as unknown as El
+const el = { Box: mk('Box'), Text: mk('Text'), Button: mk('Button'), Svg: mk('Svg'), Client: mk('Client'), drag: true } as unknown as El
 function walk(n: unknown, out: N[] = []): N[] {
   if (Array.isArray(n)) for (const c of n) walk(c, out)
   else if (n !== null && typeof n === 'object' && 'type' in n) {

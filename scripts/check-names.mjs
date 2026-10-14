@@ -24,7 +24,7 @@ const KEPT = [
 ]
 
 const walk = d => fs.readdirSync(d).flatMap(f => { const p = path.join(d, f); return fs.statSync(p).isDirectory() ? walk(p) : /\.tsx?$/.test(f) ? [p] : [] })
-for (const root of ['mods/cockpit/hooks', 'mods/cockpit/tests']) {
+for (const root of ['mods/cockpit/hooks', 'tests/cockpit']) {
   for (const f of walk(root)) {
     if (f.includes('/i18n/rows/') || f.endsWith('rename.test.ts') || f.endsWith('legacyagents.test.ts')) continue
     fs.readFileSync(f, 'utf8').split('\n').forEach((line, i) => {

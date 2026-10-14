@@ -106,7 +106,8 @@ export function registerPhone(on: On): void {
   on('prompt.compose', { model: /(?<phonemode>)/ }, async ($, e, next) => {
     const result = await next(e)
     try {
-      if (attached.size > 0 && !result.sections.some(s => s.id === PHONE_SECTION_ID) && phoneSectionOn(modeOf(await readSetting(io($), PHONE_MODE_KEY)), attached.values(), await $.clock.now())) {
+      const nowMs = await $.clock.now()
+      if (attached.size > 0 && !result.sections.some(s => s.id === PHONE_SECTION_ID) && phoneSectionOn(modeOf(await readSetting(io($), PHONE_MODE_KEY)), attached.values(), nowMs)) {
         return { ...result, sections: [...result.sections, { id: PHONE_SECTION_ID, text: PHONE_SECTION_TEXT, scope: 'session' as const }] }
       }
     } catch {
@@ -117,7 +118,8 @@ export function registerPhone(on: On): void {
   on('session.attach', { surface: 'mobile' }, async ($, e, next) => {
     const r = await next(e)
     try {
-      attached.set(e.clientId, await $.clock.now())
+      const nowMs = await $.clock.now()
+      attached.set(e.clientId, nowMs)
     } catch {
     }
     try {

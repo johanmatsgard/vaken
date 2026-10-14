@@ -67,9 +67,9 @@ export function registerAssumptions(on: On): void {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-explain' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'assumptions')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-explain' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'assumptions')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     return { text: assumptionsText(parseStored(await i.get(storeKey(await i.sessionId()))), await isOn(i), await i.now()) }
   })

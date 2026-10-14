@@ -1,6 +1,7 @@
 // Approvals inbox and Steering. /cockpit inbox lists, across all sessions, what waits for the person: steps the guard held
 import { tr } from '../core/lang'
 import type { EngineInterface, On } from 'claude-code'
+import { fieldsOf } from '../core/eventfields'
 
 import { parseStoredUsage, APP_USAGE_KEY } from '../core/appusage'
 import { parseStoredSessions, APP_SESSIONS_KEY } from '../core/appsessions'
@@ -87,7 +88,7 @@ export async function inboxFrom(i: Io, f: { now: number; sid: string; rows: Row[
     if (allowLive(parseAllow(await i.get(allowKey(s.sid))), now)) allowed.push(s.sid)
   }
   const raw = await i.get(INBOX_SEEN_KEY)
-  const old: Record<string, number> = typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? Object.fromEntries(Object.entries(raw as Record<string, unknown>).filter((e): e is [string, number] => typeof e[1] === 'number')) : {}
+  const old: Record<string, number> = typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? Object.fromEntries(Object.entries(raw as Record<string, unknown>).filter((pair): pair is [string, number] => typeof pair[1] === 'number')) : {}
   const seen: Record<string, number> = {}
   for (const d of debts) {
     const at = old[`review:${d.sid}`] ?? (remember ? now : undefined)
@@ -161,17 +162,20 @@ export async function inboxCheck(i: Io, suggest: Suggest): Promise<void> {
 }
 
 type Suggest = (text: string) => Promise<boolean>
-const suggestOf =
-  ($: EngineInterface): Suggest =>
-  async text => {
+function suggestOf($: EngineInterface): Suggest {
+  return async text => {
     try {
-      return (await $.prompt.suggest({ text })).isShown
+      const shown = await $.prompt.suggest({ text })
+      return shown.isShown
     } catch {
       return false
     }
   }
+}
 
-const inboxTick = ($: EngineInterface): Promise<void> => inboxCheck(io($), suggestOf($))
+function inboxTick($: EngineInterface): Promise<void> {
+  return inboxCheck(io($), suggestOf($))
+}
 
 const stateWord = (r: Row): string => (r.kind === 'needs' ? 'needs you' : r.kind === 'working' ? 'working' : r.kind === 'waiting' ? 'finished, waits for you' : 'idle')
 
@@ -195,7 +199,7 @@ export function registerInbox(on: On): void {
 
   // The running answer of the main thread, so that stop can cancel it.
   on('turn.start', { turnId: /(?<inbox>)/ }, async ($, e, next) => {
-    if ((e as { agentId?: string }).agentId === undefined) runningTurn = e.turnId
+    if (fieldsOf(e).agentId === undefined) runningTurn = e.turnId
     return next(e)
   }).catch(($, e, next) => next(e))
 
@@ -227,22 +231,21 @@ export function registerInbox(on: On): void {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'inbox')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'inbox')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     const { items, now } = await collectInbox(i)
     return { text: inboxText(items, now, (await readSetting(i, 'inbox.mode')) !== 'off') }
   })
 
-  on('command.run', { command: 'vaken-pause' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'steer')
-    if (rest0 === undefined) return next(e0)
-    const e = { ...e0, args: rest0 }
+  on('command.run', { command: 'vaken-pause' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'steer')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     const sid = await i.sessionId()
     const now = await i.now()
-    const ask = parseSteerAsk(e.args)
+    const ask = parseSteerAsk(rest0)
     if (ask.kind === 'bad') return { text: ask.why }
 
     if (ask.kind === 'list') {

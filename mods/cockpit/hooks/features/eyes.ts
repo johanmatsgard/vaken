@@ -1,6 +1,7 @@
 // The Preview card's eyes: finding the project's dev server
 import { tr } from '../core/lang'
 import type { EngineInterface, On } from 'claude-code'
+import { fieldsOf } from '../core/eventfields'
 
 import { DEV_PORTS, DEV_TIMEOUT_S, curlArgv, inProject, lsofAllArgv, lsofArgv, lsofCwdArgv, parseCurl, parseCwds, parseListeners, parseLsof } from '../core/eyesdev'
 import type { Listener } from '../core/eyesdev'
@@ -53,7 +54,12 @@ function ioFs($: EngineInterface): Io {
   const plat = bindPlatform(made, () => $.env.get('OS'))
   return bindChrome(plat, {
     exists: path => $.fs.exists(path),
-    env: async () => ({ programFiles: await $.env.get('ProgramFiles'), programFilesX86: await $.env.get('ProgramFiles(x86)'), localAppData: await $.env.get('LOCALAPPDATA') }),
+    env: async () => {
+      const programFiles = await $.env.get('ProgramFiles')
+      const programFilesX86 = await $.env.get('ProgramFiles(x86)')
+      const localAppData = await $.env.get('LOCALAPPDATA')
+      return { programFiles, programFilesX86, localAppData }
+    },
   })
 }
 // FS-BLOCK-END
@@ -225,7 +231,7 @@ export function registerEyes(on: On): void {
     const result = await next(e)
     try {
       if (isEditTool(e.tool) && result.deny === undefined && result.isError !== true) {
-        const path = (e as unknown as Record<string, unknown>).file_path
+        const path = fieldsOf(e).file_path
         if (typeof path === 'string' && isFrontFile(path)) frontEdits.n += 1
       }
     } catch {

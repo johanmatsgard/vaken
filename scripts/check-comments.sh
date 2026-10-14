@@ -2,7 +2,7 @@
 # Finds comment text that a stranger does not need: task codes, batch/wave/phase words,
 # dates, the word for who owns the project, live-round words, and links to docs that do not ship.
 # Looks only at comments (// and /* */ in .ts .tsx .mjs .js, # in .sh .py), never at code or strings.
-# Scans mods/cockpit/hooks, mods/cockpit/tests and scripts. Skips the test-driver scripts, scripts/types/*.d.ts
+# Scans mods/cockpit/hooks, tests/cockpit and scripts. Skips the test-driver scripts, scripts/types/*.d.ts
 # and every path in scripts/release/cut.txt or ask.txt (they do not ship).
 # A docs/ link is fine when the doc matches scripts/release/keep.txt. When those lists are missing
 # (the public copy), a docs/ link is fine when the linked file exists, and no path is skipped for the lists.

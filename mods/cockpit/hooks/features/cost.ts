@@ -253,9 +253,9 @@ export function registerCost(on: On): void {
     return result
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-usage' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'cost')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-usage' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'cost')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     const s = await ensure(i)
     const c = await conf(i)
@@ -264,9 +264,9 @@ export function registerCost(on: On): void {
     return { text: costText({ state: s, now: await i.now(), ...(model === undefined ? {} : { model }), day, budget: budgetLines(facts, extra, day.sessions) }) }
   })
 
-  on('command.run', { command: 'vaken-usage' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'why')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-usage' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'why')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     const c = await conf(i)
     if (!c.why) return { text: 'The "why it cost" paragraph is off. Turn it on: Settings > Money and plan.' } // en-only: plain answer of a slash command (text twin)
@@ -275,9 +275,9 @@ export function registerCost(on: On): void {
     return { text: `${whyText(s)}${estimateTotal(s) > 0 ? `${source}\nSource: the token counts the engine reported for each answer, priced with the list prices of ${PRICES_DATE}. Estimate.` : ''}` }
   })
 
-  on('command.run', { command: 'vaken-usage' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'limits')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-usage' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'limits')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     const now = await i.now()
     const usage = parseStoredUsage(await i.get(APP_USAGE_KEY))
@@ -292,12 +292,11 @@ export function registerCost(on: On): void {
     return { text: limitsText({ usage, history: parseHistory(await i.get(HISTORY_KEY)), running, spenders, now }) }
   })
 
-  on('command.run', { command: 'vaken-usage' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'budget')
-    if (rest0 === undefined) return next(e0)
-    const e = { ...e0, args: rest0 }
+  on('command.run', { command: 'vaken-usage' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'budget')
+    if (rest0 === undefined) return next(e)
     const i = io($)
-    const ask = parseAsk(e.args)
+    const ask = parseAsk(rest0)
     if (ask.kind === 'bad') return { text: ask.why }
     const c = await conf(i)
     const s = await ensure(i)

@@ -238,7 +238,7 @@ function files() {
       walk(path.join(dir, d));
     }
   };
-  for (const top of ["mods/cockpit/hooks", "mods/cockpit/tests", "scripts"]) walk(path.join(root, top));
+  for (const top of ["mods/cockpit/hooks", "tests/cockpit", "scripts"]) walk(path.join(root, top));
   return res;
 }
 

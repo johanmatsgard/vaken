@@ -10,7 +10,7 @@ import { settingRowOf } from './settingrow'
 
 export function FlipFace(el: El, prefs: Prefs, act: Acts, id: CardId, innerPt: number, fit: number): Drawn {
   const { Box } = el
-  const face = faceOf(id, el.Client !== undefined, fit)
+  const face = faceOf(id, el.drag, fit)
   const rowOf = settingRowOf(el, prefs, act, innerPt)
   const spending = face.rows.filter(r => isSpending(r.key))
   const label = face.more > 0 ? tr(N_MORE_IN_SETTINGS).replace('{n}', String(face.more)) : tr(MORE_IN_SETTINGS)

@@ -10,6 +10,7 @@ import { diffLines, listText, parseAsk, presetSteps, presetWhat } from '../core/
 import { findSetting } from '../core/settings'
 import { applySteps, projectName, projectOf, readGlobalSettings, readProjectSet } from '../core/projects'
 import { LEDGER_KEY, pushLog } from './compaction'
+import { ROLES, ROLE_PROMPT, roleDescription } from '../core/orchestra'
 import { isRoleKey, rolesChangedWith } from './orchestra'
 import { subArgs } from '../core/menu'
 import { BY_PERSON_ONLY, byPerson } from '../core/origin'
@@ -57,18 +58,17 @@ export function registerPresets(on: On): void {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-settings' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'preset')
-    if (rest0 === undefined) return next(e0)
-    const e = { ...e0, args: rest0 }
+  on('command.run', { command: 'vaken-settings' }, async ($, e, next) => {
+    const rest = subArgs(e.args, 'preset')
+    if (rest === undefined) return next(e)
     const i = io($)
-    const words = e.args.trim().split(/\s+/).filter(w => w !== '')
+    const words = rest.trim().split(/\s+/).filter(w => w !== '')
     const forHere = words.some(w => w.toLowerCase() === 'here')
     const ask = parseAsk(words.filter(w => w.toLowerCase() !== 'here').join(' '))
     if (ask.kind === 'list') return { text: listText() }
     if (ask.kind === 'bad') return { text: ask.why }
     // Applying a preset changes settings, the guard's among them, so only the person may type it.
-    if (ask.kind === 'apply' && !byPerson(e0.origin)) return { text: BY_PERSON_ONLY }
+    if (ask.kind === 'apply' && !byPerson(e.origin)) return { text: BY_PERSON_ONLY }
     const root = forHere ? await projectOf(i) : undefined
     if (forHere && root === undefined) return { text: 'This session has no project folder. Leave out "here" to apply it to all projects.' }
     const where = root === undefined ? '' : ` for this project (${projectName(root)}) only`
@@ -79,7 +79,13 @@ export function registerPresets(on: On): void {
     const title = ask.preset.title
     if (ask.kind === 'show') return { text: changes.length === 0 ? `${title}: nothing would change${where}; your choices already match.` : [`${title} (${ask.preset.name}): ${ask.preset.about}`, `It would change${where}:`, ...changes, '', `To apply${where}: /vaken-settings preset ${ask.preset.name} yes${forHere ? ' here' : ''}`].join('\n') }
     await applySteps(i, presetSteps(ask.preset), root)
-    if (Object.keys(ask.preset.values).some(isRoleKey)) await rolesChangedWith({ register: spec => $.agent.register(spec), io: i })
+    if (Object.keys(ask.preset.values).some(isRoleKey)) await rolesChangedWith({
+      register: (r, m) => {
+        if (ROLES[r].tools === undefined) return $.agent.register({ name: r, description: roleDescription(r), prompt: ROLE_PROMPT(r), model: m })
+        return $.agent.register({ name: r, description: roleDescription(r), prompt: ROLE_PROMPT(r), model: m, tools: ROLES[r].tools })
+      },
+      io: i,
+    })
     await i.set('cockpit:firstrun', 'done')
     await pushLog(i, LEDGER_KEY, { at: await i.now(), session: await i.sessionId(), what: presetWhat(title), detail: `${tEn('words.choice', { n: changes.length })} changed.`, how: 'typed', did: true })
     await postBand(i, 'info', 'preset', tLine('band.preset_name', { preset: title }), 5 * 60_000)

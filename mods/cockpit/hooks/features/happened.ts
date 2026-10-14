@@ -1,5 +1,6 @@
 // What just happened runtime: count each tool call of the turn, keep the sentence when the answer ends, and answer /vaken-explain happened.
 import type { EngineInterface, On } from 'claude-code'
+import { fieldsOf } from '../core/eventfields'
 
 import { countCall, emptyTurn, happenedWords, riskNote } from '../core/happened'
 import type { Turn } from '../core/happened'
@@ -52,7 +53,7 @@ export function registerHappened(on: On): void {
 
   on('tool.call', { tool: /(?<happened>)/ }, async ($, e, next) => {
     try {
-      if (e.agentId === undefined && (await isOn(io($)))) current = countCall(current, e.tool, e as unknown as Record<string, unknown>)
+      if (e.agentId === undefined && (await isOn(io($)))) current = countCall(current, e.tool, fieldsOf(e))
     } catch {
     }
     return next(e)
@@ -71,9 +72,9 @@ export function registerHappened(on: On): void {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-explain' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'happened')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-explain' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'happened')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     return { text: happenedWords((await i.get(lastKey(await i.sessionId()))) as Turn | undefined) }
   })

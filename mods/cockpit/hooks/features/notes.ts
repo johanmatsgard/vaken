@@ -1,6 +1,7 @@
 // Continuity notes: the rules count, the parking lot, reflection and memory in plain words.
 import { tr } from '../core/lang'
 import type { EngineInterface, On } from 'claude-code'
+import { fieldsOf } from '../core/eventfields'
 
 import { postBand } from '../core/band'
 import { withToastGate } from '../core/io'
@@ -51,7 +52,8 @@ async function instructionFiles($: EngineInterface): Promise<{ path: string; tex
   const out: { path: string; text: string }[] = []
   for (const path of paths) {
     try {
-      if (await $.fs.exists(path)) out.push({ path, text: await i.read(path) })
+      const there = await $.fs.exists(path)
+      if (there) out.push({ path, text: await i.read(path) })
     } catch {
     }
   }
@@ -84,7 +86,7 @@ export function registerNotes(on: On): void {
     try {
       const mode = await readSetting(io($), 'rules.mode')
       if (isShellTool(e.tool) && e.agentId === undefined && mode !== 'off' && result.deny === undefined) {
-        const hits = hitsOf(await rulesNow($), String((e as unknown as { command?: unknown }).command ?? ''))
+        const hits = hitsOf(await rulesNow($), String(fieldsOf(e).command ?? ''))
         if (hits.length > 0) {
           const i = io($)
           const key = rulesKey(await i.sessionId())
@@ -103,29 +105,29 @@ export function registerNotes(on: On): void {
     return result
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-memory' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'rules')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-memory' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'rules')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     return { text: rulesText(await rulesNow($), ((await i.get(rulesKey(await i.sessionId()))) as Counts | undefined) ?? {}) }
   })
 
-  on('command.run', { command: 'vaken-memory' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'reflect')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-memory' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'reflect')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     return { text: reflectText(reflect(await readLog(i, LEDGER_KEY), await i.now())) }
   })
 
-  on('command.run', { command: 'vaken-memory' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'park')
-    if (rest0 === undefined) return next(e0)
-    const e = { ...e0, args: rest0 }
+  on('command.run', { command: 'vaken-memory' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'park')
+    if (rest0 === undefined) return next(e)
     const i = io($)
-    const key = parkKey(hashOf(await $.session.root()))
+    const root = await $.session.root()
+    const key = parkKey(hashOf(root))
     const ideas = parseIdeas(await i.get(key))
     const now = await i.now()
-    const ask = parseAsk(e.args)
+    const ask = parseAsk(rest0)
     if (ask.kind === 'bad') return { text: ask.why }
     if (ask.kind === 'list') return { text: listText(ideas, now) }
     if (ask.kind === 'clear') {
@@ -167,7 +169,8 @@ export function registerNotes(on: On): void {
       if (arg !== '') {
         const file = `${arg.endsWith('.md') ? arg : `${arg}.md`}`
         for (const s of spots) {
-          if (!(await $.fs.exists(under(s.dir, file)))) continue
+          const there = await $.fs.exists(under(s.dir, file))
+          if (!there) continue
           const note = parseNote(await i.read(under(s.dir, file)))
           return { text: `${kindWord(note.type)}${note.description === undefined ? '' : `: ${note.description}`}\n\n${note.body}` }
         }
@@ -175,7 +178,8 @@ export function registerNotes(on: On): void {
       }
       let index: ReturnType<typeof parseIndex> = []
       for (const s of spots) {
-        if (!(await $.fs.exists(under(s.dir, 'MEMORY.md')))) continue
+        const there = await $.fs.exists(under(s.dir, 'MEMORY.md'))
+        if (!there) continue
         index = parseIndex(await i.read(under(s.dir, 'MEMORY.md')))
         break
       }

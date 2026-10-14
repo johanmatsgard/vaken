@@ -1,6 +1,7 @@
 // Proof (Settings > Safety): receipts for the checks Claude runs (tests, build, lint, type check), the claims in a final answer set against them
 import { tr } from '../core/lang'
 import type { EngineInterface, On } from 'claude-code'
+import { fieldsOf } from '../core/eventfields'
 
 import { holdNote, readNote } from '../core/flush'
 import type { Pace } from '../core/flush'
@@ -90,7 +91,7 @@ export function registerProof(on: On): void {
     // Nothing below may throw: a failure after next must not run the tool twice.
     try {
       if (!enabled || result.deny !== undefined) return result
-      const input = e as unknown as Record<string, unknown>
+      const input = fieldsOf(e)
       const tool = String(e.tool)
       const now = await i.now()
       if (isEditTool(tool)) {
@@ -171,9 +172,9 @@ export function registerProof(on: On): void {
     }
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-ship' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'proof')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-ship' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'proof')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     try {
       const s = await load(i)
@@ -184,13 +185,12 @@ export function registerProof(on: On): void {
     }
   })
 
-  on('command.run', { command: 'vaken-ship' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'done')
-    if (rest0 === undefined) return next(e0)
-    const e = { ...e0, args: rest0 }
+  on('command.run', { command: 'vaken-ship' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'done')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     try {
-      const arg = e.args.trim().toLowerCase()
+      const arg = rest0.trim().toLowerCase()
       const doneOn = (await readSetting(i, 'proof.done')) === 'on'
       if (arg === '') {
         const s = await load(i)
@@ -213,13 +213,12 @@ export function registerProof(on: On): void {
     }
   })
 
-  on('command.run', { command: 'vaken-tasks' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'goal')
-    if (rest0 === undefined) return next(e0)
-    const e = { ...e0, args: rest0 }
+  on('command.run', { command: 'vaken-tasks' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'goal')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     try {
-      const arg = e.args.trim()
+      const arg = rest0.trim()
       if (arg === '') return { text: goalLines(await load(i)).join('\n') }
       if (arg.toLowerCase() === 'clear') {
         await change(i, s => ({ state: { ...s, goal: undefined, messages: GOAL_WITHIN }, out: undefined }), 'now')
@@ -236,9 +235,9 @@ export function registerProof(on: On): void {
     }
   })
 
-  on('command.run', { command: 'vaken-ship' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'reviewed')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-ship' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'reviewed')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     try {
       const before = (await load(i)).debt

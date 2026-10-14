@@ -128,13 +128,12 @@ export function registerResume(on: On): void {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-help' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'run', 'after-limit')
-    if (rest0 === undefined) return next(e0)
-    const e = { ...e0, args: rest0 }
+  on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'run', 'after-limit')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     const id = await i.sessionId()
-    const arg = e.args.trim().toLowerCase()
+    const arg = rest0.trim().toLowerCase()
     if (arg === 'off') {
       await i.del(waitKey(id))
       return { text: 'Cancelled. Nothing waits for a reset in this session now.' } // en-only: plain answer of a slash command (text twin)

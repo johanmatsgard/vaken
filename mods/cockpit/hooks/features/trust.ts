@@ -71,7 +71,9 @@ export function tellChanges(i: Io, sid: string): Promise<void> {
 async function ownVersion($: EngineInterface): Promise<string | undefined> {
   for (const file of ['plugin.json', '.claude-plugin/plugin.json']) {
     try {
-      const v = (JSON.parse(await $.fs.read(`${$.plugin.root}/${file}`)) as { version?: unknown }).version
+      const pluginRoot = $.plugin.root
+      const text = await $.fs.read(`${pluginRoot}/${file}`)
+      const v = (JSON.parse(text) as { version?: unknown }).version
       if (typeof v === 'string') return v
     } catch {
     }
@@ -82,22 +84,26 @@ async function ownVersion($: EngineInterface): Promise<string | undefined> {
 async function card($: EngineInterface): Promise<string> {
   const i = io($)
   const now = await i.now()
-  const own = plainName($.plugin.name)
+  const pluginName = $.plugin.name
+  const own = plainName(pluginName)
   const versions = parseVersions(await i.get(VERSIONS_KEY))
   const seen = parseSeen(await i.get(SEEN_KEY), now)
   const commands = new Map<string, number>()
   const agents = new Map<string, number>()
   const servers = new Map<string, number>()
   try {
-    for (const c of await $.command.list()) if (c.source === 'plugin' && c.plugin !== undefined) commands.set(plainName(c.plugin), (commands.get(plainName(c.plugin)) ?? 0) + 1)
+    const cmdList = await $.command.list()
+    for (const c of cmdList) if (c.source === 'plugin' && c.plugin !== undefined) commands.set(plainName(c.plugin), (commands.get(plainName(c.plugin)) ?? 0) + 1)
   } catch {
   }
   try {
-    for (const a of await $.agent.list()) if (a.spawnedBy !== undefined) agents.set(plainName(a.spawnedBy), (agents.get(plainName(a.spawnedBy)) ?? 0) + 1)
+    const agentList = await $.agent.list()
+    for (const a of agentList) if (a.spawnedBy !== undefined) agents.set(plainName(a.spawnedBy), (agents.get(plainName(a.spawnedBy)) ?? 0) + 1)
   } catch {
   }
   try {
-    for (const t of await $.tool.list()) {
+    const toolList = await $.tool.list()
+    for (const t of toolList) {
       const m = /^mcp__(.+?)__.+$/.exec(t.name)
       if (t.mcp && m !== null) servers.set(m[1], (servers.get(m[1]) ?? 0) + 1)
     }
@@ -127,7 +133,9 @@ export function registerTrust(on: On): void {
     }
     try {
       const i = io($)
-      await noteVersion(i, $.plugin.name, await ownVersion($))
+      const pluginName = $.plugin.name
+      const mine = await ownVersion($)
+      await noteVersion(i, pluginName, mine)
       await tellChanges(i, await i.sessionId())
     } catch {
     }
@@ -155,9 +163,9 @@ export function registerTrust(on: On): void {
     return next(e)
   })
 
-  on('command.run', { command: 'vaken-help' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'run', 'trust')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'run', 'trust')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     try {
       await tellChanges(i, await i.sessionId())
@@ -166,9 +174,9 @@ export function registerTrust(on: On): void {
     return { text: await card($) }
   })
 
-  on('command.run', { command: 'vaken-help' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'run', 'modhealth')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'run', 'modhealth')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     const mode = (await i.get(HEALTH_MODE_KEY)) === 'off' ? 'off' : 'on'
     return { text: healthText(mode, await readCounts(i), await i.now(), { problems: [...refused.entries()].map(([name, why]) => `${name}: ${why}`) }) }

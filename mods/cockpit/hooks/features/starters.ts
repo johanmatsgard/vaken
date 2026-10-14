@@ -79,11 +79,16 @@ export function registerStarters(on: On): void {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-tasks' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'agents')
-    if (rest0 === undefined) return next(e0)
-    const e = { ...e0, args: rest0 }
+  on('command.run', { command: 'vaken-tasks' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'agents')
+    if (rest0 === undefined) return next(e)
     const i = bindSafeFs(io($), { stat: (path, options) => $.fs.stat(path, options), list: path => $.fs.list(path) })
-    return { text: await startersRun(i, path => $.fs.exists(path), e.args, await $.session.root().catch(() => undefined)) }
+    let root: string | undefined
+    try {
+      root = await $.session.root()
+    } catch {
+      root = undefined
+    }
+    return { text: await startersRun(i, path => $.fs.exists(path), rest0, root) }
   })
 }

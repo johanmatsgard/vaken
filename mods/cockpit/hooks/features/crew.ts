@@ -3,6 +3,7 @@ import { cachedAnswer } from '../core/negcache'
 import type { Slot } from '../core/negcache'
 import { tr } from '../core/lang'
 import type { EngineInterface, On } from 'claude-code'
+import { fieldsOf } from '../core/eventfields'
 
 import { clearBand, postBand } from '../core/band'
 import { quietly } from '../core/quiet'
@@ -51,15 +52,20 @@ function io($: EngineInterface): Io {
 }
 // IO-BLOCK-END
 
-const ranBy = ($: EngineInterface): { run: EngineInterface['process']['run'] } => ({
-  run: (argv, init) => {
-    noteRun()
-    return $.process.run(argv, init)
-  },
-})
+function ranBy($: EngineInterface): { run: EngineInterface['process']['run'] } {
+  return {
+    run: (argv, init) => {
+      noteRun()
+      return $.process.run(argv, init)
+    },
+  }
+}
 
 let platGet: (() => Promise<ProcPlatform>) | undefined
-const platOf = ($: EngineInterface): Promise<ProcPlatform> => (platGet ??= platformOnce(() => $.env.get('OS')))()
+function platOf($: EngineInterface): Promise<ProcPlatform> {
+  platGet ??= platformOnce(() => $.env.get('OS'))
+  return platGet()
+}
 
 const TICK_MS = 30_000
 const PROBE_MS = 3_000
@@ -68,8 +74,9 @@ const TOLD_MAX = 500
 
 export const repoSlot: Slot<string | undefined> = {}
 export const ghSlot: Slot<boolean> = {}
-const repoOf = async ($: EngineInterface): Promise<string | undefined> =>
-  cachedAnswer(
+async function repoOf($: EngineInterface): Promise<string | undefined> {
+  const now = await $.clock.now()
+  return cachedAnswer(
     repoSlot,
     async () => {
       try {
@@ -81,10 +88,14 @@ const repoOf = async ($: EngineInterface): Promise<string | undefined> =>
       }
     },
     v => v !== undefined,
-    await $.clock.now(),
+    now,
   )
+}
 
-const hasGh = async ($: EngineInterface): Promise<boolean> => cachedAnswer(ghSlot, async () => hasProgram(ranBy($).run, await platOf($), 'gh', PROBE_MS), v => v, await $.clock.now())
+async function hasGh($: EngineInterface): Promise<boolean> {
+  const now = await $.clock.now()
+  return cachedAnswer(ghSlot, async () => hasProgram(ranBy($).run, await platOf($), 'gh', PROBE_MS), v => v, now)
+}
 
 let claimChain: Promise<unknown> = Promise.resolve()
 // One at a time, so two quick edits do not lose one.
@@ -143,30 +154,30 @@ async function prRefresh($: EngineInterface, force = false): Promise<void> {
     const sid = await i.sessionId()
     const branch = (await readRecord(i, sid))?.branch
     const old = prFacts !== undefined && prFacts.branch === branch ? prFacts : undefined
-    let next: PrFacts = { at: now, branch }
+    let prNow: PrFacts = { at: now, branch }
     const repo = (await repoOf($)) ?? ''
     const sharedRaw = await i.get(PR_SHARED_KEY)
     const shared = sharedPr(sharedRaw, repo, branch, now, prPushedAt ?? 0)
-    if (shared !== undefined) next = { ...shared, branch }
+    if (shared !== undefined) prNow = { ...shared, branch }
     else {
       try {
         const r = await ranBy($).run(PR_VIEW_ARGV, { timeoutMs: GH_TIMEOUT_MS })
         if (r.exitCode === 0) {
           const view = parsePrView(safeJson(r.stdout))
-          next = view === undefined ? { ...next, view: old?.view, error: 'gh answered with something unexpected' } : { ...next, view }
-        } else if (isNoPr(r.stderr)) next = { ...next, none: true }
-        else next = { ...next, view: old?.view, error: firstLine(r.stderr) || `gh stopped with code ${r.exitCode}` }
+          prNow = view === undefined ? { ...prNow, view: old?.view, error: 'gh answered with something unexpected' } : { ...prNow, view }
+        } else if (isNoPr(r.stderr)) prNow = { ...prNow, none: true }
+        else prNow = { ...prNow, view: old?.view, error: firstLine(r.stderr) || `gh stopped with code ${r.exitCode}` }
       } catch {
-        next = { ...next, view: old?.view, error: 'gh did not answer in time' }
+        prNow = { ...prNow, view: old?.view, error: 'gh did not answer in time' }
       }
-      await i.set(PR_SHARED_KEY, withSharedPr(sharedRaw, repo, branch, next, now))
+      await i.set(PR_SHARED_KEY, withSharedPr(sharedRaw, repo, branch, prNow, now))
     }
-    next = { ...next, mainRed: old?.mainRed ?? prFacts?.mainRed, mainAt: old?.mainAt ?? prFacts?.mainAt }
-    next = await mainCheck($, i, next, now)
-    prFacts = next
-    await i.set(`cockpit:pr:state:${sid}`, next)
-    if (next.view !== undefined && shared === undefined) await i.set(DURATIONS_KEY, learnDurations(parseDurations(await i.get(DURATIONS_KEY)), next.view.checks))
-    await prShow(i, next)
+    prNow = { ...prNow, mainRed: old?.mainRed ?? prFacts?.mainRed, mainAt: old?.mainAt ?? prFacts?.mainAt }
+    prNow = await mainCheck($, i, prNow, now)
+    prFacts = prNow
+    await i.set(`cockpit:pr:state:${sid}`, prNow)
+    if (prNow.view !== undefined && shared === undefined) await i.set(DURATIONS_KEY, learnDurations(parseDurations(await i.get(DURATIONS_KEY)), prNow.view.checks))
+    await prShow(i, prNow)
   } catch {
     // the clock never breaks the session
   } finally {
@@ -189,17 +200,17 @@ async function prStale($: EngineInterface): Promise<void> {
     const todo = staleRunning(raw, repo, own, now)
     if (todo.length === 0) return
     staleAt = now
-    let next: unknown = raw
+    let sharedNext: unknown = raw
     for (const branch of todo) {
       try {
         const r = await ranBy($).run(prViewArgvFor(branch), { timeoutMs: GH_TIMEOUT_MS })
         if (r.exitCode !== 0) continue
         const view = parsePrView(safeJson(r.stdout))
-        if (view !== undefined) next = withSharedPr(next, repo, branch, { at: now, branch, view }, now)
+        if (view !== undefined) sharedNext = withSharedPr(sharedNext, repo, branch, { at: now, branch, view }, now)
       } catch {
       }
     }
-    if (next !== raw) await i.set(PR_SHARED_KEY, next)
+    if (sharedNext !== raw) await i.set(PR_SHARED_KEY, sharedNext)
   } catch {
     // the clock never breaks the session
   }
@@ -244,7 +255,8 @@ let wasLow = false
 // Whether a helper agent of this session runs now (the engine's own list, no store read).
 async function helpersRun($: EngineInterface): Promise<boolean> {
   try {
-    return (await $.agent.list()).some(a => a.status === 'running' || a.status === 'pending' || a.status === 'waiting')
+    const list = await $.agent.list()
+    return list.some(a => a.status === 'running' || a.status === 'pending' || a.status === 'waiting')
   } catch {
     return true
   }
@@ -368,7 +380,7 @@ export function registerCrew(on: On): void {
     if (isShellTool(e.tool)) {
       const done = await next(e)
       try {
-        const command = (e as unknown as { command?: unknown }).command
+        const command = fieldsOf(e).command
         if (typeof command === 'string' && done.deny === undefined && done.isError !== true && isGitPush(command)) {
           prPushedAt = await $.clock.now()
           prTriedAt = 0
@@ -385,7 +397,7 @@ export function registerCrew(on: On): void {
     let note: string | undefined
     try {
       if ((await readSetting(i, 'crew.collide')) !== 'off') {
-        const input = e as unknown as Record<string, unknown>
+        const input = fieldsOf(e)
         const raw = input.file_path ?? input.notebook_path
         repo = await repoOf($)
         if (repo !== undefined && typeof raw === 'string' && raw !== '') {
@@ -416,9 +428,9 @@ export function registerCrew(on: On): void {
     return result
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-help' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'run', 'claims')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'run', 'claims')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     const me = await i.sessionId()
     const now = await i.now()
@@ -429,9 +441,9 @@ export function registerCrew(on: On): void {
     return { text: claimsText(await readSetting(i, 'crew.collide'), known, others, now, repo !== undefined) }
   })
 
-  on('command.run', { command: 'vaken-ship' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'pr')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-ship' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'pr')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     const mode = await readSetting(i, 'crew.pr')
     if (mode === 'on') await prRefresh($, true)
@@ -439,9 +451,9 @@ export function registerCrew(on: On): void {
     return { text: prText(mode, prFacts, parseDurations(await i.get(DURATIONS_KEY)), await i.now(), blocked) }
   })
 
-  on('command.run', { command: 'vaken-help' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'run', 'laptop')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'run', 'laptop')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     const mode = await readSetting(i, 'laptop.mode')
     const l = mode === 'on' ? await laptopRead($) : undefined

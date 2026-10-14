@@ -71,7 +71,7 @@ async function summaryOf(i: Io, f: Focus, now: number): Promise<string> {
   const records = await listRecords(i)
   const alive = await alivePids(i, records)
   const finished = records.filter(r => r.stateSince >= f.from && classify(r, now, alive) === 'waiting').length
-  const warnings = (await readLog(i, LEDGER_KEY)).filter(e => e.did === true && e.at >= f.from && e.at <= now && didKind(e.what) !== 'did').length
+  const warnings = (await readLog(i, LEDGER_KEY)).filter(x => x.did === true && x.at >= f.from && x.at <= now && didKind(x.what) !== 'did').length
   return focusSummary({ finished, warnings })
 }
 
@@ -146,7 +146,7 @@ export async function morningCheck(i: Io): Promise<void> {
     }
     const ends = openEnds(notes, openDayStart(now))
     await serialUpdate(i, CALM_KEY, old => ({ ...parseCalm(old), open: { day, ends, dismissed: false } }))
-    for (const [n, e] of ends.slice(0, OPEN_ENDS_SHOW).entries()) await postBand(i, 'info', `openends:${n}`, openBand(e), OPEN_ENDS_BAND_MS)
+    for (const [n, end] of ends.slice(0, OPEN_ENDS_SHOW).entries()) await postBand(i, 'info', `openends:${n}`, openBand(end), OPEN_ENDS_BAND_MS)
   } catch {
   }
 }
@@ -171,7 +171,7 @@ export async function loadCalm(i: Io, now: number): Promise<CalmView> {
   return { ...(weekly === undefined ? {} : { weekly }), open: open.slice(0, OPEN_ENDS_SHOW), more: Math.max(0, open.length - OPEN_ENDS_SHOW), ...(isFocused(focus, now) ? { focus } : {}), ...(digest === undefined ? {} : { away: { to: digest.to, text: digest.text } }) }
 }
 export const calmSignature = (c: CalmView | undefined, now: number): string =>
-  c === undefined ? '' : `${c.weekly?.at ?? 0}|${c.open.map(e => `${e.project}${e.failed.join('/')}${e.held}${e.tasks}${e.midTurn}`).join(',')}${c.more}|${c.focus === undefined ? '' : minutesLeft(c.focus, now)}|${c.away?.to ?? 0}`
+  c === undefined ? '' : `${c.weekly?.at ?? 0}|${c.open.map(x => `${x.project}${x.failed.join('/')}${x.held}${x.tasks}${x.midTurn}`).join(',')}${c.more}|${c.focus === undefined ? '' : minutesLeft(c.focus, now)}|${c.away?.to ?? 0}`
 
 export function registerCalm(on: On): void {
   on('session.start', { cwd: /(?<calm>)/ }, async ($, e, next) => {
@@ -179,7 +179,8 @@ export function registerCalm(on: On): void {
       calmMem.checkedDay = undefined
       calmMem.inTurn = false
       try {
-        calmMem.root = (await $.session.root()) || e.cwd
+        const root = await $.session.root()
+        calmMem.root = root || e.cwd
       } catch {
         calmMem.root = e.cwd
       }
@@ -213,10 +214,9 @@ export function registerCalm(on: On): void {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-help' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'run', 'focus')
-    if (rest0 === undefined) return next(e0)
-    const e = { ...e0, args: rest0 }
-    return { text: await focusCommand(io($), e.args) }
+  on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'run', 'focus')
+    if (rest0 === undefined) return next(e)
+    return { text: await focusCommand(io($), rest0) }
   })
 }

@@ -64,7 +64,8 @@ async function readListing($: EngineInterface): Promise<boolean> {
   tries += 1
   try {
     const usage = await $.session.usage({ breakdown: 'summary' })
-    const listing = listingFrom(usage.context.breakdown?.skills, await $.clock.now())
+    const nowMs = await $.clock.now()
+    const listing = listingFrom(usage.context.breakdown?.skills, nowMs)
     if (listing === undefined) return false
     noteWrite()
     await $.store.set(SKILLS_LISTING_KEY, listing)
@@ -114,9 +115,9 @@ export function registerSkills(on: On): void {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-help' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'run', 'skills')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'run', 'skills')
+    if (rest0 === undefined) return next(e)
     try {
       const i = io($)
       await flush(i)

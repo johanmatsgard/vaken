@@ -1,5 +1,6 @@
 // Compaction: what the host lets a mod do (a probe), the keep-list added to every compaction, the record of each compaction
 import type { EngineInterface, On } from 'claude-code'
+import { fieldsOf } from '../core/eventfields'
 
 import { parseStoredUsage, APP_USAGE_KEY } from '../core/appusage'
 import { lastAfterTokens, lastSummaryOut, withCompact } from '../core/cachefacts'
@@ -69,8 +70,8 @@ const DONE_BAND_MS = 10 * 60_000
 
 // The ledger, the counts and the audit are shared by every session: each write goes through serialUpdate
 const isEntry = (entry: Entry) => (x: unknown): boolean => {
-  const e = x as Entry
-  return typeof e === 'object' && e !== null && e.at === entry.at && e.what === entry.what && e.session === entry.session
+  const got = x as Entry
+  return typeof got === 'object' && got !== null && got.at === entry.at && got.what === entry.what && got.session === entry.session
 }
 
 export async function pushLog(i: Io, key: string, entry: Entry): Promise<void> {
@@ -82,11 +83,11 @@ export async function pushLog(i: Io, key: string, entry: Entry): Promise<void> {
       i,
       COUNTS_KEY,
       old => {
-        let next = addCount(old, entry.at, entry.what)
-        written = countOf(next, entry.at, entry.what)
+        let bumped = addCount(old, entry.at, entry.what)
+        written = countOf(bumped, entry.at, entry.what)
         // A compaction that really made the window smaller also adds to today's two sums (core/counts.ts)
-        if (entry.before !== undefined && entry.after !== undefined && entry.before > entry.after) next = addCount(addCount(next, entry.at, SHORTENED_TITLE), entry.at, FREED_TITLE, entry.before - entry.after)
-        return next
+        if (entry.before !== undefined && entry.after !== undefined && entry.before > entry.after) bumped = addCount(addCount(bumped, entry.at, SHORTENED_TITLE), entry.at, FREED_TITLE, entry.before - entry.after)
+        return bumped
       },
       stored => countOf(stored, entry.at, entry.what) >= written,
     )
@@ -106,7 +107,7 @@ export async function readLog(i: Io, key: string): Promise<Entry[]> {
 export const why = (err: unknown): string => (err instanceof Error ? err.message : String(err)).slice(0, 160)
 
 export function logLines(list: Entry[], max = 12): string[] {
-  return list.slice(0, max).map(e => `${hhmmss(e.at)} ${shownTitle(e.what)}${e.detail === undefined ? '' : `: ${e.detail}`}`)
+  return list.slice(0, max).map(x => `${hhmmss(x.at)} ${shownTitle(x.what)}${x.detail === undefined ? '' : `: ${x.detail}`}`)
 }
 
 // Never throws.
@@ -256,9 +257,8 @@ async function restLook($: EngineInterface, sessionId: string, turnId: string): 
 }
 
 // What a path is, from the engine (a file, a folder, or something else
-const probeOf =
-  ($: EngineInterface): Probe =>
-  async path => {
+function probeOf($: EngineInterface): Probe {
+  return async path => {
     try {
       const s = await $.fs.stat(path)
       return { kind: s.kind, size: s.size }
@@ -266,12 +266,15 @@ const probeOf =
       return undefined
     }
   }
+}
 
 // The helper agents the engine lists as running.
-const agentsOf =
-  ($: EngineInterface): (() => Promise<number>) =>
-  async () =>
-    (await $.agent.list()).filter(a => a.status === 'running').length
+function agentsOf($: EngineInterface): () => Promise<number> {
+  return async () => {
+    const list = await $.agent.list()
+    return list.filter(a => a.status === 'running').length
+  }
+}
 
 function opsOf($: EngineInterface): CompactOps {
   return {
@@ -442,8 +445,9 @@ export function registerCompaction(on: On): void {
     try {
       // Our own automatic compact does not pass here (a call skips its caller's hooks), so it notes itself
       if (e.agentId === undefined && e.trigger !== 'precompute') {
-        if (result.skip === undefined) await noteCompact(io($), id, e.trigger, result.tokensBefore, result.tokensAfter, result.usage?.output_tokens, howNow(await $.clock.now()))
-        else await pushLog(io($), LEDGER_KEY, { at: await $.clock.now(), session: id, what: `compaction skipped (${e.trigger})`, detail: result.skip })
+        const doneAt = await $.clock.now()
+        if (result.skip === undefined) await noteCompact(io($), id, e.trigger, result.tokensBefore, result.tokensAfter, result.usage?.output_tokens, howNow(doneAt))
+        else await pushLog(io($), LEDGER_KEY, { at: doneAt, session: id, what: `compaction skipped (${e.trigger})`, detail: result.skip })
       }
     } catch {
     }
@@ -502,7 +506,11 @@ export function registerCompaction(on: On): void {
   on('tool.call', { tool: /(?<cockpit>^(?:Bash|PowerShell)$)/ }, async ($, e, next) => {
     const r = await next(e)
     try {
-      if ((r.result as { backgroundTaskId?: unknown } | undefined)?.backgroundTaskId !== undefined || (e as { run_in_background?: unknown }).run_in_background === true) rest.background.push(await $.clock.now())
+      const shown = r.result as { backgroundTaskId?: unknown } | undefined
+      if (shown?.backgroundTaskId !== undefined || fieldsOf(e).run_in_background === true) {
+        const nowMs = await $.clock.now()
+        rest.background.push(nowMs)
+      }
     } catch {
     }
     return r

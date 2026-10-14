@@ -266,9 +266,9 @@ export function registerGuardWorld(on: On): void {
     return canChange(String(e.tool)) ? { deny: brokeReason } : next(e)
   })
 
-  on('command.run', { command: 'vaken-guard' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'outbox')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-guard' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'outbox')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     return { text: outboxText(parseOutbox(await i.get(outboxKey(await i.sessionId()))), await outboxOn(i)) }
   })

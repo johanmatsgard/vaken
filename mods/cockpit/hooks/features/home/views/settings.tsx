@@ -32,7 +32,7 @@ const SESSION_MARKS = [
 
 export function SettingsView(el: El, prefs: Prefs, act: Acts, paneInnerPt: number, cap?: ColumnCap) {
   const { Box, Text, Input } = el
-  const canDrag = el.Client !== undefined
+  const canDrag = el.drag
   const focus = prefs.settingsFocus
   const all = focus === undefined
   const sections: Section[] = all ? [...SECTIONS, ADVANCED_SECTION] : []

@@ -58,9 +58,9 @@ export function registerSimple(on: On): void {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-settings' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'simple')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-settings' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'simple')
+    if (rest0 === undefined) return next(e)
     return { text: (await simpler(io($), lastAnswer())).join('\n') }
   })
 }

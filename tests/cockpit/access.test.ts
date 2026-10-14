@@ -9,7 +9,7 @@ import { look } from '../hooks/ui/tokens'
 
 type Node = Record<string, unknown>
 const make = (name: string) => Object.assign((p: Record<string, unknown>) => p, { displayName: name })
-const el = (): El => ({ Box: make('Box'), Text: make('Text'), Button: make('Button'), Svg: make('Svg'), Client: make('Client') }) as unknown as El
+const el = (): El => ({ Box: make('Box'), Text: make('Text'), Button: make('Button'), Svg: make('Svg'), Client: make('Client'), drag: true }) as unknown as El
 
 function walk(n: unknown, out: Node[] = []): Node[] {
   if (Array.isArray(n)) {
@@ -79,7 +79,7 @@ test('A6: a Pick option is drawn and named by its words; every option is framed 
   expect(walk(box('mode-on') as Node).some(n => (n as { display?: unknown }).display === 'none' || (n as { props?: { display?: unknown } }).props?.display === 'none'), 'no hidden pill').toBe(false)
   expect(hoverFill('mode-auto'), 'the chosen one has none').toBeUndefined()
   // No frame can be drawn (a terminal): the host frames every option, the chosen one is the primary Button with a dot in front.
-  const plain = { ...el(), Svg: undefined, Client: undefined } as unknown as El
+  const plain = { ...el(), Svg: undefined, Client: undefined, drag: false } as unknown as El
   const bare = buttons(Pick(plain, 'mode', opts, 'auto', () => {}))
   expect(bare.find(b => b.key === 'mode-auto')?.variant).toBe('primary')
   expect(String(bare.find(b => b.key === 'mode-auto')?.label)).toBe('\u2022 Auto')

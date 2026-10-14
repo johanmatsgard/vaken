@@ -15,7 +15,7 @@ import { serialUpdate } from '../core/serial'
 import type { Io } from '../core/io'
 import { bindSafeFs, refusedWords, safeFsOf, safeWrite } from '../core/safewrite'
 import {
-  AT_ONCE_AUTO, AT_ONCE_SANE, HOLD_MS, autoCeiling, busy, withAtOnce, capRoom, capWhy, staggerWait, MODEL_PICKS, afterCheck, endReview, nextReviews, reviewDescription, reviewForSpawn, reviewPrompt, taskOfReview, ORCH_KEY, PLAN_PROMPT, TASKS_MAX, TEMPLATES_KEY, addTask, askPrompt, editChoices, editTask, isAutoModeRefusal, parseTemplates, removeTask, roleSettingKey, taskForSpawn, templateOf, ROLES, ROLE_NAMES, ROLE_PROMPT, TASKS_FILE, TEMPLATE, addTaskCost, descriptionOf, endTask, folderOf, isFinished, modelFor, newRun, nextToStart, overLimits,
+  AT_ONCE_AUTO, AT_ONCE_SANE, HOLD_MS, autoCeiling, busy, withAtOnce, capRoom, capWhy, staggerWait, MODEL_PICKS, afterCheck, endReview, nextReviews, reviewDescription, reviewForSpawn, reviewPrompt, taskOfReview, ORCH_KEY, PLAN_PROMPT, TASKS_MAX, TEMPLATES_KEY, addTask, askPrompt, editChoices, editTask, isAutoModeRefusal, parseTemplates, removeTask, roleSettingKey, taskForSpawn, templateOf, ROLES, ROLE_NAMES, ROLE_PROMPT, roleDescription, TASKS_FILE, TEMPLATE, addTaskCost, descriptionOf, endTask, folderOf, isFinished, modelFor, newRun, nextToStart, overLimits,
   throwHoldText, parseRun, parseTaskFile, reordersStart, retryTask, rerunOf, roleType, runOverBudget, runSummary, running, skipBlocked, taskOfAgent, taskPrompt, tasksText, withTask, ranOn,
 } from '../core/orchestra'
 import { isFamily } from '../core/models'
@@ -92,7 +92,7 @@ type RunnerEngine = {
   list: () => Promise<{ id: string; status: string }[]>
   submit: (text: string) => Promise<unknown>
   after: (ms: number, f: () => void) => unknown
-  register: (spec: { name: string; description: string; prompt: string; model: string; tools?: string[] }) => Promise<unknown>
+  register: (role: Role, model: string) => Promise<unknown>
   seen?: (agentId: string) => boolean
   io: Io
 }
@@ -156,7 +156,10 @@ export function runnerOpsOf(en: RunnerEngine): RunnerOps {
 
 function opsOf($: EngineInterface): RunnerOps {
   return runnerOpsOf({
-    spawn: a => $.agent.spawn(a) as Promise<{ agentId?: string; deny?: unknown; model?: unknown }>,
+    spawn: async a => {
+      const got = await $.agent.spawn(a)
+      return got as { agentId?: string; deny?: unknown; model?: unknown }
+    },
     stop: agentId => $.tool.call({ tool: 'TaskStop', task_id: agentId } as never),
     send: (agentId, text) => $.session.send({ to: { agentId }, text } as never),
     run: (argv, init) => {
@@ -168,7 +171,10 @@ function opsOf($: EngineInterface): RunnerOps {
     list: () => $.agent.list(),
     submit: text => $.prompt.submit({ text, asUser: true }),
     after: (ms, f) => $.clock.after(ms, f),
-    register: spec => $.agent.register(spec),
+    register: (r, m) => {
+      if (ROLES[r].tools === undefined) return $.agent.register({ name: r, description: roleDescription(r), prompt: ROLE_PROMPT(r), model: m })
+      return $.agent.register({ name: r, description: roleDescription(r), prompt: ROLE_PROMPT(r), model: m, tools: ROLES[r].tools })
+    },
     seen: hasProgress,
     io: bindPlatform(io($), () => $.env.get('OS')),
   })
@@ -763,9 +769,8 @@ async function ensureRoles(en: Pick<RunnerEngine, 'register'>, models: Partial<R
   if (registered === sig) return true
   let ok = true
   for (const r of ROLE_NAMES) {
-    const role = ROLES[r]
     try {
-      await en.register({ name: r, description: `Task runner ${role.label.toLowerCase()}: ${role.about} Started by vaken's task runner.`, prompt: ROLE_PROMPT(r), model: modelFor('auto', r, models), ...(role.tools === undefined ? {} : { tools: role.tools }) })
+      await en.register(r, modelFor('auto', r, models))
     } catch {
       ok = false
     }

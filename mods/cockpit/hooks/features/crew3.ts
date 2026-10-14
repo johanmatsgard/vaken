@@ -2,6 +2,7 @@
 import { isShellTool } from '../core/tools'
 import { tr } from '../core/lang'
 import type { EngineInterface, On } from 'claude-code'
+import { fieldsOf } from '../core/eventfields'
 import { noteRun } from '../core/selfcost'
 
 import { quietly } from '../core/quiet'
@@ -76,8 +77,8 @@ async function run($: EngineInterface, argv: readonly string[], timeoutMs: numbe
     const r = await $.process.run(argv, { timeoutMs })
     noStart.delete(argv[0] ?? '')
     return { code: r.exitCode, out: r.stdout, err: r.stderr }
-  } catch (e) {
-    if (isStartFailure(e instanceof Error ? e.message : String(e))) noStart.add(argv[0] ?? '')
+  } catch (err) {
+    if (isStartFailure(err instanceof Error ? err.message : String(err))) noStart.add(argv[0] ?? '')
     else noStart.delete(argv[0] ?? '')
     return undefined
   }
@@ -85,15 +86,20 @@ async function run($: EngineInterface, argv: readonly string[], timeoutMs: numbe
 const noStart = new Set<string>()
 
 // The same runner for the process helpers (core/procs.ts): counted, never `$` passed on.
-const runOf = ($: EngineInterface): Io['run'] => (argv, init) => {
-  noteRun()
-  return $.process.run(argv, init)
+function runOf($: EngineInterface): Io['run'] {
+  return (argv, init) => {
+    noteRun()
+    return $.process.run(argv, init)
+  }
 }
 let platGet: (() => Promise<ProcPlatform>) | undefined
-const platOf = ($: EngineInterface): Promise<ProcPlatform> => (platGet ??= platformOnce(() => $.env.get('OS')))()
+function platOf($: EngineInterface): Promise<ProcPlatform> {
+  platGet ??= platformOnce(() => $.env.get('OS'))
+  return platGet()
+}
 
 let ghProbe: Promise<boolean> | undefined
-const hasGh = ($: EngineInterface): Promise<boolean> => {
+function hasGh($: EngineInterface): Promise<boolean> {
   ghProbe ??= platOf($).then(plat => hasProgram(runOf($), plat, 'gh', 3_000))
   return ghProbe
 }
@@ -287,7 +293,7 @@ async function digest($: EngineInterface, i: Io): Promise<string> {
 }
 
 let canHoldProbe: Promise<boolean> | undefined
-const canHold = ($: EngineInterface): Promise<boolean> => {
+function canHold($: EngineInterface): Promise<boolean> {
   canHoldProbe ??= platOf($).then(plat => hasProgram(runOf($), plat, holdProgram(plat), 3_000))
   return canHoldProbe
 }
@@ -351,18 +357,18 @@ async function awakeTick($: EngineInterface): Promise<void> {
       return
     }
     const started = await run($, awakeStartArgv(plat), PROC_TIMEOUT_MS)
-    const next = started !== undefined && started.code === 0 ? parsePid(started.out) : undefined
-    if (next === undefined) {
+    const fresh = started !== undefined && started.code === 0 ? parsePid(started.out) : undefined
+    if (fresh === undefined) {
       awakeNote = plat === 'win32' ? WIN_NO_START : 'The hold could not be started.' // en-only: plain answer of a slash command (text twin)
       return
     }
     awakeNote = undefined
-    await i.set(AWAKE_PID_KEY, next)
+    await i.set(AWAKE_PID_KEY, fresh)
     await i.set(AWAKE_AT_KEY, now)
     const spell = chainAfterStart(chain, now)
     await i.set(AWAKE_SINCE_KEY, spell)
     // The old hold (a renewal) is stopped after the new one runs, so the Mac is never without one.
-    if (typeof pid === 'number' && pid !== next) await stopHold($, pid, at, now)
+    if (typeof pid === 'number' && pid !== fresh) await stopHold($, pid, at, now)
     // One ledger line per awake spell: a spell is the chain of holds (core/awakeplan.ts), so a renewal
     const why = state.held === undefined ? undefined : REASONS[state.held.reason].why
     const heldMs = now - spell.since + AWAKE_HOLD_S * 1000
@@ -370,7 +376,7 @@ async function awakeTick($: EngineInterface): Promise<void> {
       await pushLog(i, LEDGER_KEY, { at: now, session: await i.sessionId(), what: AWAKE_WHAT, detail: awakeDetail(facts.working, why, plat), how: 'auto', did: true })
       i.invalidate()
     } else {
-      await serialUpdate(i, LEDGER_KEY, old => (Array.isArray(old) ? (old as Entry[]).map(e => (e.what === AWAKE_WHAT && e.at === spell.since ? { ...e, detail: awakeDetail(facts.working, why, plat, heldMs) } : e)) : old))
+      await serialUpdate(i, LEDGER_KEY, old => (Array.isArray(old) ? (old as Entry[]).map(x => (x.what === AWAKE_WHAT && x.at === spell.since ? { ...x, detail: awakeDetail(facts.working, why, plat, heldMs) } : x)) : old))
       i.invalidate()
     }
   } catch {
@@ -442,7 +448,7 @@ export function registerCrew3(on: On): void {
     let note: string | undefined
     try {
       if ((await readSetting(i, 'crew.ports')) !== 'off') {
-        const command = (e as unknown as Record<string, unknown>).command
+        const command = fieldsOf(e).command
         const start = typeof command === 'string' ? serverStart(command) : undefined
         if (start !== undefined) {
           const snap = await portSnapshot($, i)
@@ -472,52 +478,48 @@ export function registerCrew3(on: On): void {
     return result
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-help' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'run', 'ports')
-    if (rest0 === undefined) return next(e0)
-    const e = { ...e0, args: rest0 }
+  on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'run', 'ports')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     const snap = await portSnapshot($, i)
-    return { text: portsText(await readSetting(i, 'crew.ports'), snap.holders, snap.listed, e.args.trim().toLowerCase() === 'all', await platOf($)) }
+    return { text: portsText(await readSetting(i, 'crew.ports'), snap.holders, snap.listed, rest0.trim().toLowerCase() === 'all', await platOf($)) }
   })
 
-  on('command.run', { command: 'vaken-ship' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'worktrees')
-    if (rest0 === undefined) return next(e0)
-    const e = { ...e0, args: rest0 }
+  on('command.run', { command: 'vaken-ship' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'worktrees')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     const r = await scanWorktrees($, i, true)
-    return { text: worktreesText(await readSetting(i, 'crew.worktrees'), r.scan, r.error, await i.now(), e.args.trim().toLowerCase() === 'all') }
+    return { text: worktreesText(await readSetting(i, 'crew.worktrees'), r.scan, r.error, await i.now(), rest0.trim().toLowerCase() === 'all') }
   })
 
-  on('command.run', { command: 'vaken-ship' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'merge-order')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-ship' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'merge-order')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     const r = await mergeRead($, i)
     return { text: mergeText(r.placed, r.at, await i.now(), r.error) }
   })
 
-  on('command.run', { command: 'vaken-ship' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'ci-fix')
-    if (rest0 === undefined) return next(e0)
-    const e = { ...e0, args: rest0 }
+  on('command.run', { command: 'vaken-ship' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'ci-fix')
+    if (rest0 === undefined) return next(e)
     const i = io($)
-    return { text: await ciFix($, i, e.args.trim().toLowerCase() === 'send') }
+    return { text: await ciFix($, i, rest0.trim().toLowerCase() === 'send') }
   })
 
-  on('command.run', { command: 'vaken-ship' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'digest-branch')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-ship' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'digest-branch')
+    if (rest0 === undefined) return next(e)
     return { text: await digest($, io($)) }
   })
 
-  on('command.run', { command: 'vaken-help' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'run', 'awake')
-    if (rest0 === undefined) return next(e0)
-    const e = { ...e0, args: rest0 }
+  on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'run', 'awake')
+    if (rest0 === undefined) return next(e)
     const i = io($)
-    const ask = parseAwakeArgs(e.args)
+    const ask = parseAwakeArgs(rest0)
     const head = ask === 'status' ? '' : `${await awakeSwitch(i, ask, await platOf($))}\n\n`
     const now = await i.now()
     const mode = await readSetting(i, 'awake.mode')
@@ -530,9 +532,9 @@ export function registerCrew3(on: On): void {
     return { text: head + awakeText(mode, await canHold($), facts.working, await i.get(AWAKE_PID_KEY), await i.get(AWAKE_AT_KEY), now, awakeNote, { away, ...(why === undefined ? {} : { why }) }, plat) }
   })
 
-  on('command.run', { command: 'vaken-ship' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'orphans')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-ship' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'orphans')
+    if (rest0 === undefined) return next(e)
     return { text: await orphans($, io($)) }
   })
 }

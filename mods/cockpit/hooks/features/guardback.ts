@@ -107,7 +107,11 @@ export function registerGuardBack(on: On): void {
     let found: BackFound[] = []
     try {
       mode = await modeOf(i)
-      if (mode !== 'off') found = await judgeMigration(i, { cwd: await $.session.cwd(), root: await rootOf($) }, tool, args)
+      if (mode !== 'off') {
+        const cwd = await $.session.cwd()
+        const root = await rootOf($)
+        found = await judgeMigration(i, { cwd, root }, tool, args)
+      }
     } catch {
       // A check that breaks must not stop the work in Warn; in Hold it cannot say the step is safe.
       if (mode === 'hold' && canChange(tool)) return { deny: guardBrokeReason }
@@ -200,16 +204,16 @@ export function registerGuardBack(on: On): void {
     return canChange(String(e.tool)) ? { deny: guardBrokeReason } : next(e)
   })
 
-  on('command.run', { command: 'vaken-guard' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'commands')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-guard' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'commands')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     return { text: commandsText(parseEntries(await readNote(i, commandsKey(await i.sessionId()))), await isOn(i, SETTING_KEY.commands)) }
   })
 
-  on('command.run', { command: 'vaken-guard' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'fence')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-guard' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'fence')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     const last = logLines((await readLog(i, LEDGER_KEY)).filter(x => GUARDBACK_WHATS.includes(x.what)), 3)
     const text = fenceText(parseFence(await i.get(fenceKey(await i.sessionId()))), await isOn(i, SETTING_KEY.fence))

@@ -184,7 +184,7 @@ test('a command label is the program and one fixed word, never an argument, a pa
   expect(safeLabelOf('rm -rf /tmp/secret-project')).toBe('rm · destroy')
   expect(safeLabelOf('npm test -- --token abc')).toBe('npm · test')
   expect(safeLabelOf('npm run build')).toBe('npm · run')
-  expect(safeLabelOf('curl -H "Authorization: Bearer sk-1234567890abcdef" https://x.example/a?k=v')).toBe('curl · network')
+  expect(safeLabelOf('curl -H "Authorization: Bearer sk-EXAMPLE" https://x.example/a?k=v')).toBe('curl · network')
   expect(safeLabelOf('API_KEY=hunter2 ./deploy.sh --prod')).not.toMatch(/hunter2|API_KEY/)
   expect(safeLabelOf('git commit -m "the quarterly plan for Acme"')).toBe('git · commit')
   expect(safeLabelOf('git -C /Users/me/private push')).not.toMatch(/private|Users/)

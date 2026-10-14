@@ -114,9 +114,9 @@ export function registerAttention(on: On): void {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-today' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'recap')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-today' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'recap')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     const rec = await readRecord(i, await i.sessionId())
     const now = await i.now()
@@ -124,9 +124,9 @@ export function registerAttention(on: On): void {
     return { text: recapWords({ gapMs: now - rec.lastEventAt, branch: rec.branch, contextPercent: rec.contextPercent, cache: rec.cache === undefined ? undefined : cacheWords(rec.cache, now, cacheTtlMs(parseStoredUsage(await i.get(APP_USAGE_KEY)))) }) }
   })
 
-  on('command.run', { command: 'vaken-today' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'glance')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-today' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'glance')
+    if (rest0 === undefined) return next(e)
     // The same load as the pane and /vaken (loadView): the limit that leads with its reset and age
     const { view, now } = await loadView(io($))
     const ledger = view.ledger ?? []

@@ -188,7 +188,9 @@ export type El = {
   Button: ElementConstructor<ButtonProps>
   Svg?: ElementConstructor<SvgProps>
   Input?: ElementConstructor<InputProps>
-  Client?: ElementConstructor<ClientProps>
+  Client: ElementConstructor<ClientProps>  // the host fills it on every surface; `drag` says whether this surface may draw it
+  // Whether this surface draws a Client (a pointer): tested here, never by looking at Client
+  drag: boolean
 }
 
 // What each surface can draw
@@ -199,8 +201,8 @@ export const hasInput = (surface: RenderSurface): boolean => surface !== 'mobile
 export const canDrag = (surface: RenderSurface): boolean => surface === 'desktop'
 
 // The elements a draw takes, kept to what its surface really draws
-export function elementsFor(el: El, surface: RenderSurface): El {
-  return { Box: el.Box, Text: el.Text, Button: el.Button, Svg: hasSvg(surface) ? el.Svg : undefined, Input: hasInput(surface) ? el.Input : undefined, Client: canDrag(surface) ? el.Client : undefined }
+export function elementsFor(el: Omit<El, 'drag' | 'Client'> & { Client?: El['Client'] }, surface: RenderSurface): El {
+  return { Box: el.Box, Text: el.Text, Button: el.Button, Svg: hasSvg(surface) ? el.Svg : undefined, Input: hasInput(surface) ? el.Input : undefined, drag: canDrag(surface), Client: el.Client as El['Client'] }
 }
 // What a drawing part takes as content or returns: an element, a string, nothing
 export type Drawn = RenderChildren
@@ -304,8 +306,8 @@ export function Advice({ Box, Text }: El, key: string, title: string, detail?: s
 
 // THE FIRST-CLICK PRESS
 export function FirstClick(el: El, key: string, onPress: () => void, look: 'row' | 'button' | 'lit', washPt?: number, scope?: string, boxPt?: number) {
-  const { Box, Client } = el
-  if (!FIRST_CLICK_ON || !Client) return null
+  const { Box } = el
+  if (!FIRST_CLICK_ON || !el.drag) return null
   const id = clientKey(key)
   // A Client the host said failed is left out: the host draws its error label in a failed Client's place
   if (faulted(id, Date.now())) return null
@@ -318,15 +320,15 @@ export function FirstClick(el: El, key: string, onPress: () => void, look: 'row'
   const log = pressLogOn()
   return (
     <Box key={`${id}-box`} position="absolute" top={0} left={0} right={0} {...(cells === undefined ? { bottom: 0 } : { height: cells })}>
-      <Client key={id} module="../press.tsx" width="100%" height={cells ?? '100%'} props={{ look, ...(washPt === undefined ? {} : { h: washPt }), ...(cells === undefined ? {} : { r: cells }), ...(group === undefined ? {} : { scope: group }), ...(log ? { log: true } : {}) }} />
+      <el.Client key={id} module="../press.tsx" width="100%" height={cells ?? '100%'} props={{ look, ...(washPt === undefined ? {} : { h: washPt }), ...(cells === undefined ? {} : { r: cells }), ...(group === undefined ? {} : { scope: group }), ...(log ? { log: true } : {}) }} />
     </Box>
   )
 }
 // The hover of a part that presses, on the part's OWN Box
 export const litBy = (el: El, key: string, fill: string = HOVER_FILL): { hover: { scope?: string; backgroundColor: string } } =>
-  FIRST_CLICK_ON && el.Client ? { hover: { scope: hoverScope(key), backgroundColor: fill } } : { hover: { backgroundColor: fill } }
+  FIRST_CLICK_ON && el.drag ? { hover: { scope: hoverScope(key), backgroundColor: fill } } : { hover: { backgroundColor: fill } }
 // A press's own box JOINS a hover group without painting
-export const joins = (el: El, scope: string): { hover?: { scope: string } } => (FIRST_CLICK_ON && el.Client ? { hover: { scope } } : {})
+export const joins = (el: El, scope: string): { hover?: { scope: string } } => (FIRST_CLICK_ON && el.drag ? { hover: { scope } } : {})
 // A Button that presses on the first click: it and its FirstClick in one Box
 export function Pressable(el: El, key: string, button: Drawn, onPress: () => void, _tall = true, o: { edge?: boolean; inRow?: boolean; gap?: number } = {}) {
   const { Box } = el
@@ -352,7 +354,7 @@ export function wordBox(label: string, _gapPt?: number): { minW: number; grow: n
 }
 
 // WHAT PRESSES AND HOW IT LOOKS: five kinds, one look each
-export const framedHere = (el: El): boolean => FIRST_CLICK_ON && el.Client !== undefined && el.Svg !== undefined
+export const framedHere = (el: El): boolean => FIRST_CLICK_ON && el.drag && el.Svg !== undefined
 // A framed word as the footer measures it (wordBox, on the wide side)
 export const framedLabel = (label: string): string => `\u00a0${label}\u00a0`
 // THE ROUNDED FRAME
@@ -479,9 +481,9 @@ export function PressCover(el: El, key: string, heightPt: number, widthPt: numbe
   return first === null ? covers : keyboard ? [...covers, first] : [first]
 }
 // The wash a pressable row shows under the pointer
-export function PressWash({ Box, Svg, Client }: El, heightPt: number, widthPt: number) {
+export function PressWash({ Box, Svg, drag }: El, heightPt: number, widthPt: number) {
   if (!Svg) return null
-  if (FIRST_CLICK_ON && Client) return null  // With the first-click Client over the row
+  if (FIRST_CLICK_ON && drag) return null  // With the first-click Client over the row
   const w = widthPt + 2 * PRESS_WASH_OUT * COL_PT
   const source = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${heightPt}" viewBox="0 0 ${w} ${heightPt}"><rect width="${w}" height="${heightPt}" rx="${PRESS_WASH_R}" fill="${PRESS_WASH_GREY}" fill-opacity="${PRESS_WASH_OPACITY}"/></svg>`
   return (
@@ -509,7 +511,7 @@ export function GroupBreak({ Box, Svg }: El, key: string, widthPt: number, gap: 
   )
 }
 // Where pictures exist the wash is PressWash
-const pressHover = (el: El, key: string) => (el.Svg && !(FIRST_CLICK_ON && el.Client) ? {} : litBy(el, key))
+const pressHover = (el: El, key: string) => (el.Svg && !(FIRST_CLICK_ON && el.drag) ? {} : litBy(el, key))
 
 // The box of a row that presses includes the wash area: PRESS_WASH_OUT columns of padding each side
 export const washArea = (el: El): { marginLeft?: number; marginRight?: number; paddingLeft?: number; paddingRight?: number } =>
@@ -1217,9 +1219,9 @@ export function glanceNote(innerPt: number, note: string, noteShort: string | un
 
 // A control that shows while the pointer is over its card
 export function HoverReveal(el: El, control: Drawn, at?: number, rest = false): Drawn {
-  const { Box, Svg, Client } = el
+  const { Box, Svg, drag } = el
   const where = at === undefined ? {} : { position: 'absolute' as const, top: 0, left: 0, marginLeft: at }
-  if (!Svg || !Client || rest) return at === undefined ? control : <Box {...where}>{control}</Box>
+  if (!Svg || !drag || rest) return at === undefined ? control : <Box {...where}>{control}</Box>
   return (
     <Box width={cols(GEAR_SLOT)} height={rows(HIT_MIN_H)} flexShrink={0} {...where}>
       <Box display="none" hover={{ display: 'flex' }}>
@@ -1373,7 +1375,7 @@ export function Card(el: El, key: string, title: string, note: string, body: Dra
     const pickOptions = opts.pick === undefined ? [] : pickFit.short ? opts.pick.options.map(o => ({ ...o, label: o.short ?? o.label })) : opts.pick.options
     const hasControls = shownNote !== '' || (opts.pick !== undefined && !pickFit.ownLine) || (opts.actions ?? []).length > 0 || opts.chip !== undefined || opts.jump !== undefined || opts.more !== undefined
     // Closed, the card presses as a whole: its Client is the card's
-    const whole = !g.isOpen && FIRST_CLICK_ON && el.Client !== undefined
+    const whole = !g.isOpen && FIRST_CLICK_ON && el.drag
     // The gear rests in sight, faint, when its whole slot is free beside the title
     const gearRests = gearReserve(title, g, moreUp ? glanceTrailPt(full.more) : 0) >= GEAR_SLOT
     return reachCard(
@@ -1441,7 +1443,7 @@ export function Card(el: El, key: string, title: string, note: string, body: Dra
   const rest = [...(opts.actions ?? []).map(a => IconButton(el, `${key}-${a.kind}`, a.kind, a.label, a.onPress, false, crowded(opts) ? ICON_GAP : undefined)), opts.jump === undefined ? null : jumpButton(el, key, opts.jump), opts.more === undefined ? null : moreButton(el, key, opts.more), opts.chip === undefined ? null : StateChip(el, `count-${key}`, opts.chip.word, opts.chip.on)]
   // A closed card (a shut fold, or a shut Settings section: `whole` with `headPress`) presses as a whole
   const shut = fold !== undefined ? (fold.open ? undefined : fold.onToggle) : opts.whole === true ? opts.headPress : undefined
-  const whole = shut !== undefined && FIRST_CLICK_ON && el.Client !== undefined
+  const whole = shut !== undefined && FIRST_CLICK_ON && el.drag
   // A card with TWO OR MORE presses
   const lead = opts.lead !== undefined && opts.headPress !== undefined && !whole
   const withLead = (head: Drawn[]) =>

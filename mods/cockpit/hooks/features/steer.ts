@@ -1,5 +1,6 @@
 // Self-steering tools runtime: register the read-only cockpit tool for the model and serve it with the same commands the person can type.
 import type { EngineInterface, On } from 'claude-code'
+import { fieldsOf } from '../core/eventfields'
 
 import { readNote } from '../core/flush'
 import { withToastGate } from '../core/io'
@@ -44,7 +45,7 @@ export function registerSteer(on: On): void {
   }).catch(($, e, next) => next(e))
 
   on('tool.call', { tool: `mcp__vaken__${STEER_TOOL}` }, async ($, e) => {
-    const topic = (e as unknown as { topic?: unknown }).topic
+    const topic = fieldsOf(e).topic
     if (!isTopic(topic)) return { result: unknownTopic() }
     try {
       const i = io($)

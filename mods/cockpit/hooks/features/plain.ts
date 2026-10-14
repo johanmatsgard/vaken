@@ -48,9 +48,9 @@ export function registerPlain(on: On): void {
     return result
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-help' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'glossary')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'glossary')
+    if (rest0 === undefined) return next(e)
     return { text: `${GLOSSARY.length} words:\n${glossaryText()}` }
   })
 }

@@ -77,7 +77,7 @@ const publish = async (i: Io): Promise<void> => i.set(PREFIX + (await i.sessionI
 
 const HEARTBEAT_MS = 4 * 60_000
 let heartbeat: Timer | undefined
-const startHeartbeat = ($: EngineInterface): void => {
+function startHeartbeat($: EngineInterface): void {
   if (heartbeat === undefined) heartbeat = $.clock.every(HEARTBEAT_MS, () => void publish(io($)).catch(() => undefined))
 }
 const stopHeartbeat = (): void => {

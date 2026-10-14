@@ -37,7 +37,9 @@ function io($: EngineInterface): Io {
 // IO-BLOCK-END
 
 // The engine's file calls a safe write needs (core/safewrite.ts).
-const safeFs = ($: EngineInterface): SafeFs => ({ stat: (path, options) => $.fs.stat(path, options), list: path => $.fs.list(path) })
+function safeFs($: EngineInterface): SafeFs {
+  return { stat: (path, options) => $.fs.stat(path, options), list: path => $.fs.list(path) }
+}
 
 // The request that reached the offer, kept in memory only (never stored)
 let pending: string | undefined
@@ -56,7 +58,8 @@ export function registerCoach(on: On): void {
       if (stated !== undefined) {
         const i = io($)
         if ((await readSetting(i, 'decisions.mode')) === 'on') {
-          const key = decisionsKey(hashOf(await $.session.root()))
+          const root = await $.session.root()
+          const key = decisionsKey(hashOf(root))
           await i.set(key, addStated(parseDecisions(await i.get(key)), await i.now(), stated))
         }
       }
@@ -66,7 +69,8 @@ export function registerCoach(on: On): void {
       const i = io($)
       const key = normalize(e.text)
       if (key !== undefined && (await readSetting(i, 'coach.mode')) === 'on') {
-        const store = coachKey(hashOf(await $.session.root()))
+        const root = await $.session.root()
+        const store = coachKey(hashOf(root))
         const r = count(parseSeen(await i.get(store)), hashOf(key), await i.now())
         await i.set(store, r.seen)
         if (r.offer) {
@@ -81,18 +85,19 @@ export function registerCoach(on: On): void {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-help' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'run', 'coach')
-    if (rest0 === undefined) return next(e0)
-    const e = { ...e0, args: rest0 }
+  on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'run', 'coach')
+    if (rest0 === undefined) return next(e)
     const i = io($)
-    const m = /^make\s+([\w-]{1,40})(?:\s+(yes))?$/i.exec(e.args.trim())
+    const m = /^make\s+([\w-]{1,40})(?:\s+(yes))?$/i.exec(rest0.trim())
     if (m === null) return { text: pending === undefined ? 'No repeated request yet. After you ask for the same kind of thing 3 times, vaken offers to save it as a skill.' : `A request you repeated:\n  ${pending.slice(0, 160)}\nSave it as a skill: /vaken-help run coach make ${skillName(pending)}` } // en-only: plain answer of a slash command (text twin)
     if (pending === undefined) return { text: 'There is no repeated request to save yet.' } // en-only: plain answer of a slash command (text twin)
     const name = skillName(m[1])
-    const path = `${await $.session.root()}/.claude/skills/${name}/SKILL.md`
+    const root = await $.session.root()
+    const path = `${root}/.claude/skills/${name}/SKILL.md`
     if (m[2] === undefined) return { text: `This would write ${path}:\n\n${skillFile(name, pending).slice(0, 400)}\nTo write it: /vaken-help run coach make ${name} yes` }
-    if (await $.fs.exists(path)) return { text: `${path} already exists. Pick another name.` }
+    const taken = await $.fs.exists(path)
+    if (taken) return { text: `${path} already exists. Pick another name.` }
     await i.write(path, skillFile(name, pending))
     pending = undefined
     return { text: `Wrote ${path}. Claude can use it by the name "${name}" in a new session.` }
@@ -105,7 +110,8 @@ export function registerCoach(on: On): void {
       if (e.tool === 'AskUserQuestion' && e.agentId === undefined && result.deny === undefined && result.isError !== true && (await readSetting(i, 'decisions.mode')) === 'on') {
         const text = cleanDecision((result.text ?? '').replace(/^User has answered your questions:\s*/i, ''))
         if (text !== '') {
-          const key = decisionsKey(hashOf(await $.session.root()))
+          const root = await $.session.root()
+          const key = decisionsKey(hashOf(root))
           await i.set(key, addDecision(parseDecisions(await i.get(key)), { at: await i.now(), text, how: 'asked' }))
         }
       }
@@ -114,28 +120,27 @@ export function registerCoach(on: On): void {
     return result
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-memory' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'decide')
-    if (rest0 === undefined) return next(e0)
-    const e = { ...e0, args: rest0 }
+  on('command.run', { command: 'vaken-memory' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'decide')
+    if (rest0 === undefined) return next(e)
     const i = io($)
-    const text = cleanDecision(e.args)
+    const text = cleanDecision(rest0)
     if (text === '') return { text: 'Say the decision: /vaken-memory decide We use the blue theme.' } // en-only: plain answer of a slash command (text twin)
-    const key = decisionsKey(hashOf(await $.session.root()))
+    const root = await $.session.root()
+    const key = decisionsKey(hashOf(root))
     await i.set(key, addDecision(parseDecisions(await i.get(key)), { at: await i.now(), text, how: 'typed' }))
     return { text: `Written down: ${text}` }
   })
 
-  on('command.run', { command: 'vaken-memory' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'decisions')
-    if (rest0 === undefined) return next(e0)
-    const e = { ...e0, args: rest0 }
+  on('command.run', { command: 'vaken-memory' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'decisions')
+    if (rest0 === undefined) return next(e)
     const i = io($)
-    const list = parseDecisions(await i.get(decisionsKey(hashOf(await $.session.root()))))
-    if (e.args.trim().toLowerCase() === 'export') {
+    const root = await $.session.root()
+    const list = parseDecisions(await i.get(decisionsKey(hashOf(root))))
+    if (rest0.trim().toLowerCase() === 'export') {
       if (list.length === 0) return { text: 'Nothing to export yet.' } // en-only: plain answer of a slash command (text twin)
       // An export never overwrites a file that is there: it takes the next free name (cockpit-decisions-2.md).
-      const root = await $.session.root()
       const fs = safeFs($)
       const path = await freePath(takenProbe(fs), `${root}/.claude/cockpit-decisions.md`)
       if (path === undefined) return { text: 'Too many exports are in the .claude folder already. Remove an old .claude/cockpit-decisions*.md file and try again.' } // en-only: plain answer of a slash command (text twin)

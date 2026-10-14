@@ -112,7 +112,8 @@ async function look($: EngineInterface, always = false): Promise<void> {
     const now = await $.clock.now()
     if (!always && lookedAt !== undefined && now - lookedAt >= 0 && now - lookedAt < LOOK_EVERY_MS) return
     lookedAt = now
-    await neighborsCheck(io($), await $.session.cwd())
+    const cwd = await $.session.cwd()
+    await neighborsCheck(io($), cwd)
   } catch {
   }
 }
@@ -140,9 +141,9 @@ export function registerNeighbors(on: On): void {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'neighbors')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'neighbors')
+    if (rest0 === undefined) return next(e)
     try {
       const i = io($)
       const cwd = await $.session.cwd()

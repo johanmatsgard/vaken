@@ -72,7 +72,9 @@ export async function collectFiles(i: Io, exists: (path: string) => Promise<bool
 }
 
 async function collect($: EngineInterface): Promise<{ report: Report; home: string }> {
-  return collectFiles(io($), path => $.fs.exists(path), await $.session.cwd(), await $.session.root(), dir => $.fs.exists(under(dir, '.git')))
+  const cwd = await $.session.cwd()
+  const root = await $.session.root()
+  return collectFiles(io($), path => $.fs.exists(path), cwd, root, dir => $.fs.exists(under(dir, '.git')))
 }
 
 export function registerDiet(on: On): void {
@@ -101,9 +103,9 @@ export function registerDiet(on: On): void {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-help' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'run', 'diet')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'run', 'diet')
+    if (rest0 === undefined) return next(e)
     const { report, home } = await collect($)
     return { text: dietText(report, home) }
   })

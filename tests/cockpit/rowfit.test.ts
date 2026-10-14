@@ -13,7 +13,7 @@ import { BOLD_CHAR_PT, CHEVRON_GAP, CHEVRON_SLOT, COL_PT, DOT, GLANCE_DOT_GAP, G
 
 type Raw = Record<string, unknown>
 const make = (name: string) => Object.assign((p: Raw) => ({ ...p, type: name }), { displayName: name })
-const el = (): El => ({ Box: make('Box'), Text: make('Text'), Button: make('Button'), Svg: make('Svg'), Client: make('Client') }) as unknown as El
+const el = (): El => ({ Box: make('Box'), Text: make('Text'), Button: make('Button'), Svg: make('Svg'), Client: make('Client'), drag: true }) as unknown as El
 function all(n: unknown, out: Raw[] = []): Raw[] {
   if (Array.isArray(n)) for (const c of n) all(c, out)
   else if (n !== null && typeof n === 'object') {

@@ -45,9 +45,9 @@ export async function noteCost(i: Io, key: string, usd: number | undefined, mode
   if (usd === undefined && model === undefined) return
   if (!(await boardOn(i))) return
   const list = await readList(i)
-  const next = addAgentCost(list, key, usd, model)
-  if (next !== list) {
-    await i.set(BOARD_KEY, next)
+  const updated = addAgentCost(list, key, usd, model)
+  if (updated !== list) {
+    await i.set(BOARD_KEY, updated)
     i.invalidate()
     return
   }
@@ -60,13 +60,13 @@ export async function noteEnd(i: Io, key: string, state: 'done' | 'failed'): Pro
   if (!(await boardOn(i))) return
   const now = await i.now()
   const list = await readList(i)
-  const next = endAgent(list, key, state, now)
-  if (next !== list) {
-    await i.set(BOARD_KEY, next)
+  const updated = endAgent(list, key, state, now)
+  if (updated !== list) {
+    await i.set(BOARD_KEY, updated)
     i.invalidate()
     return
   }
-  if (!list.some(e => e.id === key || e.agentId === key)) {
+  if (!list.some(x => x.id === key || x.agentId === key)) {
     if (early.size >= EARLY_MAX) early.delete(early.keys().next().value as string)
     early.set(key, { state, at: now })
   }
@@ -86,14 +86,14 @@ export const hasProgress = (agentId: string): boolean => progress.has(agentId)
 type SpawnFacts = { tool_use_id: string; subagentType: string; description: string; background: boolean; model?: string; isTeammate?: boolean; workflow?: unknown }
 type SpawnAnswer = { deny?: string; agentId?: string; model?: string }
 
-export async function noteStart(i: Io, e: SpawnFacts, result: SpawnAnswer): Promise<void> {
-  if (result.deny !== undefined || e.isTeammate === true || e.workflow !== undefined) return
+export async function noteStart(i: Io, facts: SpawnFacts, result: SpawnAnswer): Promise<void> {
+  if (result.deny !== undefined || facts.isTeammate === true || facts.workflow !== undefined) return
   if (!(await boardOn(i))) return
   const now = await i.now()
   const agentId = result.agentId
   let list = startAgent(
     await readList(i),
-    { id: e.tool_use_id, agentId, session: await i.sessionId(), type: e.subagentType, model: result.model ?? e.model, description: e.description, background: e.background },
+    { id: facts.tool_use_id, agentId, session: await i.sessionId(), type: facts.subagentType, model: result.model ?? facts.model, description: facts.description, background: facts.background },
     now,
   )
   const seen = agentId === undefined ? undefined : early.get(agentId)
@@ -139,7 +139,8 @@ export async function loadBoard(i: Io, infos?: Status[]): Promise<BoardRow[]> {
 // What this session's engine says about its helpers: id and status.
 async function agentStatuses($: EngineInterface): Promise<Status[] | undefined> {
   try {
-    return (await $.agent.list()).map(a => ({ id: a.id, status: a.status }))
+    const list = await $.agent.list()
+    return list.map(a => ({ id: a.id, status: a.status }))
   } catch {
     return undefined
   }
@@ -180,7 +181,8 @@ function startWatch($: EngineInterface): void {
   watchTimer = $.clock.every(WATCH_MS, () => {
     void (async () => {
       try {
-        if (!(await watchBeat(io($), await agentStatuses($)))) {
+        const statuses = await agentStatuses($)
+        if (!(await watchBeat(io($), statuses))) {
           watchTimer?.cancel()
           watchTimer = undefined
         }
@@ -230,12 +232,14 @@ export function registerAgentBoard(on: On): void {
     const id = e.agentId
     if (id === undefined) return next(e)
     try {
-      noteProgress(id, await $.clock.now())
+      const before = await $.clock.now()
+      noteProgress(id, before)
     } catch {
     }
     const r = await next(e)
     try {
-      noteProgress(id, await $.clock.now())
+      const after = await $.clock.now()
+      noteProgress(id, after)
     } catch {
     }
     return r
@@ -262,11 +266,12 @@ export function registerAgentBoard(on: On): void {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-tasks' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'agents-board')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-tasks' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'agents-board')
+    if (rest0 === undefined) return next(e)
     try {
-      return { text: await boardTextFrom(io($), await agentStatuses($)) }
+      const statuses = await agentStatuses($)
+      return { text: await boardTextFrom(io($), statuses) }
     } catch {
       return { text: 'The agent board could not read its list. Try again in a moment.' } // en-only: plain answer of a slash command (text twin)
     }

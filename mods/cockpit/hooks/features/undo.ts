@@ -39,9 +39,8 @@ function io($: EngineInterface): Io {
 // IO-BLOCK-END
 
 // What a path is, from the engine: a file, a folder, or something else.
-const probeOf =
-  ($: EngineInterface): Probe =>
-  async path => {
+function probeOf($: EngineInterface): Probe {
+  return async path => {
     try {
       const s = await $.fs.stat(path)
       return { kind: s.kind, size: s.size }
@@ -49,6 +48,7 @@ const probeOf =
       return undefined
     }
   }
+}
 
 // The preview of /vaken-undo last, its one way in: the command
 export async function previewLast(i: Io, base: string): Promise<string> {
@@ -81,8 +81,8 @@ export async function previewNamed(i: Io, base: string, name: string): Promise<s
 const isOn = async (i: Io): Promise<boolean> => (await readSetting(i, UNDO_SETTING)) !== 'off'
 
 // The call's own arguments: the event without the keys the engine adds.
-function argsOf(e: unknown): Record<string, unknown> {
-  const args = { ...(e as Record<string, unknown>) }
+function argsOf(ev: unknown): Record<string, unknown> {
+  const args = { ...(ev as Record<string, unknown>) }
   delete args.tool
   delete args.tool_use_id
   delete args.agentId
@@ -141,13 +141,12 @@ export function registerUndo(on: On): void {
     return next(e)
   })
 
-  on('command.run', { command: 'vaken-undo' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'checkpoint')
-    if (rest0 === undefined) return next(e0)
-    const e = { ...e0, args: rest0 }
+  on('command.run', { command: 'vaken-undo' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'checkpoint')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     const sid = await i.sessionId()
-    const ask = parseCheckpointAsk(e.args)
+    const ask = parseCheckpointAsk(rest0)
     if (ask.kind === 'bad') return { text: ask.why }
     if (ask.kind === 'list') return { text: namedListText(parseNamed(await i.get(namedKey(sid))), await loadIndex(i, sid), await i.now()) }
     const made = await makeCheckpoint(i, probeOf($), sid, ask.name)
@@ -214,7 +213,8 @@ export function registerUndo(on: On): void {
       return { text: previewText(title, plan, now, base, confirm) }
     }
     // A restore writes only inside the project, never through a link (core/safewrite.ts).
-    const r = await restore(i, probeOf($), sid, plan, { fs: { stat: (path, options) => $.fs.stat(path, options), list: path => $.fs.list(path) }, root: await $.session.root() })
+    const root = await $.session.root()
+    const r = await restore(i, probeOf($), sid, plan, { fs: { stat: (path, options) => $.fs.stat(path, options), list: path => $.fs.list(path) }, root })
     await i.del(pendingKey(sid))
     if (r.done > 0) {
       await ledger(i, sid, RESTORED_WHAT, ask.kind === 'file' ? shown(wants[0].path, base) : ask.kind === 'last' ? `edits since your last message: ${filesWord(r.done)}` : `checkpoint ${ask.name}: ${filesWord(r.done)}`)

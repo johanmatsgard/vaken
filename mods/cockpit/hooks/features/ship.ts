@@ -50,7 +50,18 @@ export async function shipNow(i: Io, t?: (s: string) => string): Promise<string>
 // The note to Claude goes into the prompt box for the person to send with Enter
 function tellClaude($: EngineInterface, note: string): boolean {
   const failed = (): void => $.ui.toast(tr(DO_T_TELL_FAILED))
-  $.clock.after(1_500, () => void $.prompt.fill({ text: note, mode: 'append' }).then(r => (r.isFilled ? undefined : failed()), failed))
+  $.clock.after(1_500, () => {
+    void (async () => {
+      let filled
+      try {
+        filled = await $.prompt.fill({ text: note, mode: 'append' })
+      } catch {
+        failed()
+        return
+      }
+      if (!filled.isFilled) failed()
+    })()
+  })
   return true
 }
 

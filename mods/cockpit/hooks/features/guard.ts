@@ -160,7 +160,8 @@ export function registerGuard(on: On): void {
     let seen: HostView | undefined
     const view = async (): Promise<HostView> => {
       if (seen === undefined) {
-        seen = await hostView(() => $.tool.check({ tool: e.tool, input: argsOf(e) } as never), () => $.settings.read())
+        const call = { tool: e.tool, input: argsOf(e) } as never
+        seen = await hostView(() => $.tool.check(call), () => $.settings.read())
         await noteHostView(i, seen)
       }
       return seen
@@ -270,7 +271,8 @@ export function registerGuard(on: On): void {
       return { text: 'Your folders cleared: only protected files count now.' } // en-only: plain answer of a slash command (text twin)
     }
     if (ask.kind === 'scope-set') {
-      const paths = scopeFrom(ask.words, await i.home(), await $.session.cwd())
+      const cwd = await $.session.cwd()
+      const paths = scopeFrom(ask.words, await i.home(), cwd)
       await i.set(scopeKey(sid), paths)
       return { text: `Your folders set for this session: ${paths.join(', ')}. An edit outside them is flagged (see Settings > Safety). /vaken-guard scope off clears it.` }
     }

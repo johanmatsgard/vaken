@@ -89,12 +89,11 @@ export function registerValue(on: On): void {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-today' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'value')
-    if (rest0 === undefined) return next(e0)
-    const e = { ...e0, args: rest0 }
+  on('command.run', { command: 'vaken-today' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'value')
+    if (rest0 === undefined) return next(e)
     try {
-      return { text: await valueText(io($), e.args) }
+      return { text: await valueText(io($), rest0) }
     } catch {
       return { text: 'The value meter could not read what vaken wrote down. Try again in a moment.' } // en-only: plain answer of a slash command (text twin)
     }

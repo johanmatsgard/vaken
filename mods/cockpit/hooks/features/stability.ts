@@ -66,7 +66,8 @@ async function selfTest($: EngineInterface): Promise<void> {
         return true
       }),
     ]
-    const version = (await $.session.version()).version
+    const got = await $.session.version()
+    const version = got.version
     const old = (await i.get(HEALTH_KEY)) as Health | undefined
     const previous = typeof old?.version === 'string' ? old.version : undefined
     const health: Health = { at: stamp, version, ...(previous === undefined ? {} : { previous }), results }
@@ -98,9 +99,9 @@ export function registerStability(on: On): void {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  on('command.run', { command: 'vaken-help' }, async ($, e0, next) => {
-    const rest0 = subArgs(e0.args, 'run', 'health')
-    if (rest0 === undefined) return next(e0)
+  on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
+    const rest0 = subArgs(e.args, 'run', 'health')
+    if (rest0 === undefined) return next(e)
     const i = io($)
     return { text: healthText((await i.get(HEALTH_KEY)) as Health | undefined) }
   })

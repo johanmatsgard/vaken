@@ -9,7 +9,8 @@ const seen = new Map<string, number>()
 export function registerPressLog(on: On): void {
   on('session.start', async ($, e, next) => {
     try {
-      setPressLog((await $.store.get(PRESSLOG_KEY)) === true)
+      const stored = await $.store.get(PRESSLOG_KEY)
+      setPressLog(stored === true)
     } catch {
       setPressLog(false)
     }
@@ -17,9 +18,9 @@ export function registerPressLog(on: On): void {
   }).catch(($, e, next) => next(e))
 
   // Registered before the help page's own hook
-  on('command.run', { command: 'vaken-help' }, async ($, e0, next) => {
-    const rest = subArgs(e0.args, 'run', 'presslog')
-    if (rest === undefined) return next(e0)
+  on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
+    const rest = subArgs(e.args, 'run', 'presslog')
+    if (rest === undefined) return next(e)
     const word = rest.trim().toLowerCase()
     if (word === 'on' || word === 'off') {
       setPressLog(word === 'on')
@@ -30,7 +31,8 @@ export function registerPressLog(on: On): void {
       await $.store.set(PRESSLOG_EVENTS_KEY, [])
       seen.clear()
     }
-    return { text: pressLogText(pressLogOn(), await $.store.get(PRESSLOG_EVENTS_KEY)) }
+    const log = await $.store.get(PRESSLOG_EVENTS_KEY)
+    return { text: pressLogText(pressLogOn(), log) }
   })
 
   on('ui.message', { element: /^fc-/ }, async ($, e, next) => {
@@ -38,7 +40,9 @@ export function registerPressLog(on: On): void {
     try {
       const posted = cleanPosted((e.data as { log?: unknown } | null)?.log)
       if (posted.length > 0) {
-        const r = appendLog(await $.store.get(PRESSLOG_EVENTS_KEY), e.element, posted, seen.get(e.element), await $.clock.now())
+        const old = await $.store.get(PRESSLOG_EVENTS_KEY)
+        const nowMs = await $.clock.now()
+        const r = appendLog(old, e.element, posted, seen.get(e.element), nowMs)
         if (r.seen !== undefined) seen.set(e.element, r.seen)
         await $.store.set(PRESSLOG_EVENTS_KEY, r.log)
       }

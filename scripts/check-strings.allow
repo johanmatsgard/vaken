@@ -288,3 +288,4 @@ re: A word after it runs a part: [a-z, <>-]+\.$ | the slash menu description of 
 re:^[a-z<>-]+( \| [a-z<>\[\] -]+)+$ | the argument hint of a command: the words that can follow it (English)
 built:settings.english | a language name in Settings, now read from the language registry (i18n/langs.ts) and said through tr
 built:settings.svenska | a language name in Settings, now read from the language registry (i18n/langs.ts) and said through tr
+text:Client | a type key name in ui/kit.tsx (Omit<El, 'drag' | 'Client'>), never shown
