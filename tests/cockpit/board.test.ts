@@ -11,11 +11,11 @@ const heights = { limit: 5, here: 4, others: 12 }
 test('the board uses the pane placement: three cards in three columns, two columns with the first two stacked, or one column', () => {
   const three = boardLayout(['limit', 'here', 'others'], heights, 3, 92, 1)
   expect(three.map(r => r.x)).toEqual([0, 31, 62])
-  expect(new Set(three.map(r => r.h))).toEqual(new Set([12]))
+  expect(new Set(three.map(r => r.tall))).toEqual(new Set([12]))
   const two = boardLayout(['limit', 'here', 'others'], heights, 2, 91, 1)
-  expect(two[0]).toEqual({ x: 0, y: 0, w: 45, h: 5 })
-  expect(two[1]).toEqual({ x: 0, y: 5, w: 45, h: 7 })
-  expect(two[2]).toEqual({ x: 46, y: 0, w: 45, h: 12 })
+  expect(two[0]).toEqual({ x: 0, y: 0, w: 45, tall: 5 })
+  expect(two[1]).toEqual({ x: 0, y: 5, w: 45, tall: 7 })
+  expect(two[2]).toEqual({ x: 46, y: 0, w: 45, tall: 12 })
   const one = boardLayout(['limit', 'here', 'others'], heights, 1, 60, 1)
   expect(one.map(r => r.y)).toEqual([0, 5, 9])
 })
@@ -103,7 +103,7 @@ test('the board rects follow reading order: rect i is card i, every column ends 
   const rects = boardLayout(order, four, 3, 92, 1)
   expect(rects.map(r => r.x)).toEqual([0, 0, 31, 62])
   expect(rects[1].y).toBe(5)
-  const bottoms = new Set([rects[1].y + rects[1].h, rects[2].y + rects[2].h, rects[3].y + rects[3].h])
+  const bottoms = new Set([rects[1].y + rects[1].tall, rects[2].y + rects[2].tall, rects[3].y + rects[3].tall])
   expect(bottoms.size).toBe(1)
   expect(rects[3].x + rects[3].w).toBe(92)
 })
@@ -118,7 +118,7 @@ test('the board is tall enough for every order, found without trying every order
     permute(ids, [])
     return out
   }
-  const tallestOrder = (ids: string[], hs: Record<string, number>, ncol: Columns): number => Math.max(...orders(ids).map(o => Math.max(...boardLayout(o, hs, ncol, 92, 1).map(r => r.y + r.h))))
+  const tallestOrder = (ids: string[], hs: Record<string, number>, ncol: Columns): number => Math.max(...orders(ids).map(o => Math.max(...boardLayout(o, hs, ncol, 92, 1).map(r => r.y + r.tall))))
   const ids = ['a', 'b', 'c', 'd', 'e', 'f']
   for (let seed = 1; seed <= 12; seed += 1) {
     const hs: Record<string, number> = Object.fromEntries(ids.map((id, n) => [id, ((seed * 7 + n * 5) % 11) + 3]))

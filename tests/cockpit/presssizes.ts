@@ -86,7 +86,7 @@ function regionsOf(root: PNode, up: Map<PNode, PNode>): Region[] {
     if (wrapper === undefined) continue
     const k = nameOf(c)
     const wk = nameOf(wrapper)
-    const h = (c.props?.props as { h?: number } | undefined)?.h
+    const h = (c.props?.props as { tall?: number } | undefined)?.tall
     const kind: Kind = k.startsWith('fc-swk-') ? 'switch' : wk.startsWith('slot-') ? 'slot' : wk.startsWith('fcw-') || h !== undefined || wk.endsWith('-part') ? 'word' : 'row'
     out.push({ wrapper, kind, client: c })
   }

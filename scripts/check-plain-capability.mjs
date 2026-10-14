@@ -91,7 +91,7 @@ function scanJsxNames(file, text) {
   const visit = n => {
     if (ts.isIdentifier(n) && (n.text === 'h' || n.text === 'Fragment')) {
       const p = n.parent
-      const isName = (ts.isPropertyAccessExpression(p) && p.name === n) || (ts.isPropertyAssignment(p) && p.name === n) || (ts.isPropertySignature(p) && p.name === n) || (ts.isJsxAttribute(p) && p.name === n) || (ts.isMethodDeclaration(p) && p.name === n) || (ts.isPropertyDeclaration(p) && p.name === n)
+      const isName = false // the directory reads property names too
       const isCall = ts.isCallExpression(p) && p.expression === n && n.text === 'h'
       if (!isName && !isCall) {
         const { line, character } = sf.getLineAndCharacterOfPosition(n.getStart())

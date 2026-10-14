@@ -321,7 +321,7 @@ export function FirstClick(el: El, key: string, onPress: () => void, look: 'row'
   const log = pressLogOn()
   return (
     <Box key={`${id}-box`} position="absolute" top={0} left={0} right={0} {...(cells === undefined ? { bottom: 0 } : { height: cells })}>
-      <el.host.Client key={id} module="../press.tsx" width="100%" height={cells ?? '100%'} props={{ look, ...(washPt === undefined ? {} : { h: washPt }), ...(cells === undefined ? {} : { r: cells }), ...(group === undefined ? {} : { scope: group }), ...(log ? { log: true } : {}) }} />
+      <el.host.Client key={id} module="../press.tsx" width="100%" height={cells ?? '100%'} props={{ look, ...(washPt === undefined ? {} : { tall: washPt }), ...(cells === undefined ? {} : { r: cells }), ...(group === undefined ? {} : { scope: group }), ...(log ? { log: true } : {}) }} />
     </Box>
   )
 }

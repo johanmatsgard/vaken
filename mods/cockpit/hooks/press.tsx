@@ -4,8 +4,8 @@ import { drawnRows, isInside } from './ui/firstclick'
 import { PRESSLOG_RECENT } from './core/presslog'
 import type { PostedEvent } from './core/presslog'
 
-// Look and h describe the part (tests read them)
-type Props = { look: 'row' | 'button' | 'lit'; h?: number; scope?: string; log?: boolean; r?: number }
+// Look and tall describe the part (tests read them)
+type Props = { look: 'row' | 'button' | 'lit'; tall?: number; scope?: string; log?: boolean; r?: number }
 
 
 // Which instance the pointer went down

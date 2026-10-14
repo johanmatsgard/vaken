@@ -22,7 +22,7 @@ const Arrange: ClientModule<Props, State> = (props, s) => {
     if (e.type === 'down') {
       live.order = [...props.order]
       const rects = slots(live.order)
-      const i = rects.findIndex(r => e.x >= r.x && e.x < r.x + r.w && e.y >= r.y && e.y < r.y + r.h)
+      const i = rects.findIndex(r => e.x >= r.x && e.x < r.x + r.w && e.y >= r.y && e.y < r.y + r.tall)
       if (i < 0) return
       // Needs you is always first and stays there (the card formula): it is not lifted
       if (live.order[i] === NEEDS_SLOT) return
@@ -40,11 +40,11 @@ const Arrange: ClientModule<Props, State> = (props, s) => {
       const from = live.order.indexOf(live.id)
       const lifted = rects[from]
       const cx = live.x + lifted.w / 2
-      const cy = live.y + lifted.h / 2
+      const cy = live.y + lifted.tall / 2
       let target = from
       let best = Infinity
       for (const [i, r] of rects.entries()) {
-        const d = Math.abs(cx - (r.x + r.w / 2)) + Math.abs(cy - (r.y + r.h / 2))
+        const d = Math.abs(cx - (r.x + r.w / 2)) + Math.abs(cy - (r.y + r.tall / 2))
         if (d < best) {
           best = d
           target = i
@@ -105,8 +105,8 @@ const Arrange: ClientModule<Props, State> = (props, s) => {
   }
   return (
     <Box position="relative" width="100%" height={props.rows}>
-      {live.order.filter(id => id !== live.id).map(id => tile(id, rects[live.order.indexOf(id)].x, rects[live.order.indexOf(id)].y, rects[live.order.indexOf(id)].w, rects[live.order.indexOf(id)].h, false))}
-      {live.id === undefined ? null : tile(live.id, live.x, live.y, rects[live.order.indexOf(live.id)].w, rects[live.order.indexOf(live.id)].h, true)}
+      {live.order.filter(id => id !== live.id).map(id => tile(id, rects[live.order.indexOf(id)].x, rects[live.order.indexOf(id)].y, rects[live.order.indexOf(id)].w, rects[live.order.indexOf(id)].tall, false))}
+      {live.id === undefined ? null : tile(live.id, live.x, live.y, rects[live.order.indexOf(live.id)].w, rects[live.order.indexOf(live.id)].tall, true)}
     </Box>
   )
 }

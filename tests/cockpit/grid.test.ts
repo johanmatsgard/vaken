@@ -313,7 +313,7 @@ test('the arrange board at five columns: five equal columns, filled in turn, the
   expect(last.x + last.w).toBe(221)
   const widths = new Set(rects.filter(r => r.x < last.x).map(r => r.w))
   expect(widths.size).toBe(1)
-  const bottoms = new Set(xs.map(x => Math.max(...rects.filter(r => r.x === x).map(r => r.y + r.h))))
+  const bottoms = new Set(xs.map(x => Math.max(...rects.filter(r => r.x === x).map(r => r.y + r.tall))))
   expect(bottoms.size).toBe(1)
 })
 

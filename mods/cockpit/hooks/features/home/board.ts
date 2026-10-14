@@ -1,7 +1,7 @@
 // The arrange board's layout as plain data: where each card sits for a given order, in whole text cells.
 import { BAR_SLOT, CARD_INSET_Y_PT, GROUP_GAP, LIST_ROW_GAP, LIST_ROW_H, LIST_SHOW, ROW_PT, STACK_BELOW_PT, ARRANGE_MIN_ROWS, rows } from '../../ui/tokens'
 
-export type Rect = { x: number; y: number; w: number; h: number }
+export type Rect = { x: number; y: number; w: number; tall: number }
 export type Columns = 1 | 2 | 3 | 4 | 5 | 6
 
 export function columnSizes(n: number, ncol: Columns): number[] {
@@ -39,8 +39,8 @@ export function boardLayout(order: string[], heights: Record<string, number>, nc
   if (ncol === 1) {
     let y = 0
     return order.map((_, i) => {
-      const rect = { x: 0, y, w: width, h: h[i] ?? ARRANGE_MIN_ROWS }
-      y += rect.h
+      const rect = { x: 0, y, w: width, tall: h[i] ?? ARRANGE_MIN_ROWS }
+      y += rect.tall
       return rect
     })
   }
@@ -55,9 +55,9 @@ export function boardLayout(order: string[], heights: Record<string, number>, nc
     // Equal columns, the last one takes what rounding left
     const w = c === groups.length - 1 ? width - c * (colW + gap) : colW
     for (const [r, i] of group.entries()) {
-      const rect = { x: c * (colW + gap), y, w, h: r === group.length - 1 ? h[i] + (total - sums[c]) : h[i] }
+      const rect = { x: c * (colW + gap), y, w, tall: r === group.length - 1 ? h[i] + (total - sums[c]) : h[i] }
       rects[i] = rect
-      y += rect.h
+      y += rect.tall
     }
   }
   return rects

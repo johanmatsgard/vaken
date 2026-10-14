@@ -11,7 +11,7 @@ const word = (key: string, minW: number, minH: number, extra: Record<string, unk
   type: 'Box',
   key: `fcw-${key}`,
   props: { minWidth: minW / COL_PT, minHeight: minH / 19, ...extra },
-  children: [{ type: 'Button', props: { label } }, { type: 'Box', key: `fc-${key}-box`, props: { position: 'absolute', height: rowsH }, children: [{ type: 'Client', key: `fc-${key}`, props: { height: rowsH, props: { look: 'button', h: HIT_MIN_H, r: rowsH } } }] }],
+  children: [{ type: 'Button', props: { label } }, { type: 'Box', key: `fc-${key}-box`, props: { position: 'absolute', height: rowsH }, children: [{ type: 'Client', key: `fc-${key}`, props: { height: rowsH, props: { look: 'button', tall: HIT_MIN_H, r: rowsH } } }] }],
 })
 const row = (gapPt: number, ...children: PNode[]): PNode => ({ type: 'Box', props: { flexDirection: 'row', columnGap: gapPt / COL_PT }, children })
 const read = (root: PNode): string[] => {
@@ -68,6 +68,6 @@ test('the reader flags a press whose module is not told to draw its rows (the ap
   const w = word('a', 44, 28.5, {}, 'Less', 2)
   const anchor = (w.children as PNode[])[1] as PNode
   const client = (anchor.children as PNode[])[0] as PNode
-  client.props = { ...client.props, props: { look: 'button', h: HIT_MIN_H } }
+  client.props = { ...client.props, props: { look: 'button', tall: HIT_MIN_H } }
   expect(read(row(8.5, w)).join('|')).toContain('draws undefined rows')
 })

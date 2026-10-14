@@ -57,7 +57,7 @@ const isRowAnchor = (c: unknown): boolean => {
   if (!isBox(c) || c.props?.position !== 'absolute') return false
   const k = keyOf(c)
   if (!k.startsWith(FIRST_CLICK_PREFIX) || !k.endsWith('-box')) return false
-  return kidsOf(c).some(x => isN(x) && x.type === 'Client' && (x.props?.props as { h?: unknown } | undefined)?.h === undefined)  // en-only: an element type name, never shown
+  return kidsOf(c).some(x => isN(x) && x.type === 'Client' && (x.props?.props as { tall?: unknown } | undefined)?.tall === undefined)  // en-only: an element type name, never shown
 }
 // A whole row that presses: a Box in the flow with a row anchor as a direct child, not a lone word's
 export const isPressRow = (n: unknown): n is N => {
