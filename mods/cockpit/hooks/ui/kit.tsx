@@ -219,8 +219,8 @@ export function pillSvg(pct: number, viewPt: number, outerPt?: number, mark?: nu
   const c = levelColor(pct)
   const cl = levelColorLight(pct)
   const w = Math.max(BAR_H, (viewPt * Math.min(100, Math.max(0, pct))) / 100)
-  const h = mark === undefined ? BAR_H : MARK_H
-  const y = (h - BAR_H) / 2
+  const tall = mark === undefined ? BAR_H : MARK_H
+  const y = (tall - BAR_H) / 2
   // The mark is clamped so its line stays inside the canvas
   const x = mark === undefined ? 0 : Math.min(viewPt - MARK_W, Math.max(0, (viewPt * Math.min(100, Math.max(0, mark))) / 100 - MARK_W / 2))
   const tick = mark === undefined ? '' : `<rect x="${x}" width="${MARK_W}" height="${MARK_H}" rx="${MARK_W / 2}" fill="${ICON_DIM}"/>`
@@ -231,7 +231,7 @@ export function pillSvg(pct: number, viewPt: number, outerPt?: number, mark?: nu
       : ''
   // The Mac's Reduce Motion: SMIL ignores the CSS query
   const stillCss = band === '' ? '' : `@media ${REDUCED_MOTION_QUERY}{.busy-band{display:none}}`
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${outer}" height="${h}" viewBox="0 0 ${viewPt} ${h}" preserveAspectRatio="none"><style>${themed('c', 'fill', cl, c)}${stillCss}</style><rect class="c" y="${y}" width="${viewPt}" height="${BAR_H}" rx="${BAR_R}" fill-opacity="0.25"/><rect class="c" y="${y}" width="${w}" height="${BAR_H}" rx="${BAR_R}"/>${band}${tick}</svg>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${outer}" height="${tall}" viewBox="0 0 ${viewPt} ${tall}" preserveAspectRatio="none"><style>${themed('c', 'fill', cl, c)}${stillCss}</style><rect class="c" y="${y}" width="${viewPt}" height="${BAR_H}" rx="${BAR_R}" fill-opacity="0.25"/><rect class="c" y="${y}" width="${w}" height="${BAR_H}" rx="${BAR_R}"/>${band}${tick}</svg>`
 }
 
 export type DotKind = 'working' | 'waiting' | 'idle' | 'needs'
@@ -362,48 +362,48 @@ export const framedLabel = (label: string): string => `\u00a0${label}\u00a0`
 export const framePt = (word: string): number => Math.ceil(Math.max(WORD_FOOT_W, proportionalPt(word) + 2 * FRAME_PAD_X_PT) / COL_PT) * COL_PT
 // The word is CENTRED in its frame (the press box centres its Button)
 const framePics = new Map<string, string>()
-const svgOf = (w: number, h: number, body: string): string => `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">${body}</svg>`
-const roundRect = (x: number, y: number, w: number, h: number, r: number, fill: string, share: number): string =>
-  `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="${fill}" fill-opacity="${share}"/>`
+const svgOf = (w: number, tall: number, body: string): string => `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${tall}" viewBox="0 0 ${w} ${tall}">${body}</svg>`
+const roundRect = (x: number, y: number, w: number, tall: number, r: number, fill: string, share: number): string =>
+  `<rect x="${x}" y="${y}" width="${w}" height="${tall}" rx="${r}" fill="${fill}" fill-opacity="${share}"/>`
 const accentRgb = (): string => look.accent.slice(0, 7)
-export function frameSvg(widthPt: number, kind: 'rest' | 'hover' | 'chosen', h: number = PRESS_FRAME_H): string {
-  const id = `${kind}|${widthPt}|${h}|${kind === 'chosen' ? look.accent : ''}`
+export function frameSvg(widthPt: number, kind: 'rest' | 'hover' | 'chosen', tall: number = PRESS_FRAME_H): string {
+  const id = `${kind}|${widthPt}|${tall}|${kind === 'chosen' ? look.accent : ''}`
   const kept = framePics.get(id)
   if (kept !== undefined) return kept
-  const source = svgOf(widthPt, h, kind === 'chosen' ? roundRect(0, 0, widthPt, h, PRESS_WASH_R, accentRgb(), CHOSEN_FILL_SHARE) : roundRect(0, 0, widthPt, h, PRESS_WASH_R, PRESS_WASH_GREY, PRESS_WASH_OPACITY))
+  const source = svgOf(widthPt, tall, kind === 'chosen' ? roundRect(0, 0, widthPt, tall, PRESS_WASH_R, accentRgb(), CHOSEN_FILL_SHARE) : roundRect(0, 0, widthPt, tall, PRESS_WASH_R, PRESS_WASH_GREY, PRESS_WASH_OPACITY))
   framePics.set(id, source)
   return source
 }
 // Corner masks: a Box fill is square, so an always-drawn picture repaints what lies behind outside the rounded shape
 export type Backdrop = 'card' | 'ground'
-const roundPath = (x: number, y: number, w: number, h: number, r: number): string =>
-  `M${x + r} ${y}H${x + w - r}A${r} ${r} 0 0 1 ${x + w} ${y + r}V${y + h - r}A${r} ${r} 0 0 1 ${x + w - r} ${y + h}H${x + r}A${r} ${r} 0 0 1 ${x} ${y + h - r}V${y + r}A${r} ${r} 0 0 1 ${x + r} ${y}Z`
-const boxPath = (w: number, h: number): string => `M0 0H${w}V${h}H0Z`
+const roundPath = (x: number, y: number, w: number, tall: number, r: number): string =>
+  `M${x + r} ${y}H${x + w - r}A${r} ${r} 0 0 1 ${x + w} ${y + r}V${y + tall - r}A${r} ${r} 0 0 1 ${x + w - r} ${y + tall}H${x + r}A${r} ${r} 0 0 1 ${x} ${y + tall - r}V${y + r}A${r} ${r} 0 0 1 ${x + r} ${y}Z`
+const boxPath = (w: number, tall: number): string => `M0 0H${w}V${tall}H0Z`
 // Layered as the pane draws it: the ground, the card's grey, the track's grey, so the masks match at rest in either theme
-function maskLayers(w: number, h: number, hole: string, on: Backdrop, track?: string): string {
-  const out = `${boxPath(w, h)}${hole}`
+function maskLayers(w: number, tall: number, hole: string, on: Backdrop, track?: string): string {
+  const out = `${boxPath(w, tall)}${hole}`
   const ground = `<style>${themed('mg', 'fill', seen(GROUND_LIGHT), seen(GROUND_DARK))}</style><path class="mg" fill-rule="evenodd" d="${out}"/>`
   const card = on === 'card' ? `<path fill="${PRESS_WASH_GREY}" fill-opacity="${CARD_FILL_SHARE}" fill-rule="evenodd" d="${out}"/>` : ''
   const lane = track === undefined ? '' : `<path fill="${PRESS_WASH_GREY}" fill-opacity="${PRESS_WASH_OPACITY}" fill-rule="evenodd" d="${track}${hole}"/>`
   return `${ground}${card}${lane}`
 }
 // The frame and its masks in one picture, so a mask costs no element
-export function maskedFrameSvg(widthPt: number, kind: 'rest' | 'chosen', h: number, boxH: number, on: Backdrop): string {
-  const id = `masked|${kind}|${widthPt}|${h}|${boxH}|${on}|${kind === 'chosen' ? look.accent : ''}`
+export function maskedFrameSvg(widthPt: number, kind: 'rest' | 'chosen', tall: number, boxH: number, on: Backdrop): string {
+  const id = `masked|${kind}|${widthPt}|${tall}|${boxH}|${on}|${kind === 'chosen' ? look.accent : ''}`
   const kept = framePics.get(id)
   if (kept !== undefined) return kept
-  const frame = kind === 'chosen' ? roundRect(0, 0, widthPt, h, PRESS_WASH_R, accentRgb(), CHOSEN_FILL_SHARE) : roundRect(0, 0, widthPt, h, PRESS_WASH_R, PRESS_WASH_GREY, PRESS_WASH_OPACITY)
-  const source = svgOf(widthPt, boxH, `${maskLayers(widthPt, boxH, roundPath(0, 0, widthPt, h, PRESS_WASH_R), on)}${frame}`)
+  const frame = kind === 'chosen' ? roundRect(0, 0, widthPt, tall, PRESS_WASH_R, accentRgb(), CHOSEN_FILL_SHARE) : roundRect(0, 0, widthPt, tall, PRESS_WASH_R, PRESS_WASH_GREY, PRESS_WASH_OPACITY)
+  const source = svgOf(widthPt, boxH, `${maskLayers(widthPt, boxH, roundPath(0, 0, widthPt, tall, PRESS_WASH_R), on)}${frame}`)
   framePics.set(id, source)
   return source
 }
 // A Pick option's masks leave the chosen pill's shape, so its hover matches the chosen look
-export function segMaskSvg(total: number, x: number, w: number, h: number, on: Backdrop): string {
-  const id = `segmask|${total}|${x}|${w}|${h}|${on}`
+export function segMaskSvg(total: number, x: number, w: number, tall: number, on: Backdrop): string {
+  const id = `segmask|${total}|${x}|${w}|${tall}|${on}`
   const kept = framePics.get(id)
   if (kept !== undefined) return kept
-  const pill = roundPath(SEG_INSET_PT, SEG_INSET_PT, w - 2 * SEG_INSET_PT, h - 2 * SEG_INSET_PT, PRESS_WASH_R - SEG_INSET_PT)
-  const source = svgOf(w, h, maskLayers(w, h, pill, on, roundPath(-x, 0, total, h, PRESS_WASH_R)))
+  const pill = roundPath(SEG_INSET_PT, SEG_INSET_PT, w - 2 * SEG_INSET_PT, tall - 2 * SEG_INSET_PT, PRESS_WASH_R - SEG_INSET_PT)
+  const source = svgOf(w, tall, maskLayers(w, tall, pill, on, roundPath(-x, 0, total, tall, PRESS_WASH_R)))
   framePics.set(id, source)
   return source
 }
@@ -608,19 +608,19 @@ export function WhatIsBody(el: El, key: string, lines: string[], button?: { labe
 export function chevronSvg(dir: 'right' | 'down' | 'left' | 'up', long = CHEVRON_LONG, short = CHEVRON_SHORT): { source: string; width: number; height: number } {
   const isSide = dir === 'right' || dir === 'left'
   const w = isSide ? short : long
-  const h = isSide ? long : short
+  const tall = isSide ? long : short
   const o = CHEVRON_STROKE / 2 + 0.1
   const paths = {
-    right: `M${o} ${o} L${w - o} ${h / 2} L${o} ${h - o}`,
-    left: `M${w - o} ${o} L${o} ${h / 2} L${w - o} ${h - o}`,
-    down: `M${o} ${o} L${w / 2} ${h - o} L${w - o} ${o}`,
-    up: `M${o} ${h - o} L${w / 2} ${o} L${w - o} ${h - o}`,
+    right: `M${o} ${o} L${w - o} ${tall / 2} L${o} ${tall - o}`,
+    left: `M${w - o} ${o} L${o} ${tall / 2} L${w - o} ${tall - o}`,
+    down: `M${o} ${o} L${w / 2} ${tall - o} L${w - o} ${o}`,
+    up: `M${o} ${tall - o} L${w / 2} ${o} L${w - o} ${tall - o}`,
   }
   const path = paths[dir]
   return {
-    source: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><path d="${path}" fill="none" stroke="${GREY}" stroke-width="${CHEVRON_STROKE}" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+    source: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${tall}" viewBox="0 0 ${w} ${tall}"><path d="${path}" fill="none" stroke="${GREY}" stroke-width="${CHEVRON_STROKE}" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
     width: w,
-    height: h,
+    height: tall,
   }
 }
 
@@ -725,8 +725,8 @@ export function iconSvg(kind: IconKind): { source: string; width: number; height
     return { source: `<svg xmlns="http://www.w3.org/2000/svg" width="${n}" height="${n}" viewBox="0 0 ${n} ${n}"><style>.i{stroke:${ICON_COLOR}}@media (prefers-color-scheme: dark){.i{stroke:${ICON_COLOR_DARK}}}</style><g class="i" fill="none" stroke-width="${ICON_STROKE}" stroke-linejoin="round"><path d="${GEAR_OUTLINE}"/><circle cx="${n / 2}" cy="${n / 2}" r="${ICON_GEAR_HOLE}"/></g></svg>`, width: n, height: n }
   }
   const w = ICON_MORE_W
-  const h = ICON_MORE_H
-  return { source: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><style>.i{fill:${ICON_COLOR}}@media (prefers-color-scheme: dark){.i{fill:${ICON_COLOR_DARK}}}</style><circle class="i" cx="1" cy="1" r="1"/><circle class="i" cx="1" cy="4" r="1"/><circle class="i" cx="1" cy="7" r="1"/></svg>`, width: w, height: h }
+  const tall = ICON_MORE_H
+  return { source: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${tall}" viewBox="0 0 ${w} ${tall}"><style>.i{fill:${ICON_COLOR}}@media (prefers-color-scheme: dark){.i{fill:${ICON_COLOR_DARK}}}</style><circle class="i" cx="1" cy="1" r="1"/><circle class="i" cx="1" cy="4" r="1"/><circle class="i" cx="1" cy="7" r="1"/></svg>`, width: w, height: tall }
 }
 
 // `faint`: the picture drawn at REST_MARK_OPACITY
@@ -915,12 +915,12 @@ export function Pick(el: El, key: string, options: { value: string; label: strin
   )
 }
 // The segmented control's one picture
-export function segmentSvg(widthPt: number, chosen?: { x: number; w: number }, h: number = PRESS_FRAME_H): string {
-  const id = `seg|${widthPt}|${h}|${chosen === undefined ? '' : `${chosen.x},${chosen.w}`}|${look.accent}`
+export function segmentSvg(widthPt: number, chosen?: { x: number; w: number }, tall: number = PRESS_FRAME_H): string {
+  const id = `seg|${widthPt}|${tall}|${chosen === undefined ? '' : `${chosen.x},${chosen.w}`}|${look.accent}`
   const kept = framePics.get(id)
   if (kept !== undefined) return kept
-  const pill = chosen === undefined ? '' : roundRect(chosen.x + SEG_INSET_PT, SEG_INSET_PT, chosen.w - 2 * SEG_INSET_PT, h - 2 * SEG_INSET_PT, PRESS_WASH_R - SEG_INSET_PT, accentRgb(), CHOSEN_FILL_SHARE)
-  const source = svgOf(widthPt, h, `${roundRect(0, 0, widthPt, h, PRESS_WASH_R, PRESS_WASH_GREY, PRESS_WASH_OPACITY)}${pill}`)
+  const pill = chosen === undefined ? '' : roundRect(chosen.x + SEG_INSET_PT, SEG_INSET_PT, chosen.w - 2 * SEG_INSET_PT, tall - 2 * SEG_INSET_PT, PRESS_WASH_R - SEG_INSET_PT, accentRgb(), CHOSEN_FILL_SHARE)
+  const source = svgOf(widthPt, tall, `${roundRect(0, 0, widthPt, tall, PRESS_WASH_R, PRESS_WASH_GREY, PRESS_WASH_OPACITY)}${pill}`)
   framePics.set(id, source)
   return source
 }
@@ -1160,19 +1160,19 @@ export function nameTabLabel(widthPt: number, others: string[], head: string, na
   return head
 }
 // Do the title and the controls of a plain card header (no Pick) not fit one row of `innerPt`? `restPt` is the controls' width
-export const headerWraps = (innerPt: number, h: { title: string; fold: boolean; restPt: number }): boolean => boldPt(h.title) + (h.fold ? CHEVRON_SLOT + CHEVRON_GAP : 0) + LIST_COL_GAP + h.restPt + HEADER_SLACK_PT > innerPt
-export function headerFit(innerPt: number, h: { title: string; fold: boolean; note: string; noteShort?: string; pick?: { label: string; short?: string }[]; restPt: number }): HeaderFit {
-  const fixed = boldPt(h.title) + (h.fold ? CHEVRON_SLOT + CHEVRON_GAP : 0) + LIST_COL_GAP + h.restPt
-  const minNote = h.noteShort === undefined ? 0 : textPt(h.noteShort) + ICON_GAP
-  const full = h.pick === undefined ? 0 : pickPt(h.pick.map(o => o.label)) + ICON_GAP
-  const short = h.pick === undefined ? 0 : pickPt(h.pick.map(o => o.short ?? o.label)) + ICON_GAP
-  const wantShort = h.pick !== undefined && fixed + full + minNote > innerPt
+export const headerWraps = (innerPt: number, head: { title: string; fold: boolean; restPt: number }): boolean => boldPt(head.title) + (head.fold ? CHEVRON_SLOT + CHEVRON_GAP : 0) + LIST_COL_GAP + head.restPt + HEADER_SLACK_PT > innerPt
+export function headerFit(innerPt: number, head: { title: string; fold: boolean; note: string; noteShort?: string; pick?: { label: string; short?: string }[]; restPt: number }): HeaderFit {
+  const fixed = boldPt(head.title) + (head.fold ? CHEVRON_SLOT + CHEVRON_GAP : 0) + LIST_COL_GAP + head.restPt
+  const minNote = head.noteShort === undefined ? 0 : textPt(head.noteShort) + ICON_GAP
+  const full = head.pick === undefined ? 0 : pickPt(head.pick.map(o => o.label)) + ICON_GAP
+  const short = head.pick === undefined ? 0 : pickPt(head.pick.map(o => o.short ?? o.label)) + ICON_GAP
+  const wantShort = head.pick !== undefined && fixed + full + minNote > innerPt
   const ownLine = wantShort && fixed + short + minNote > innerPt
   const used = ownLine ? 0 : wantShort ? short : full
   const room = innerPt - fixed - used - ICON_GAP
   const fits = (s: string): boolean => textPt(s) <= room
   // Whole, else its short form, else dropped: a header note is never cut with an ellipsis (the Glance controls row keeps the same rule, glanceNote).
-  const note = fits(h.note) ? h.note : h.noteShort !== undefined && fits(h.noteShort) ? h.noteShort : ''
+  const note = fits(head.note) ? head.note : head.noteShort !== undefined && fits(head.noteShort) ? head.noteShort : ''
   return { note, pickShort: wantShort && !ownLine, pickOwnLine: ownLine }
 }
 

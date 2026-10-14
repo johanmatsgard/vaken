@@ -83,6 +83,27 @@ function scan(file, text) {
   return out
 }
 
+// The directory's JSX rule: in a .tsx file the names h and Fragment are kept for the compiled elements. Any binding or use of them, other than calling h, is reported.
+function scanJsxNames(file, text) {
+  if (!file.endsWith('.tsx')) return []
+  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX)
+  const out = []
+  const visit = n => {
+    if (ts.isIdentifier(n) && (n.text === 'h' || n.text === 'Fragment')) {
+      const p = n.parent
+      const isName = (ts.isPropertyAccessExpression(p) && p.name === n) || (ts.isPropertyAssignment(p) && p.name === n) || (ts.isPropertySignature(p) && p.name === n) || (ts.isJsxAttribute(p) && p.name === n) || (ts.isMethodDeclaration(p) && p.name === n) || (ts.isPropertyDeclaration(p) && p.name === n)
+      const isCall = ts.isCallExpression(p) && p.expression === n && n.text === 'h'
+      if (!isName && !isCall) {
+        const { line, character } = sf.getLineAndCharacterOfPosition(n.getStart())
+        out.push(`${file}:${line + 1}:${character + 1}: the name ${n.text} is kept for JSX: ${text.split('\n')[line].trim().slice(0, 100)}`)
+      }
+    }
+    ts.forEachChild(n, visit)
+  }
+  visit(sf)
+  return out
+}
+
 if (process.argv.includes('--selftest')) {
   const t = (src, n) => {
     const r = scan('t.ts', `function h($: X) {}\n${src}`)
@@ -109,7 +130,7 @@ if (process.argv.includes('--selftest')) {
 
 const walk = d => fs.readdirSync(d).flatMap(f => { const p = path.join(d, f); return fs.statSync(p).isDirectory() ? walk(p) : /\.tsx?$/.test(f) ? [p] : [] })
 process.chdir(path.resolve(path.dirname(new URL(import.meta.url).pathname), '..'))
-const found = walk('mods/cockpit/hooks').flatMap(f => scan(f, fs.readFileSync(f, 'utf8')))
+const found = walk('mods/cockpit/hooks').flatMap(f => { const text = fs.readFileSync(f, 'utf8'); return [...scan(f, text), ...scanJsxNames(f, text)] })
 if (found.length > 0) {
   console.log(found.join('\n'))
   console.log(`check-plain-capability: ${found.length} use(s) of $ that are not plain`)

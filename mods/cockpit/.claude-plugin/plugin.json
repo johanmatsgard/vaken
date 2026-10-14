@@ -1,6 +1,6 @@
 {
   "name": "vaken",
-  "version": "1.119.6",
+  "version": "1.119.7",
   "description": "A quiet side pane for Claude Code Desktop: what needs you, plan limits, context, agents and risky steps.",
   "author": {
     "name": "Johan Matsgard"
