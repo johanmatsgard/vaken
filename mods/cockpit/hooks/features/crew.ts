@@ -356,11 +356,12 @@ export function registerCrew(on: On): void {
       prFacts = undefined
       prPushedAt = undefined
       prTriedAt = 0
-      armOnce('crew', $.clock.every(TICK_MS, quietly('crew', () => $.clock.now(), () => {
+      const timer = $.clock.every(TICK_MS, quietly('crew', () => $.clock.now(), () => {
         void prRefresh($)
         void prStale($)
         void laptopRead($, true)
-      })))
+      }))
+      armOnce('crew', timer)
       await io($).del(LAPTOP_OLD_KEY)
     } catch {
       // the commands and the timer are optional: a failure shows less, never breaks the session
@@ -382,7 +383,8 @@ export function registerCrew(on: On): void {
       try {
         const command = fieldsOf(e).command
         if (typeof command === 'string' && done.deny === undefined && done.isError !== true && isGitPush(command)) {
-          prPushedAt = await $.clock.now()
+          const pushedAt = await $.clock.now()
+          prPushedAt = pushedAt
           prTriedAt = 0
         }
       } catch {
@@ -401,7 +403,8 @@ export function registerCrew(on: On): void {
         const raw = input.file_path ?? input.notebook_path
         repo = await repoOf($)
         if (repo !== undefined && typeof raw === 'string' && raw !== '') {
-          root = await $.session.root()
+          const rootNow = await $.session.root()
+          root = rootNow
           rel = relativePath(root, raw)
           const me = await i.sessionId()
           const now = await i.now()

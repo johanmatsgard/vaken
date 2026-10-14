@@ -93,7 +93,8 @@ export function registerAttention(on: On): void {
   on('session.start', { cwd: /(?<attention>)/ }, async ($, e, next) => {
     try {
       // Always at full pace
-      armOnce('attention', $.clock.every(CHECK_MS, () => void check($).catch(() => undefined)))
+      const timer = $.clock.every(CHECK_MS, () => void check($).catch(() => undefined))
+      armOnce('attention', timer)
     } catch {
     }
     return next(e)

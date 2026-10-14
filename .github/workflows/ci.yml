@@ -56,6 +56,12 @@ jobs:
           scripts/check-strings.sh --strict
       - name: Names check
         run: sh scripts/check-names.sh
+      # Reads the code with the TypeScript JS API (the installed tsc may be the native one, which has none), so a known 5.x is fetched into the runner's temp folder.
+      - name: Plain capability check
+        run: |
+          npm install --prefix "$RUNNER_TEMP/ts" typescript@5.9.3
+          TYPESCRIPT_JS="$RUNNER_TEMP/ts/node_modules/typescript/lib/typescript.js" node scripts/check-plain-capability.mjs --selftest
+          TYPESCRIPT_JS="$RUNNER_TEMP/ts/node_modules/typescript/lib/typescript.js" node scripts/check-plain-capability.mjs
       - name: Comment check
         run: |
           sh scripts/check-comments.sh --selftest

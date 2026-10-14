@@ -189,7 +189,8 @@ async function othersOf(i: Io): Promise<{ sid: string; name: string; row: Row }[
 export function registerInbox(on: On): void {
   on('session.start', { cwd: /(?<inbox>)/ }, async ($, e, next) => {
     try {
-      armOnce('inbox', $.clock.every(CHECK_MS, quietly('inbox', () => $.clock.now(), () => inboxTick($))))
+      const timer = $.clock.every(CHECK_MS, quietly('inbox', () => $.clock.now(), () => inboxTick($)))
+      armOnce('inbox', timer)
     } catch {
       // the commands and the band are optional: a failure shows less, never breaks the session
     }

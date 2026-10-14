@@ -224,8 +224,14 @@ export function registerHome(on: On): void {
       try {
         const win = wordSystemNow() === 'win32'
         const langVar = await $.env.get('LANG')
-        const lcAll = win ? await $.env.get('LC_ALL') : undefined
-        const languageVar = win ? await $.env.get('LANGUAGE') : undefined
+        let lcAll: string | undefined
+        let languageVar: string | undefined
+        if (win) {
+          const lcAllRaw = await $.env.get('LC_ALL')
+          const languageRaw = await $.env.get('LANGUAGE')
+          lcAll = lcAllRaw
+          languageVar = languageRaw
+        }
         const env = { LANG: langVar, LC_ALL: lcAll, LANGUAGE: languageVar }
         flags.macLang = systemLanguage(env, wordSystemNow())
         // Windows with no language variable: one PowerShell read of the UI language, once per session
@@ -520,14 +526,16 @@ export function registerHome(on: On): void {
     const openPane = () => {
       flags.bandListOpen = true
       flags.paneView = 'cards'
-      void $.ui.open({ id: PANE, title: PANE_TITLE, focus: true, closeOnEscape: true, rows: 30 })
+      const opened = $.ui.open({ id: PANE, title: PANE_TITLE, focus: true, closeOnEscape: true, rows: 30 })
+      void opened
       io($).invalidate()
     }
     // From the Needs you chip: the pane opens on its cards, not on the band list
     const openNeeds = () => {
       flags.bandListOpen = false
       flags.paneView = 'cards'
-      void $.ui.open({ id: PANE, title: PANE_TITLE, focus: true, closeOnEscape: true, rows: 30 })
+      const opened = $.ui.open({ id: PANE, title: PANE_TITLE, focus: true, closeOnEscape: true, rows: 30 })
+      void opened
       io($).invalidate()
     }
     return (

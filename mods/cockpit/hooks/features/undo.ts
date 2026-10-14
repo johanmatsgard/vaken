@@ -123,7 +123,9 @@ export function registerUndo(on: On): void {
     try {
       if ((isEditTool(e.tool) || isShellTool(e.tool)) && (await isOn(i))) {
         const t0 = await i.now()
-        const env = { home: await i.home(), cwd: await $.session.cwd() }
+        const home = await i.home()
+        const cwd = await $.session.cwd()
+        const env = { home, cwd }
         const args = argsOf(e)
         let targets: Target[]
         if (isShellTool(e.tool)) {

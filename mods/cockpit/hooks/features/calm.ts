@@ -185,7 +185,8 @@ export function registerCalm(on: On): void {
         calmMem.root = e.cwd
       }
       await readFocus(io($))
-      armOnce('calm', $.clock.every(FOCUS_POLL_MS, quietly('calm:focus', () => $.clock.now(), () => focusPoll(io($)))))
+      const timer = $.clock.every(FOCUS_POLL_MS, quietly('calm:focus', () => $.clock.now(), () => focusPoll(io($))))
+      armOnce('calm', timer)
     } catch {
       // Focus and the open ends are optional: a failure shows less, never breaks the session
     }

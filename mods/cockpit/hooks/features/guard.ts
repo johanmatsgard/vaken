@@ -77,7 +77,10 @@ const isHalted = async (i: Io, sid: string): Promise<boolean> => parseHalt(await
 const heldKeys = (list: Found[]): string[] => list.map(f => `${f.block}|${f.key}`)
 
 async function envOf($: EngineInterface): Promise<Env> {
-  return { home: await homeFrom({ HOME: () => $.env.get('HOME'), USERPROFILE: () => $.env.get('USERPROFILE'), HOMEDRIVE: () => $.env.get('HOMEDRIVE'), HOMEPATH: () => $.env.get('HOMEPATH') }), cwd: await $.session.cwd(), root: await $.session.root() }
+  const home = await homeFrom({ HOME: () => $.env.get('HOME'), USERPROFILE: () => $.env.get('USERPROFILE'), HOMEDRIVE: () => $.env.get('HOMEDRIVE'), HOMEPATH: () => $.env.get('HOMEPATH') })
+  const cwd = await $.session.cwd()
+  const root = await $.session.root()
+  return { home, cwd, root }
 }
 
 const ledger = async (i: Io, sid: string, what: string, detail: string, how: 'auto' | 'typed' | 'button'): Promise<void> => pushLog(i, LEDGER_KEY, { at: await i.now(), session: sid, what, detail, how, did: true })

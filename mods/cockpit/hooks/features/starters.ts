@@ -85,7 +85,8 @@ export function registerStarters(on: On): void {
     const i = bindSafeFs(io($), { stat: (path, options) => $.fs.stat(path, options), list: path => $.fs.list(path) })
     let root: string | undefined
     try {
-      root = await $.session.root()
+      const rootNow = await $.session.root()
+      root = rootNow
     } catch {
       root = undefined
     }

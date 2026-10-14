@@ -178,7 +178,7 @@ async function flagQuiet(i: Io, list: AgentEntry[], now: number): Promise<void> 
 
 function startWatch($: EngineInterface): void {
   if (watchTimer !== undefined) return
-  watchTimer = $.clock.every(WATCH_MS, () => {
+  const timer = $.clock.every(WATCH_MS, () => {
     void (async () => {
       try {
         const statuses = await agentStatuses($)
@@ -190,6 +190,7 @@ function startWatch($: EngineInterface): void {
       }
     })()
   })
+  watchTimer = timer
 }
 
 export async function boardTextFrom(i: Io, infos?: Status[]): Promise<string> {

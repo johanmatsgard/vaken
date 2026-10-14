@@ -104,7 +104,8 @@ async function check($: EngineInterface): Promise<void> {
 export function registerResume(on: On): void {
   on('session.start', { cwd: /(?<resume>)/ }, async ($, e, next) => {
     try {
-      armOnce('resume', $.clock.every(30_000, () => void check($)))
+      const timer = $.clock.every(30_000, () => void check($))
+      armOnce('resume', timer)
     } catch {
     }
     return next(e)

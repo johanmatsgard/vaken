@@ -74,7 +74,7 @@ async function noteOutcome(i: Io, kind: 'done' | 'merged'): Promise<void> {
 export function registerInsight(on: On): void {
   on('session.start', { cwd: /(?<insight>)/ }, async ($, e, next) => {
     try {
-      armOnce('insight', $.clock.every(15_000, () => {
+      const timer = $.clock.every(15_000, () => {
         void (async () => {
           try {
             const i = io($)
@@ -88,7 +88,8 @@ export function registerInsight(on: On): void {
           } catch {
           }
         })()
-      }))
+      })
+      armOnce('insight', timer)
     } catch {
     }
     return next(e)
@@ -172,7 +173,8 @@ export function registerInsight(on: On): void {
     if (rest0 === undefined) return next(e)
     const i = io($)
     try {
-      const r = await i.run(['git', 'diff', '--numstat', 'HEAD'], { cwd: await $.session.cwd(), timeoutMs: 5_000 })
+      const cwd = await $.session.cwd()
+      const r = await i.run(['git', 'diff', '--numstat', 'HEAD'], { cwd, timeoutMs: 5_000 })
       const goal = readState(await readNote(i, stateKey(await i.sessionId()))).goal?.text
       return { text: storyText(goal, r.exitCode === 0 ? parseNumstat(r.stdout) : []) }
     } catch {

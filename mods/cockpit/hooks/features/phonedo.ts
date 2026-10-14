@@ -156,7 +156,10 @@ export async function doText(i: Io, env: Env, args: string, tell: (note: string)
 }
 
 async function envOf($: EngineInterface): Promise<Env> {
-  return { home: await homeFrom({ HOME: () => $.env.get('HOME'), USERPROFILE: () => $.env.get('USERPROFILE'), HOMEDRIVE: () => $.env.get('HOMEDRIVE'), HOMEPATH: () => $.env.get('HOMEPATH') }), cwd: await $.session.cwd(), root: await $.session.root() }
+  const home = await homeFrom({ HOME: () => $.env.get('HOME'), USERPROFILE: () => $.env.get('USERPROFILE'), HOMEDRIVE: () => $.env.get('HOMEDRIVE'), HOMEPATH: () => $.env.get('HOMEPATH') })
+  const cwd = await $.session.cwd()
+  const root = await $.session.root()
+  return { home, cwd, root }
 }
 
 // The note goes to Claude as a message of the person in this session
@@ -167,7 +170,8 @@ function tellClaude($: EngineInterface, note: string): boolean {
     void (async () => {
       let filled
       try {
-        filled = await $.prompt.fill({ text: note, mode: 'append' })
+        const result = await $.prompt.fill({ text: note, mode: 'append' })
+        filled = result
       } catch {
         failed()
         return
@@ -178,13 +182,24 @@ function tellClaude($: EngineInterface, note: string): boolean {
   return true
 }
 
+// The two closures the handlers hand on, made here so that $ is passed alone
+function envLaterOf($: EngineInterface): () => Promise<Env> {
+  return () => envOf($)
+}
+
+function tellerOf($: EngineInterface): (note: string) => boolean {
+  return note => tellClaude($, note)
+}
+
 export function registerPhoneDo(on: On): void {
   on('turn.complete', { turnId: /(?<phonedo>)/ }, async ($, e, next) => {
     const r = await next(e)
     if (e.agentId !== undefined || e.reason !== 'answer' || e.answer.trim() === '') return r
     // Nothing here may throw or change the turn's own result: a failure only means no list this time.
     try {
-      await noteAnswerBlocks(io($), () => envOf($), e.answer)
+      const i = io($)
+      const envLater = envLaterOf($)
+      await noteAnswerBlocks(i, envLater, e.answer)
     } catch {
     }
     return r
@@ -193,6 +208,9 @@ export function registerPhoneDo(on: On): void {
   on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
     const rest0 = subArgs(e.args, 'run', 'do')
     if (rest0 === undefined) return next(e)
-    return { text: await doText(io($), await envOf($), rest0, note => tellClaude($, note), byPerson(e.origin)) }
+    const i = io($)
+    const env = await envOf($)
+    const tell = tellerOf($)
+    return { text: await doText(i, env, rest0, tell, byPerson(e.origin)) }
   })
 }

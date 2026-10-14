@@ -432,10 +432,11 @@ export function registerCrew3(on: On): void {
         void rememberFolders($).catch(() => undefined)
         void worktreeToast($)
       })
-      armOnce('crew3', $.clock.every(TICK_MS, () => {
+      const timer = $.clock.every(TICK_MS, () => {
         slow()
         void awakeTick($)
-      }))
+      })
+      armOnce('crew3', timer)
     } catch {
       // the commands and the timer are optional: a failure shows less, never breaks the session
     }

@@ -148,7 +148,8 @@ async function endByTimer(i: Io): Promise<void> {
 
 function arm($: EngineInterface, ms: number): void {
   endTimer?.cancel()
-  endTimer = $.clock.after(Math.max(0, ms), () => void awayCheck(io($)).catch(() => undefined))
+  const timer = $.clock.after(Math.max(0, ms), () => void awayCheck(io($)).catch(() => undefined))
+  endTimer = timer
 }
 
 // Exported so that a test can run one check by hand (a test clock does not drive a timer made at the start of the session).
@@ -172,7 +173,8 @@ export async function awayCheck(i: Io): Promise<void> {
 export function registerAway(on: On): void {
   on('session.start', { cwd: /(?<away>)/ }, async ($, e, next) => {
     try {
-      armOnce('away', $.clock.every(CHECK_MS, () => void awayCheck(io($))))
+      const timer = $.clock.every(CHECK_MS, () => void awayCheck(io($)))
+      armOnce('away', timer)
       const run = parseRun(await io($).get(AWAY_RUN_KEY))
       const nowMs = await $.clock.now()
       if (run?.until !== undefined) arm($, run.until - nowMs)

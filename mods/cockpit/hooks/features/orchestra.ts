@@ -474,7 +474,7 @@ let timer: Timer | undefined
 const WATCH_MS = 10_000
 function watch($: EngineInterface): void {
   if (timer !== undefined) return
-  timer = $.clock.every(WATCH_MS, () => {
+  const every = $.clock.every(WATCH_MS, () => {
     void (async () => {
       const ops = opsOf($)
       const run = await beat(io($), ops, await ops.statuses())
@@ -484,6 +484,7 @@ function watch($: EngineInterface): void {
       }
     })()
   })
+  timer = every
 }
 
 type Steer =

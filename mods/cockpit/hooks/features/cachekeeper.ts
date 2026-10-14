@@ -113,7 +113,8 @@ async function check($: EngineInterface): Promise<void> {
 export function registerCacheKeeper(on: On): void {
   on('session.start', { cwd: /(?<cockpit>)/ }, async ($, e, next) => {
     try {
-      armOnce('cachekeeper', $.clock.every(CHECK_MS, () => void check($)))
+      const timer = $.clock.every(CHECK_MS, () => void check($))
+      armOnce('cachekeeper', timer)
     } catch {
       // the keeper is optional: a failure shows less, never breaks the session
     }

@@ -54,7 +54,8 @@ function tellClaude($: EngineInterface, note: string): boolean {
     void (async () => {
       let filled
       try {
-        filled = await $.prompt.fill({ text: note, mode: 'append' })
+        const result = await $.prompt.fill({ text: note, mode: 'append' })
+        filled = result
       } catch {
         failed()
         return
@@ -77,7 +78,10 @@ export function registerShip(on: On): void {
   on('command.run', { command: 'vaken-ship' }, async ($, e, next) => {
     if (isFolded(e.command, e.args)) return next(e)
     const i = io($)
-    const env = { home: await homeFrom({ HOME: () => $.env.get('HOME'), USERPROFILE: () => $.env.get('USERPROFILE'), HOMEDRIVE: () => $.env.get('HOMEDRIVE'), HOMEPATH: () => $.env.get('HOMEPATH') }), cwd: await $.session.cwd(), root: await $.session.root() }
+    const home = await homeFrom({ HOME: () => $.env.get('HOME'), USERPROFILE: () => $.env.get('USERPROFILE'), HOMEDRIVE: () => $.env.get('HOMEDRIVE'), HOMEPATH: () => $.env.get('HOMEPATH') })
+    const cwd = await $.session.cwd()
+    const root = await $.session.root()
+    const env = { home, cwd, root }
     const said = await shipStepText(i, env, e.args, { tell: note => tellClaude($, note), shipLine: async () => (await shipNow(i)).split('\n')[0] ?? '', byPerson: byPerson(e.origin) })
     return { text: said ?? (await shipNow(i)) }
   })

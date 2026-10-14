@@ -99,7 +99,8 @@ export function registerProof(on: On): void {
         const path = String(input.file_path ?? input.notebook_path ?? input.path ?? tool)
         let root: string | undefined
         try {
-          root = await $.session.root()
+          const rootNow = await $.session.root()
+          root = rootNow
         } catch {
           root = undefined
         }

@@ -9,6 +9,7 @@ sh scripts/check-names.sh || { echo "check-cockpit: names FAILED"; exit 1; }
 sh scripts/check-commands.sh || { echo "check-cockpit: duplicate commands FAILED"; exit 1; }
 sh scripts/check-tokens.sh || { echo "check-cockpit: guard FAILED"; exit 1; }
 bash scripts/check-public.sh || { echo "check-cockpit: public scan FAILED"; exit 1; }
+node scripts/check-plain-capability.mjs || { echo "check-cockpit: plain capability use FAILED"; exit 1; }
 sh scripts/check-comments.sh >"$T/cockpit-comments.txt" 2>&1 || { cat "$T/cockpit-comments.txt"; echo "check-cockpit: comments FAILED"; exit 1; }
 sh scripts/check-strings.sh --strict >"$T/cockpit-strings.txt" 2>&1 || { cat "$T/cockpit-strings.txt"; echo "check-cockpit: strings FAILED"; exit 1; }
 echo "check-cockpit: all clean ($(grep -c '^(pass)' "$T/cockpit-test.txt") tests)"
