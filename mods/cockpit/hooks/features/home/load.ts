@@ -259,7 +259,7 @@ let newsMem = { safetyHidden: false, rest: 0 }
 let goodLaptop: Laptop | undefined
 async function inboxOf(i: Io, raw: View, values: Record<string, string>, now: number, sid: string, ledger: Entry[], proof: ReturnType<typeof readState>): Promise<{ items: InboxItem[]; rows: Row[]; halted: boolean }> {
   const halted = parseHalt(await i.get(haltKey(sid))) !== undefined
-  haltMem.on = halted
+  haltMem.held = halted
   const rows = [raw.here, ...raw.needs, ...raw.working, ...raw.waiting, ...raw.idle].filter((r): r is Row => r !== undefined)
   return { items: values['inbox.mode'] === 'off' ? [] : await inboxForPane(i, { now, sid, rows, ledger }, `${proof.debt}|${halted}`), rows, halted }
 }
@@ -288,9 +288,9 @@ async function bandView(i: Io): Promise<{ view: View; detail: Detail }> {
   const sid = await i.sessionId()
   if (!haltLooked) {
     haltLooked = true
-    if (parseHalt(await i.get(haltKey(sid))) !== undefined) haltMem.on = true
+    if (parseHalt(await i.get(haltKey(sid))) !== undefined) haltMem.held = true
   }
-  const halted = haltMem.on
+  const halted = haltMem.held
   if (heldMem > 0 || halted) {
     const { items } = await inboxOf(i, raw, values, now, sid, await readLog(i, LEDGER_KEY), readState(await readNote(i, stateKey(sid))))
     heldMem = heldNeedsCount(items) + (halted && newsMem.safetyHidden ? 1 : 0) + newsMem.rest

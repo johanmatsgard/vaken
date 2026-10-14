@@ -264,7 +264,7 @@ export function registerInbox(on: On): void {
     if (ask.kind === 'stop') {
       // Cancelling the running answer is the same as pressing Escape.
       await i.set(haltKey(sid), { at: now })
-      haltMem.on = true
+      haltMem.held = true
       let stopped: boolean | undefined
       if (runningTurn !== undefined) {
         try {

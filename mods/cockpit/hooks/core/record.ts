@@ -10,15 +10,6 @@ import { alivePidsArgv, parseAlivePids, platformOfIo } from './procs'
 type State = 'working' | 'waiting' | 'idle'
 // `permission` counts as 'needs you' only after PERMISSION_WAIT_MS.
 type Ask = { kind: 'question' | 'permission'; tool: string; since: number }
-// An auto-mode classifier can decide the tool, not a person, so the mark would stay set while the call runs. Events carry no permission mode, so a verdict naming the classifier or auto mode sets no mark.
-export const decidedByClassifier = (verdict: unknown): boolean => {
-  try {
-    return /classifier|auto[ -]mode/i.test(JSON.stringify(verdict) ?? '')
-  } catch {
-    return false
-  }
-}
-
 export type SessionRecord = {
   sessionId: string
   cwd: string

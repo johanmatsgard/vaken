@@ -1,5 +1,5 @@
 // Vaken's drawn parts
-import type { BoxProps, ButtonProps, ClientProps, ElementConstructor, InputProps, RenderChildren, RenderSurface, SvgProps, TextProps } from 'claude-code'
+import type { BoxProps, ButtonProps, ElementConstructor, Elements, InputProps, RenderChildren, RenderSurface, SvgProps, TextProps } from 'claude-code'
 
 import { t, tr, trMore } from '../core/lang'
 import type { GlanceDot } from '../core/headline'
@@ -188,7 +188,8 @@ export type El = {
   Button: ElementConstructor<ButtonProps>
   Svg?: ElementConstructor<SvgProps>
   Input?: ElementConstructor<InputProps>
-  Client: ElementConstructor<ClientProps>  // the host fills it on every surface; `drag` says whether this surface may draw it
+  // The host's own element table, kept whole: the arrange board and the first-click press draw their Client from it in place (`<el.host.Client module=...>`), only where `drag` says this surface may
+  host: Elements['desktop']
   // Whether this surface draws a Client (a pointer): tested here, never by looking at Client
   drag: boolean
 }
@@ -201,8 +202,8 @@ export const hasInput = (surface: RenderSurface): boolean => surface !== 'mobile
 export const canDrag = (surface: RenderSurface): boolean => surface === 'desktop'
 
 // The elements a draw takes, kept to what its surface really draws
-export function elementsFor(el: Omit<El, 'drag' | 'Client'> & { Client?: El['Client'] }, surface: RenderSurface): El {
-  return { Box: el.Box, Text: el.Text, Button: el.Button, Svg: hasSvg(surface) ? el.Svg : undefined, Input: hasInput(surface) ? el.Input : undefined, drag: canDrag(surface), Client: el.Client as El['Client'] }
+export function elementsFor(el: Omit<El, 'drag' | 'host'>, surface: RenderSurface): El {
+  return { Box: el.Box, Text: el.Text, Button: el.Button, Svg: hasSvg(surface) ? el.Svg : undefined, Input: hasInput(surface) ? el.Input : undefined, drag: canDrag(surface), host: el as El['host'] }
 }
 // What a drawing part takes as content or returns: an element, a string, nothing
 export type Drawn = RenderChildren
@@ -320,7 +321,7 @@ export function FirstClick(el: El, key: string, onPress: () => void, look: 'row'
   const log = pressLogOn()
   return (
     <Box key={`${id}-box`} position="absolute" top={0} left={0} right={0} {...(cells === undefined ? { bottom: 0 } : { height: cells })}>
-      <el.Client key={id} module="../press.tsx" width="100%" height={cells ?? '100%'} props={{ look, ...(washPt === undefined ? {} : { h: washPt }), ...(cells === undefined ? {} : { r: cells }), ...(group === undefined ? {} : { scope: group }), ...(log ? { log: true } : {}) }} />
+      <el.host.Client key={id} module="../press.tsx" width="100%" height={cells ?? '100%'} props={{ look, ...(washPt === undefined ? {} : { h: washPt }), ...(cells === undefined ? {} : { r: cells }), ...(group === undefined ? {} : { scope: group }), ...(log ? { log: true } : {}) }} />
     </Box>
   )
 }

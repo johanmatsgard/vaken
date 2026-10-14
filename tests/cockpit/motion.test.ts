@@ -74,7 +74,7 @@ test('a busy bar draws the sweeping band over its fill, a still bar draws none',
   expect(barSources(false).join('')).not.toContain('busy-band')
 })
 
-const fakeClient = (): El => ({ Box: make('Box'), Text: make('Text'), Button: make('Button'), Svg: make('Svg'), Client: make('Client'), drag: true }) as unknown as El
+const fakeClient = (): El => ({ Box: make('Box'), Text: make('Text'), Button: make('Button'), Svg: make('Svg'), host: { Client: make('Client') }, drag: true }) as unknown as El
 const flipsFor = (press: (nodes: Node[]) => void): number => {
   forgetChanged()
   let n = 0

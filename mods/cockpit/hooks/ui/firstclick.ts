@@ -44,7 +44,7 @@ export function hoverScope(key: string): string {
 }
 
 const faultedAt = new Map<string, number>()
-// Called from the ui.fault hook with the failed Client's key
+// Called with the failed Client's key (no hook calls it while the ui.fault hook is out)
 export function noteFault(id: string, now: number): void {
   if (faultedAt.size >= KEYS_KEPT) faultedAt.clear()
   faultedAt.set(id, now)

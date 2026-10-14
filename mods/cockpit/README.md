@@ -69,7 +69,7 @@ Where vaken changes an event before it passes it on, it does so on purpose. This
 
 **Permission.**
 
-- The `tool.check` hook (`home.tsx`) returns Claude Code's own answer unchanged. If it is "ask", vaken only records "needs you" for the pane. It never answers allow.
+- A `classic.Notification` hook (`home.tsx`) notes when Claude Code asks you for permission, so the pane can show "needs you". It only records that and passes the event on; it never answers.
 - The guard (`guard.ts`, `tool.call`) answers only `deny`, or passes the step on. With a block set to Stop it denies a risky step with a reason. With Warn (default) it adds a note. It asks Claude Code what it would decide (`$.tool.check`) and reads settings (`$.settings.read`), and changes neither.
 - "Allow once" approves nothing itself. Pressing it, or typing `/vaken-guard allow once`, stores a one-time permit for that exact step (tool name and a hash of its input). The guard does not hold that step when Claude tries it again, and the permit is used up.
 - `/vaken-pause` denies every step that changes things in this session until you lift it.
@@ -98,8 +98,6 @@ Where vaken changes an event before it passes it on, it does so on purpose. This
 **"Uses a credential from the user's machine."** vaken reads no credential, token or key file. It reads only the environment names HOME, USERPROFILE, HOMEDRIVE, HOMEPATH, OS, LANG, LANGUAGE and LC_ALL. Words such as "secret" and "token" in the code are patterns the guard uses to detect a secret in a step of Claude. `gh` uses its own sign-in.
 
 **`lines.tsx`.** A lazy getter builds a card view only when the pane reads it.
-
-**`ui.fault`.** A Claude Code host event, added in version 2.1.295 (type `UiFaultInput`). vaken uses it to show a calm message when the client code of a pane button fails.
 
 ## More
 

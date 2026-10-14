@@ -19,7 +19,7 @@ import { runnerOpsOf } from './orchestra'
 import type { RunnerOps } from './orchestra'
 import { PROJECT_OF_KEY } from '../core/projects'
 import { cacheFromUsage } from '../core/cachefacts'
-import { alivePids, decidedByClassifier, dropRecord, label, listRecords } from '../core/record'
+import { alivePids, dropRecord, label, listRecords } from '../core/record'
 import { CARD_IDS, homeText, titleOf } from './home/logic'
 import type { CardId } from './home/logic'
 import { isBucket, readOrders, writeOrder } from './home/layouts'
@@ -27,7 +27,7 @@ import { readSetting, readSettings, startWindowsLanguage, systemLanguage } from 
 import { PHONE_MODE_KEY, modeOf, phoneCockpitLine } from '../core/phonecmds'
 import { BORDER_X_PT, CARD_MIN_INNER_PT, COL_PT } from '../ui/tokens'
 import { elementsFor } from '../ui/kit'
-import { noteFault, runPress } from '../ui/firstclick'
+import { runPress } from '../ui/firstclick'
 import { compactAnyway, compactCheckLines } from './home/actions'
 import { tEn } from '../i18n/t'
 import { actsOf, flip } from './home/acts'
@@ -339,17 +339,19 @@ export function registerHome(on: On): void {
     return result
   }).catch(($, e, next) => next(e))
 
-  // The engine says it will ask about a real tool call: from then on the call may wait for your OK.
-  on('tool.check', { tool: /(?<cockpit>)/ }, async ($, e, next) => {
-    const verdict = await next(e)
+  // Claude Code tells the person it needs a permission: from then on the call may wait for your OK. It only notes it, never answers.
+  on('classic.Notification', async ($, e, next) => {
     try {
-      if (e.tool_use_id !== undefined && e.agentId === undefined && e.tool !== 'AskUserQuestion' && verdict.decision === 'ask' && !decidedByClassifier(verdict)) {
-        const askedAt = await $.clock.now()
-        await collect(() => io($), { ask: { kind: 'permission', tool: label(e.tool, 40), since: askedAt } })
+      if (e.agent_id === undefined && /permission/i.test(e.notification_type)) {
+        const tool = /\buse (.+?)\s*$/i.exec(e.message)?.[1] ?? ''
+        if (tool !== 'AskUserQuestion') {
+          const askedAt = await $.clock.now()
+          await collect(() => io($), { ask: { kind: 'permission', tool: label(tool, 40), since: askedAt } })
+        }
       }
     } catch {
     }
-    return verdict
+    return next(e)
   }).catch(($, e, next) => next(e))
 
   // The main loop's model and effort
@@ -482,12 +484,6 @@ export function registerHome(on: On): void {
     }
     return next(e)
   })
-
-  // A press Client that failed (a resize can do it) is left out of the next drawings, in the pane and the band alike
-  on('ui.fault', { element: /^fc-/ }, ($, e, next) => {
-    noteFault(e.element, Date.now())
-    return next(e)
-  }).catch(($, e, next) => next(e))
 
   on('ui.message', { element: /^arrange-board$/ }, async ($, e, next) => {
     try {

@@ -489,7 +489,7 @@ function watch($: EngineInterface): void {
 type Steer =
   | { kind: 'start'; anyway?: boolean } | { kind: 'again' } | { kind: 'pause' } | { kind: 'go' } | { kind: 'stopAll' } | { kind: 'clear' } | { kind: 'plan' }
   | { kind: 'add'; text: string } | { kind: 'remove'; n: number } | { kind: 'edit'; n: number; edit: TaskEdit } | { kind: 'limit'; which: 'min' | 'helper' | 'run'; value: number }
-  | { kind: 'name'; text: string } | { kind: 'template'; action: 'save' | 'apply' | 'delete'; name: string } | { kind: 'reviewer'; on: boolean } | { kind: 'afterLimit'; go: boolean }
+  | { kind: 'name'; text: string } | { kind: 'template'; action: 'save' | 'apply' | 'delete'; name: string } | { kind: 'reviewer'; isOn: boolean } | { kind: 'afterLimit'; go: boolean }
   | { kind: 'retry'; n: number } | { kind: 'stop'; n: number } | { kind: 'keep'; n: number } | { kind: 'throw'; n: number; yes?: boolean }
   | { kind: 'say'; n: number; text: string } | { kind: 'atOnce'; n: number } | { kind: 'check'; command: string }
 
@@ -641,8 +641,8 @@ export async function steer(i: Io, ops: RunnerOps, s: Steer): Promise<string> {
       return s.which === 'min' ? `An agent stops after ${next.choices.helperMin} min.` : s.which === 'helper' ? `An agent stops past ${money(next.choices.helperUsd)}.` : `The run pauses past ${money(next.choices.runUsd)}.`
     }
     case 'reviewer':
-      await saveRun(i, editChoices(run, { reviewer: s.on }))
-      return s.on ? 'A reviewer reads each finished task and writes 3 lines.' : 'No reviewer.' // en-only: plain answer of a slash command (text twin)
+      await saveRun(i, editChoices(run, { reviewer: s.isOn }))
+      return s.isOn ? 'A reviewer reads each finished task and writes 3 lines.' : 'No reviewer.' // en-only: plain answer of a slash command (text twin)
     case 'name':
       await saveRun(i, { ...run, name: s.text.trim().slice(0, 40) || run.name })
       return `The run is called "${s.text.trim().slice(0, 40) || run.name}".`
@@ -676,7 +676,7 @@ export function parseSteer(args: string): Steer | 'new' | 'load' | 'report' | 'h
   if (a === 'plan') return { kind: 'plan' }
   if (a === 'reviewer') {
     const v = (w[1] ?? '').toLowerCase()
-    return v === 'on' || v === 'off' ? { kind: 'reviewer', on: v === 'on' } : { bad: 'Use: /vaken-tasks reviewer on|off' } // en-only: plain answer of a slash command (text twin)
+    return v === 'on' || v === 'off' ? { kind: 'reviewer', isOn: v === 'on' } : { bad: 'Use: /vaken-tasks reviewer on|off' } // en-only: plain answer of a slash command (text twin)
   }
   if (a === 'afterlimit') {
     const v = (w[1] ?? '').toLowerCase()

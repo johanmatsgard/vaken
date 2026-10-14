@@ -10,7 +10,7 @@ import type { DotKind, El } from '../hooks/ui/kit'
 
 type Node = Record<string, unknown>
 const make = (name: string) => Object.assign((p: Record<string, unknown>) => p, { displayName: name })
-const el = (): El => ({ Box: make('Box'), Text: make('Text'), Button: make('Button'), Svg: make('Svg'), Client: make('Client'), drag: true }) as unknown as El
+const el = (): El => ({ Box: make('Box'), Text: make('Text'), Button: make('Button'), Svg: make('Svg'), host: { Client: make('Client') }, drag: true }) as unknown as El
 
 function walk(n: unknown, out: Node[] = []): Node[] {
   if (Array.isArray(n)) {

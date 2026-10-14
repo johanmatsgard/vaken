@@ -200,30 +200,23 @@ test('a question is marked while it waits for you and cleared when you answer', 
   expect((mem.get('cockpit:session:test-session') as { ask?: unknown }).ask).toBeUndefined()
 })
 
-test('a tool the engine will ask about is marked as a permission, and a plain tool is not', async ($, on) => {
+test('a permission notice marks the session as asking; other notices, a subagent and a question do not', async ($, on) => {
   mock.clock(on, { now: NOW })
   const mem = memStore(on)
   mock.env(on, { HOME: '/home/test' })
   engine(on)
-  on('tool.check', (_$, e) => ({ decision: e.tool === 'Bash' ? 'ask' : 'allow' }) as never)
+  on('classic.Notification', () => ({}) as never)
   await $.session.start({ cwd: '/work/app', surface: 'desktop', isInteractive: true })
-  await $.tool.check({ tool: 'Read', input: {}, tool_use_id: 't1' } as never)
-  expect((mem.get('cockpit:session:test-session') as { ask?: unknown }).ask).toBeUndefined()
-  await $.tool.check({ tool: 'Bash', input: {}, tool_use_id: 't2' } as never)
-  expect((mem.get('cockpit:session:test-session') as { ask?: { kind: string; tool: string } }).ask).toMatchObject({ kind: 'permission', tool: 'Bash' })
-})
-
-test('L5: a verdict that names the auto-mode classifier sets no "OK needed" mark; a plain ask still does', async ($, on) => {
-  mock.clock(on, { now: NOW })
-  const mem = memStore(on)
-  mock.env(on, { HOME: '/home/test' })
-  engine(on)
-  on('tool.check', (_$, e) => ({ decision: 'ask', ...(e.tool_use_id === 'auto' ? { reason: 'The auto mode classifier will review this call.' } : {}) }) as never)
-  await $.session.start({ cwd: '/work/app', surface: 'desktop', isInteractive: true })
-  await $.tool.check({ tool: 'Bash', input: {}, tool_use_id: 'auto' } as never)
-  expect((mem.get('cockpit:session:test-session') as { ask?: unknown }).ask).toBeUndefined()
-  await $.tool.check({ tool: 'Bash', input: {}, tool_use_id: 'manual' } as never)
-  expect((mem.get('cockpit:session:test-session') as { ask?: { kind: string } }).ask).toMatchObject({ kind: 'permission' })
+  const askOf = () => (mem.get('cockpit:session:test-session') as { ask?: { kind: string; tool: string } }).ask
+  const note = (over: object) => $.classic.Notification({ session_id: 'test-session', transcript_path: '', cwd: '/work/app', hook_event_name: 'Notification', message: 'Claude needs your permission to use Bash', notification_type: 'permission_prompt', ...over } as never)
+  await note({ notification_type: 'idle_prompt', message: 'Claude is waiting for your input' })
+  expect(askOf()).toBeUndefined()
+  await note({ agent_id: 'sub1' })
+  expect(askOf()).toBeUndefined()
+  await note({ message: 'Claude needs your permission to use AskUserQuestion' })
+  expect(askOf()).toBeUndefined()
+  await note({})
+  expect(askOf()).toMatchObject({ kind: 'permission', tool: 'Bash' })
 })
 
 test('the pane has a toggle between simple and explained wording that is kept for every session', SLOW, async ($, on) => {

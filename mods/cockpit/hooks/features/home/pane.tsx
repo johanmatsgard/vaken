@@ -194,7 +194,7 @@ export function HomePane(el: El, view: View, own: Prefs, innerPt: number, onFlip
   const boardCells = Math.max(ARRANGE_MIN_CELLS, Math.floor(bodyColumns))
   const board =
     prefs.arrange && fixed === undefined && drag && visible.length > 0 ? (
-      <el.Client key="arrange-board" module="../../arrange.tsx" width="100%" height={boardRows(slots, boardHeights, ncol, boardCells, ARRANGE_GAP)} props={{ order: slots, bucket, tiles: [...(slots[0] === NEEDS_SLOT ? [{ id: NEEDS_SLOT, title: tr('Needs you'), zone: tr('Fixed'), figure: needsN === 0 ? tr('Nothing needs you.') : String(needsN) }] : []), ...tiles.filter(t => visible.includes(t.id as CardId)).map(t => ({ ...t, zone: tr(ZONE_WORD[ZONE_OF[t.id as CardId]]) }))], heights: boardHeights, columns: ncol, rows: boardRows(slots, boardHeights, ncol, boardCells, ARRANGE_GAP) }} />
+      <el.host.Client key="arrange-board" module="../../arrange.tsx" width="100%" height={boardRows(slots, boardHeights, ncol, boardCells, ARRANGE_GAP)} props={{ order: slots, bucket, tiles: [...(slots[0] === NEEDS_SLOT ? [{ id: NEEDS_SLOT, title: tr('Needs you'), zone: tr('Fixed'), figure: needsN === 0 ? tr('Nothing needs you.') : String(needsN) }] : []), ...tiles.filter(t => visible.includes(t.id as CardId)).map(t => ({ ...t, zone: tr(ZONE_WORD[ZONE_OF[t.id as CardId]]) }))], heights: boardHeights, columns: ncol, rows: boardRows(slots, boardHeights, ncol, boardCells, ARRANGE_GAP) }} />
     ) : undefined
   const moreCards = board !== undefined ? 0 : fixed === undefined ? Math.max(1, prefs.autoHidden?.length ?? 0) : 0
   const acts: { key: string; label: string; onPress: () => void }[] = [

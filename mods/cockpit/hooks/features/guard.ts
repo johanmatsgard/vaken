@@ -101,10 +101,10 @@ export async function dismissHeld(i: Io, sid: string, how: 'typed' | 'button'): 
 }
 
 // Takes an Io, never `$`.
-export async function setHalt(i: Io, sid: string, on: boolean, how: 'typed' | 'button'): Promise<boolean> {
-  if ((await isHalted(i, sid)) === on) return false
-  haltMem.on = on
-  if (on) {
+export async function setHalt(i: Io, sid: string, stopped: boolean, how: 'typed' | 'button'): Promise<boolean> {
+  if ((await isHalted(i, sid)) === stopped) return false
+  haltMem.held = stopped
+  if (stopped) {
     await i.set(haltKey(sid), { at: await i.now() })
     await ledger(i, sid, HALT_WHAT, 'Commands, edits, tools, agents and web fetches are stopped in this session.', how)
   } else {

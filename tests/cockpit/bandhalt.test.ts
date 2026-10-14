@@ -30,16 +30,16 @@ function fakeIo(mem: Map<string, unknown>, gets: string[]): Io {
 }
 
 test('a pause kept in the store from before a restart is seen by the band: its first read looks once, later reads do not read the pause again', async () => {
-  haltMem.on = false
+  haltMem.held = false
   const mem = new Map<string, unknown>([['cockpit:firstrun', 'done'], ['cockpit:halt:me', { at: NOW - 60_000 }]])
   const gets: string[] = []
   await bandSignatureForCheck(() => fakeIo(mem, gets))
-  expect(haltMem.on).toBe(true)
+  expect(haltMem.held).toBe(true)
   expect(gets.filter(k => k === 'cockpit:halt:me').length).toBeGreaterThanOrEqual(1)
   mem.delete('cockpit:halt:me')
-  haltMem.on = false
+  haltMem.held = false
   gets.length = 0
   await bandSignatureForCheck(() => fakeIo(mem, gets))
-  expect(haltMem.on).toBe(false)
+  expect(haltMem.held).toBe(false)
   expect(gets.filter(k => k === 'cockpit:halt:me')).toEqual([])
 })

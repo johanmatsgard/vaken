@@ -58,7 +58,7 @@ export const GUARD_WHATS: readonly string[] = [...BLOCKS.map(b => HELD_WHAT[b]),
 
 
 export const haltKey = (sid: string): string => `cockpit:halt:${sid}`
-export const haltMem: { on: boolean } = { on: false }
+export const haltMem: { held: boolean } = { held: false }
 export const allowKey = (sid: string): string => `cockpit:guard:allow:${sid}`
 export const scopeKey = (sid: string): string => `cockpit:guard:scope:${sid}`
 export const pkgKey = (sid: string): string => `cockpit:guard:pkg:${sid}`

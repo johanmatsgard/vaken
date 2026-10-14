@@ -2,7 +2,6 @@
 import { expect } from 'claude-code/testing'
 import { test } from './slow'
 
-import { registerHome } from '../hooks/features/home'
 import { HomeBand } from '../hooks/features/home/band'
 import type { View } from '../hooks/features/home/logic'
 import { FirstClick } from '../hooks/ui/kit'
@@ -11,7 +10,7 @@ import { FAULT_REST_MS, faulted, noteFault } from '../hooks/ui/firstclick'
 
 type N = { type: string; props: Record<string, unknown> }
 const mk = (type: string) => (p: Record<string, unknown>): N => ({ type, props: p ?? {} })
-const el = { Box: mk('Box'), Text: mk('Text'), Button: mk('Button'), Svg: mk('Svg'), Client: mk('Client'), drag: true } as unknown as El
+const el = { Box: mk('Box'), Text: mk('Text'), Button: mk('Button'), Svg: mk('Svg'), host: { Client: mk('Client') }, drag: true } as unknown as El
 function walk(n: unknown, out: N[] = []): N[] {
   if (Array.isArray(n)) for (const c of n) walk(c, out)
   else if (n !== null && typeof n === 'object' && 'type' in n) {
@@ -47,21 +46,4 @@ test('a faulted press comes back once the rest has passed', () => {
   expect(faulted('fc-rest-test', 1000 + FAULT_REST_MS - 1)).toBe(true)
   expect(faulted('fc-rest-test', 1000 + FAULT_REST_MS)).toBe(false)
   expect(faulted('fc-never', 1000)).toBe(false)
-})
-
-test('the home hooks hear a press Client fault and leave that Client out', async () => {
-  type Hook = (s: unknown, e: unknown, next: (e: unknown) => unknown) => unknown
-  const seen: { event: string; m: unknown; fn: Hook }[] = []
-  const chain = { catch: () => chain }
-  const on = (event: string, m: unknown, fn?: Hook) => {
-    seen.push({ event, m, fn: (fn ?? m) as Hook })
-    return chain
-  }
-  registerHome(on as never)
-  const hook = seen.find(s => s.event === 'ui.fault')
-  expect(hook, 'a ui.fault hook').toBeDefined()
-  const re = (hook?.m as { element?: RegExp }).element
-  expect(re?.test('fc-band-needs')).toBe(true)
-  await hook?.fn({}, { element: 'fc-band-details' }, e => e)
-  expect(faulted('fc-band-details', Date.now())).toBe(true)
 })
