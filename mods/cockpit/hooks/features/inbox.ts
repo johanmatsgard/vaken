@@ -162,8 +162,10 @@ export async function inboxCheck(i: Io, suggest: Suggest): Promise<void> {
 }
 
 type Suggest = (text: string) => Promise<boolean>
-function suggestOf($: EngineInterface): Suggest {
-  return async text => {
+
+function inboxTick($: EngineInterface): Promise<void> {
+  const i = io($)
+  const suggest: Suggest = async text => {
     try {
       const shown = await $.prompt.suggest({ text })
       return shown.isShown
@@ -171,11 +173,6 @@ function suggestOf($: EngineInterface): Suggest {
       return false
     }
   }
-}
-
-function inboxTick($: EngineInterface): Promise<void> {
-  const i = io($)
-  const suggest = suggestOf($)
   return inboxCheck(i, suggest)
 }
 
@@ -211,7 +208,14 @@ export function registerInbox(on: On): void {
       if (e.agentId === undefined) {
         runningTurn = undefined
         const offerIo = io($)
-        const offerSuggest = suggestOf($)
+        const offerSuggest: Suggest = async text => {
+    try {
+      const shown = await $.prompt.suggest({ text })
+      return shown.isShown
+    } catch {
+      return false
+    }
+  }
         $.clock.after(OFFER_DELAY_MS, () => void offerQueued(offerIo, offerSuggest).catch(() => undefined))
       }
     } catch {
@@ -296,7 +300,14 @@ export function registerInbox(on: On): void {
       i.invalidate()
       if (toSid === sid) {
         const offerIo = io($)
-        const offerSuggest = suggestOf($)
+        const offerSuggest: Suggest = async text => {
+    try {
+      const shown = await $.prompt.suggest({ text })
+      return shown.isShown
+    } catch {
+      return false
+    }
+  }
         $.clock.after(OFFER_DELAY_MS, () => void offerQueued(offerIo, offerSuggest).catch(() => undefined))
       }
       return { text: queuedWords(target === undefined ? 'this session' : `"${target.name}"`, cleanQueued(ask.text)) }
