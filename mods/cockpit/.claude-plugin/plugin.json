@@ -1,0 +1,12 @@
+{
+  "name": "vaken",
+  "version": "1.118.0",
+  "description": "A quiet side pane for Claude Code Desktop: what needs you, plan limits, context, agents and risky steps.",
+  "author": {
+    "name": "Johan Matsgard"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/johanmatsgard/vaken",
+  "repository": "https://github.com/johanmatsgard/vaken",
+  "keywords": ["side pane", "usage", "plan limits", "context", "agents", "sessions", "safety", "notes"]
+}

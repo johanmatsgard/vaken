@@ -1,0 +1,8 @@
+#!/bin/sh
+# Writes the page of every text to FILE (default: a page in docs/), from the one text table. The page is generated on demand by this script and is not kept in the repo: never edit it by hand.
+# scripts/check-strings.sh fails when the page is out of date. Usage: scripts/strings-md.sh [FILE]. Needs Node 18 or newer.
+STRINGS_CALLER_DIR="$(pwd)"
+export STRINGS_CALLER_DIR
+cd "$(dirname "$0")/.." || exit 2
+command -v node >/dev/null 2>&1 || { echo "strings-md: needs node (Node 18 or newer)" >&2; exit 2; }
+exec node scripts/strings.mjs md "$@"

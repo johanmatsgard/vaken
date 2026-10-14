@@ -1,0 +1,73 @@
+# The type check reads the engine type file out of the installed Claude Code CLI (the file is not in the public repo).
+# The full suite has passed on Windows and macOS, so a failure on either fails the run.
+name: ci
+permissions:
+  contents: read
+on:
+  pull_request:
+  push:
+    branches: [main]
+# A newer push to the same branch cancels the older run.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash   # Git Bash on the Windows runner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Line endings: the index must hold LF only (.gitattributes keeps it so). Binary files never match.
+      - name: No CRLF in the index
+        run: |
+          BAD=$(git ls-files --eol | awk '$1 == "i/crlf" || $1 == "i/mixed" {print $NF}')
+          if [ -n "$BAD" ]; then echo "CRLF or mixed line endings in the index:"; echo "$BAD"; exit 1; fi
+          echo "line endings: clean"
+
+      # The documented install: the npm package of the CLI (its postinstall fetches the native program).
+      # Whether `claude plugin ...` needs a login or an API key on a CI machine is not verified here.
+      # If it does, it needs a repository secret; this file never holds one.
+      - name: Install the Claude Code CLI and TypeScript
+        run: |
+          npm install -g @anthropic-ai/claude-code typescript
+          claude --version
+          tsc --version
+
+      - name: Public check
+        run: scripts/check-public.sh
+      - name: Token check
+        run: scripts/check-tokens.sh
+      - name: Command check
+        run: scripts/check-commands.sh
+      # The one text table (`mods/cockpit/hooks/i18n`): every row has every language; a name used in code is in the table. Visible texts not yet in it are only listed.
+      - name: Strings check
+        run: |
+          scripts/check-strings.sh --selftest
+          scripts/check-strings.sh --strict
+      - name: Names check
+        run: sh scripts/check-names.sh
+      - name: Comment check
+        run: |
+          sh scripts/check-comments.sh --selftest
+          sh scripts/check-comments.sh
+      # The engine type file is not in the public repo: typecheck.sh reads it out of the Claude Code CLI installed above.
+      # If it cannot (CI=true and no file), it prints "typecheck: skipped: no host type file" and the run goes on.
+      - name: Type check
+        run: |
+          export TSC="$(command -v tsc)"
+          scripts/typecheck.sh
+      # The plugin check may need bun or Node on Windows.
+      - name: Plugin validate
+        run: claude plugin validate mods/cockpit
+      - name: Plugin test
+        run: claude plugin test mods/cockpit

@@ -1,0 +1,14 @@
+{
+  "name": "vaken",
+  "description": "vaken: a quiet side pane for Claude Code Desktop.",
+  "owner": {
+    "name": "Johan Matsgard"
+  },
+  "plugins": [
+    {
+      "name": "vaken",
+      "source": "./mods/cockpit",
+      "description": "A quiet side pane for Claude Code Desktop: what needs you, plan limits, context, agents and risky steps."
+    }
+  ]
+}

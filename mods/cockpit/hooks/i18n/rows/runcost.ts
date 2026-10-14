@@ -1,0 +1,31 @@
+// Area "runcost": the words of core/runcostwords.ts
+import type { Rows } from '../types'
+
+export const ROWS: Rows = {
+  "runcost.1_helper": {"en":"1 agent","sv":"1 agent"},
+  "runcost.a_short_plan_before_the_work": {"en":"A short plan before the work.","sv":"En kort plan före arbetet."},
+  "runcost.add_a_task": {"en":"Add a task","sv":"Lägg till en uppgift"},
+  "runcost.add_a_task_first_then_press_start": {"en":"Add a task first, then press Start run.","sv":"Lägg först till en uppgift och tryck sedan Starta körningen."},
+  "runcost.done_when": {"en":"Done when","sv":"Klart när"},
+  "runcost.estimate_about_usd_at_list_price": {"en":"Estimate: about {usd} at list price ({what}). A guess, not what your plan charges.","sv":"Uppskattning: ungefär {usd} till listpris ({what}). En gissning, inte vad din plan tar betalt."},
+  "runcost.estimate_no_price_known_for_what": {"en":"Estimate: no price known for {what}.","sv":"Uppskattning: inget pris känt för {what}."},
+  "runcost.from_past_runs": {"en":"from past runs","sv":"från tidigare körningar"},
+  "runcost.goal": {"en":"Goal","sv":"Mål"},
+  "runcost.lint_is_clean": {"en":"Lint is clean","sv":"Lint är rent"},
+  "runcost.n_helpers": {"en":"{n} agents","sv":"{n} agenter"},
+  "runcost.n_without_a_price": {"en":"{n} without a price","sv":"{n} utan pris"},
+  "runcost.no_goal_yet_add_a_task_to": {"en":"No goal yet. Add a task to start a run.","sv":"Inget mål än. Lägg till en uppgift för att starta en körning."},
+  "runcost.nothing_started_press_start_anyway": {"en":"Nothing started. Press Start anyway to go on.","sv":"Inget startade. Tryck Starta ändå för att fortsätta."},
+  "runcost.nothing_started_type_cockpit_tasks": {"en":"Nothing started. Type /vaken-tasks start anyway to go on.","sv":"Inget startade. Skriv /vaken-tasks start anyway för att fortsätta."},
+  "runcost.one_helper_may_cost_more_than": {"en":"One agent may cost more than the agent cap of {usd}.","sv":"En agent kan kosta mer än agenttaket på {usd}."},
+  "runcost.set_a_goal_first_cockpit_goal": {"en":"Set a goal first: /vaken-tasks goal <one sentence>.","sv":"Sätt ett mål först: /vaken-tasks goal <en mening>."},
+  "runcost.start": {"en":"Start","sv":"Starta"},
+  "runcost.start_a_task": {"en":"Run one task","sv":"Kör en uppgift"},
+  "runcost.start_anyway": {"en":"Start anyway","sv":"Starta ändå"},
+  "runcost.tests_pass": {"en":"Tests pass","sv":"Testerna går igenom"},
+  "runcost.the_build_works": {"en":"The build works","sv":"Bygget fungerar"},
+  "runcost.the_plan_window_has_about_n": {"en":"The plan window has about {n} min left at this pace.","sv":"Planfönstret har ungefär {n} min kvar i den här takten."},
+  "runcost.the_weekly_window_is_n_used": {"en":"The weekly window is {n}% used.","sv":"Veckofönstret är {n} % använt."},
+  "runcost.the_weekly_window_is_n_used_2": {"en":"The weekly window is {n}% used now.","sv":"Veckofönstret är {n} % använt nu."},
+  "runcost.this_may_cost_more_than_the": {"en":"This may cost more than the run limit of {usd}.","sv":"Det kan kosta mer än körningens gräns på {usd}."},
+}

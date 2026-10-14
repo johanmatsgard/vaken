@@ -1,0 +1,17 @@
+// Fixed words of the Where was I card and their Swedish; a leaf file so core/lang.ts can read it without a cycle.
+export const BACK_TITLE = 'Where was I'
+export const BACK_BLURB = 'What waits for you'
+export const BACK_NOTE = 'Where you were, what is still open, what happened while away.'
+export const BACK_HEAD_WAS = 'Where you were'
+export const BACK_HEAD_OPEN = 'Left open'
+export const BACK_HEAD_AWAY = 'While you were away'
+export const BACK_NONE = 'Nothing waits'
+export const BACK_AFTER = 'Back after {t}'
+export const BACK_AGO = '{t} ago'
+export const BACK_ENDED = 'ended {time}'
+export const BACK_OPEN_ONE = '1 project has open ends'
+export const BACK_OPEN_MANY = '{n} projects have open ends'
+export const BACK_AWAY_SHORT = 'a digest from while you were away'
+export const BACK_CLEAR = 'Clear the open ends in all sessions'
+export const BACK_NO_GOAL = 'No goal set'
+

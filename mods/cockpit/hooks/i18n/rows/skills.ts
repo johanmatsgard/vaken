@@ -1,0 +1,30 @@
+// Area "skills": the words of core/skills.ts
+import type { Rows } from '../types'
+
+export const ROWS: Rows = {
+  "skills.1_skill_listed_k_tokens": {"en":"1 skill listed, {k} tokens","sv":"1 färdighet listad, {k} tokens"},
+  "skills.1_time": {"en":"1 time","sv":"1 gång"},
+  "skills.a_skill_is_a_ready_made": {"en":"A skill is a ready-made way of working that Claude can load, such as grilling or a code review. The count is how often one was used in the last 7 days.","sv":"En färdighet är ett färdigt arbetssätt som Claude kan ladda, till exempel grilling eller en kodgranskning. Antalet är hur ofta en användes de senaste 7 dagarna."},
+  "skills.all_used_this_week": {"en":"; all used this week","sv":"; alla använda den här veckan"},
+  "skills.and_n_more": {"en":"and {n} more","sv":"och {n} till"},
+  "skills.counted_for_1_day": {"en":"; counted for 1 day","sv":"; räknat i 1 dag"},
+  "skills.counted_for_n_days": {"en":"; counted for {n} days","sv":"; räknat i {n} dagar"},
+  "skills.every_skill_the_session_lists_takes": {"en":"Every skill the session lists takes a little room in every session, used or not. To make room, delete the folder of a skill you do not use, in .claude/skills.","sv":"Varje färdighet som sessionen listar tar lite plats i varje session, använd eller inte. För att få plats, ta bort mappen för en färdighet du inte använder, i .claude/skills."},
+  "skills.listed_for_claude_but_not_used": {"en":"Listed for Claude, but not used in the last 7 days.","sv":"Listad för Claude men inte använd de senaste 7 dagarna."},
+  "skills.n_not_used_this_week": {"en":"; {n} not used this week","sv":"; {n} inte använda den här veckan"},
+  "skills.n_of_m_not_used_this_week": {"en":"; {n} of {m} not used this week","sv":"; {n} av {m} inte använda den här veckan"},
+  "skills.n_of_the_first_m_not_used": {"en":"; {n} of the first {m} not used this week","sv":"; {n} av de första {m} inte använda den här veckan"},
+  "skills.n_skills_listed_k_tokens": {"en":"{n} skills listed, {k} tokens","sv":"{n} färdigheter listade, {k} tokens"},
+  "skills.n_skills_m_fit_the_list": {"en":"{n} skills, {m} fit the list, {k} tokens","sv":"{n} färdigheter, {m} ryms i listan, {k} tokens"},
+  "skills.n_times": {"en":"{n} times","sv":"{n} gånger"},
+  "skills.no_skill_used_yet_this_week": {"en":"No skill used yet this week.","sv":"Ingen färdighet använd än den här veckan."},
+  "skills.not_used_this_week": {"en":"Not used this week","sv":"Inte använda den här veckan"},
+  "skills.only_part_of_the_list_fits": {"en":"Only part of the list fits; Claude does not see the rest.","sv":"Bara en del av listan ryms; Claude ser inte resten."},
+  "skills.press_to_start_it": {"en":"Press to start it.","sv":"Tryck för att starta den."},
+  "skills.skill_list": {"en":"Skill list","sv":"Färdighetslistan"},
+  "skills.skills": {"en":"Skills","sv":"Färdigheter"},
+  "skills.top": {"en":"Top:","sv":"Mest:"},
+  "skills.used_1_time_in_the_last": {"en":"Used 1 time in the last 7 days.","sv":"Använd 1 gång de senaste 7 dagarna."},
+  "skills.used_n_times_in_the_last": {"en":"Used {n} times in the last 7 days.","sv":"Använd {n} gånger de senaste 7 dagarna."},
+  "skills.used_this_week": {"en":"Used this week","sv":"Använda den här veckan"},
+}

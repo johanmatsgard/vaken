@@ -1,0 +1,13 @@
+node_modules/
+.DS_Store
+# the engine lays these beside a mod each time it loads it
+**/.claude-plugin/types/
+**/tsconfig.json
+probe-report*.txt
+.env
+.env.*
+
+# local Claude Code settings and worktrees
+.claude/*
+# but the agent definitions are kept
+!.claude/agents/
