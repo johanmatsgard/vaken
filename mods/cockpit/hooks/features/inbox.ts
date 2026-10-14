@@ -174,7 +174,9 @@ function suggestOf($: EngineInterface): Suggest {
 }
 
 function inboxTick($: EngineInterface): Promise<void> {
-  return inboxCheck(io($), suggestOf($))
+  const i = io($)
+  const suggest = suggestOf($)
+  return inboxCheck(i, suggest)
 }
 
 const stateWord = (r: Row): string => (r.kind === 'needs' ? 'needs you' : r.kind === 'working' ? 'working' : r.kind === 'waiting' ? 'finished, waits for you' : 'idle')
@@ -208,7 +210,9 @@ export function registerInbox(on: On): void {
     try {
       if (e.agentId === undefined) {
         runningTurn = undefined
-        $.clock.after(OFFER_DELAY_MS, () => void offerQueued(io($), suggestOf($)).catch(() => undefined))
+        const offerIo = io($)
+        const offerSuggest = suggestOf($)
+        $.clock.after(OFFER_DELAY_MS, () => void offerQueued(offerIo, offerSuggest).catch(() => undefined))
       }
     } catch {
     }
@@ -290,7 +294,11 @@ export function registerInbox(on: On): void {
       if (!r.ok) return { text: r.why as string }
       await i.set(steerKey(toSid), r.queue)
       i.invalidate()
-      if (toSid === sid) $.clock.after(OFFER_DELAY_MS, () => void offerQueued(io($), suggestOf($)).catch(() => undefined))
+      if (toSid === sid) {
+        const offerIo = io($)
+        const offerSuggest = suggestOf($)
+        $.clock.after(OFFER_DELAY_MS, () => void offerQueued(offerIo, offerSuggest).catch(() => undefined))
+      }
       return { text: queuedWords(target === undefined ? 'this session' : `"${target.name}"`, cleanQueued(ask.text)) }
     }
 
