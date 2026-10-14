@@ -63,7 +63,7 @@ export type DoOutcome =
   | { kind: 'ran'; block: DoBlock; shown: DoShown; cut: boolean }
 
 // Never throws.
-export async function noteAnswerBlocks(i: Io, envOf: () => Promise<Env>, answer: string): Promise<void> {
+export async function noteAnswerBlocks(i: Io, envLater: () => Promise<Env>, answer: string): Promise<void> {
   try {
     if (doModeOf(await readSetting(i, 'do.mode')) === 'off') {
       if (doBlocks().length > 0) setDoBlocks([])
@@ -73,7 +73,7 @@ export async function noteAnswerBlocks(i: Io, envOf: () => Promise<Env>, answer:
     const dropped = { n: 0 }
     const raws = findBlocks(answer, sys, dropped)
     const before = doBlocks()
-    const blocks = raws.length === 0 ? [] : await judgeBlocks(i, await envOf(), raws, sys)
+    const blocks = raws.length === 0 ? [] : await judgeBlocks(i, await envLater(), raws, sys)
     setDoBlocks(blocks, dropped.n)
     if (blocks.length > 0 || before.length > 0) i.invalidate()
   } catch {
@@ -186,14 +186,7 @@ function tellClaude($: EngineInterface, note: string): boolean {
   return true
 }
 
-// The two closures the handlers hand on, made here so that $ is passed alone
-function envLaterOf($: EngineInterface): () => Promise<Env> {
-  return () => envOf($)
-}
 
-function tellerOf($: EngineInterface): (note: string) => boolean {
-  return note => tellClaude($, note)
-}
 
 export function registerPhoneDo(on: On): void {
   on('turn.complete', { turnId: /(?<phonedo>)/ }, async ($, e, next) => {
@@ -202,7 +195,8 @@ export function registerPhoneDo(on: On): void {
     // Nothing here may throw or change the turn's own result: a failure only means no list this time.
     try {
       const i = io($)
-      const envLater = envLaterOf($)
+      const env = await envOf($)
+      const envLater = async (): Promise<Env> => env
       await noteAnswerBlocks(i, envLater, e.answer)
     } catch {
     }
@@ -214,7 +208,7 @@ export function registerPhoneDo(on: On): void {
     if (rest0 === undefined) return next(e)
     const i = io($)
     const env = await envOf($)
-    const tell = tellerOf($)
+    const tell = (note: string): boolean => tellClaude($, note)
     return { text: await doText(i, env, rest0, tell, byPerson(e.origin)) }
   })
 }

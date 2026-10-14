@@ -26,13 +26,6 @@ import type { Row } from './home/logic'
 import { armOnce } from './everyonce'
 import { subArgs } from '../core/menu'
 
-// The check timer, quiet when the person is away (core/quiet.ts); never throws
-function inboxTimerTick($: EngineInterface): void {
-  void (async () => {
-    const now = await $.clock.now()
-    if (tickDue('inbox', now)) await inboxTick($)
-  })().catch(() => undefined)
-}
 
 // IO-BLOCK-START
 function io($: EngineInterface): Io {
@@ -171,17 +164,19 @@ export async function inboxCheck(i: Io, suggest: Suggest): Promise<void> {
 
 type Suggest = (text: string) => Promise<boolean>
 
-function inboxTick($: EngineInterface): Promise<void> {
-  const i = io($)
-  const suggest: Suggest = async text => {
-    try {
-      const shown = await $.prompt.suggest({ text })
-      return shown.isShown
-    } catch {
-      return false
-    }
+// One check of the timer, quiet when the person is away (core/quiet.ts)
+async function inboxTimer(i: Io, suggest: Suggest): Promise<void> {
+  if (tickDue('inbox', await i.now())) await inboxCheck(i, suggest)
+}
+
+// Shows a suggestion in the prompt box; false when it could not be shown
+async function suggestText($: EngineInterface, text: string): Promise<boolean> {
+  try {
+    const shown = await $.prompt.suggest({ text })
+    return shown.isShown
+  } catch {
+    return false
   }
-  return inboxCheck(i, suggest)
 }
 
 const stateWord = (r: Row): string => (r.kind === 'needs' ? 'needs you' : r.kind === 'working' ? 'working' : r.kind === 'waiting' ? 'finished, waits for you' : 'idle')
@@ -197,7 +192,9 @@ async function othersOf(i: Io): Promise<{ sid: string; name: string; row: Row }[
 export function registerInbox(on: On): void {
   on('session.start', { cwd: /(?<inbox>)/ }, async ($, e, next) => {
     try {
-      const timer = $.clock.every(CHECK_MS, () => inboxTimerTick($))
+      const tickIo = io($)
+      const tickSuggest: Suggest = text => suggestText($, text)
+      const timer = $.clock.every(CHECK_MS, () => void inboxTimer(tickIo, tickSuggest).catch(() => undefined))
       armOnce('inbox', timer)
     } catch {
       // the commands and the band are optional: a failure shows less, never breaks the session
@@ -217,14 +214,7 @@ export function registerInbox(on: On): void {
       if (e.agentId === undefined) {
         runningTurn = undefined
         const offerIo = io($)
-        const offerSuggest: Suggest = async text => {
-    try {
-      const shown = await $.prompt.suggest({ text })
-      return shown.isShown
-    } catch {
-      return false
-    }
-  }
+        const offerSuggest: Suggest = text => suggestText($, text)
         $.clock.after(OFFER_DELAY_MS, () => void offerQueued(offerIo, offerSuggest).catch(() => undefined))
       }
     } catch {
@@ -309,14 +299,7 @@ export function registerInbox(on: On): void {
       i.invalidate()
       if (toSid === sid) {
         const offerIo = io($)
-        const offerSuggest: Suggest = async text => {
-    try {
-      const shown = await $.prompt.suggest({ text })
-      return shown.isShown
-    } catch {
-      return false
-    }
-  }
+        const offerSuggest: Suggest = text => suggestText($, text)
         $.clock.after(OFFER_DELAY_MS, () => void offerQueued(offerIo, offerSuggest).catch(() => undefined))
       }
       return { text: queuedWords(target === undefined ? 'this session' : `"${target.name}"`, cleanQueued(ask.text)) }
