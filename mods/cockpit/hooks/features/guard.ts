@@ -77,7 +77,11 @@ const isHalted = async (i: Io, sid: string): Promise<boolean> => parseHalt(await
 const heldKeys = (list: Found[]): string[] => list.map(f => `${f.block}|${f.key}`)
 
 async function envOf($: EngineInterface): Promise<Env> {
-  const home = await homeFrom({ HOME: () => $.env.get('HOME'), USERPROFILE: () => $.env.get('USERPROFILE'), HOMEDRIVE: () => $.env.get('HOMEDRIVE'), HOMEPATH: () => $.env.get('HOMEPATH') })
+  const homeVar = await $.env.get('HOME')
+  const profile = await $.env.get('USERPROFILE')
+  const drive = await $.env.get('HOMEDRIVE')
+  const homePath = await $.env.get('HOMEPATH')
+  const home = await homeFrom({ HOME: async () => homeVar, USERPROFILE: async () => profile, HOMEDRIVE: async () => drive, HOMEPATH: async () => homePath })
   const cwd = await $.session.cwd()
   const root = await $.session.root()
   return { home, cwd, root }

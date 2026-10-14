@@ -6,7 +6,7 @@ import { fieldsOf } from '../core/eventfields'
 import { parseStoredUsage, APP_USAGE_KEY } from '../core/appusage'
 import { parseStoredSessions, APP_SESSIONS_KEY } from '../core/appsessions'
 import { clearBand, postBand, readBand } from '../core/band'
-import { quietly } from '../core/quiet'
+import { tickDue } from '../core/quiet'
 import { mayScan } from '../core/leader'
 import { allowKey, allowLive, haltKey, haltMem, parseAllow, parseHalt } from '../core/guard'
 import { HERE_FALLBACK, INBOX_BAND_ID, INBOX_SEEN_KEY, OFFER_MAX, QUEUE_OFFER_WHAT, QUEUE_TEXT_MAX, sendButtons, STEER_SEND_WHAT, STEER_STOP_WHAT, addQueued, buildInbox, cleanQueued, dropSent, heldCount, inboxBandWords, inboxText, markOffered, nextOffer, noSuchSession, notSentWords, offerToast, parseQueue, parseSteerAsk, queuedWords, sendQuestion, sentWords, steerKey, steerText, stopWords } from '../core/inbox'
@@ -25,6 +25,14 @@ import { buildView } from './home/logic'
 import type { Row } from './home/logic'
 import { armOnce } from './everyonce'
 import { subArgs } from '../core/menu'
+
+// The check timer, quiet when the person is away (core/quiet.ts); never throws
+function inboxTimerTick($: EngineInterface): void {
+  void (async () => {
+    const now = await $.clock.now()
+    if (tickDue('inbox', now)) await inboxTick($)
+  })().catch(() => undefined)
+}
 
 // IO-BLOCK-START
 function io($: EngineInterface): Io {
@@ -189,7 +197,7 @@ async function othersOf(i: Io): Promise<{ sid: string; name: string; row: Row }[
 export function registerInbox(on: On): void {
   on('session.start', { cwd: /(?<inbox>)/ }, async ($, e, next) => {
     try {
-      const timer = $.clock.every(CHECK_MS, quietly('inbox', () => $.clock.now(), () => inboxTick($)))
+      const timer = $.clock.every(CHECK_MS, () => inboxTimerTick($))
       armOnce('inbox', timer)
     } catch {
       // the commands and the band are optional: a failure shows less, never breaks the session
