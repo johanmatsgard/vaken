@@ -144,7 +144,7 @@ export function registerUndo(on: On): void {
     }
     return next(e)
   }).catch(async ($, e, next) => {
-    if (next.error.kind !== 're-entry') await noteFailure(io($), 'undo', next.error.kind)
+    if ((next.error.kind as string) !== 're-entry') await noteFailure(io($), 'undo', next.error.kind)
     return next(e)
   })
 

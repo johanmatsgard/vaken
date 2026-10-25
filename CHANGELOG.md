@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.168.7
+
+The type check passes with Claude Code 2.1.310, whose hook error types changed. No change in what vaken does.
+
 ## 1.168.6: first public version
 
 The first public version, for Claude Code Desktop on macOS and Windows 11. Tested on Claude Code 2.1.295.

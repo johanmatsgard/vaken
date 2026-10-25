@@ -160,7 +160,7 @@ export function registerTrust(on: On): void {
     }
     return result
   }).catch(async ($, e, next) => {
-    if (next.error.kind !== 're-entry') await noteFailure(io($), 'trust', next.error.kind)
+    if ((next.error.kind as string) !== 're-entry') await noteFailure(io($), 'trust', next.error.kind)
     return next(e)
   })
 

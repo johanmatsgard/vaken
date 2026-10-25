@@ -456,7 +456,7 @@ vaken is a Claude Code plugin. Its hooks run inside Claude Code on your computer
 | **Runs** | `git`, `gh` (if you have it), and system tools such as `ps` and `netstat`, to read facts. They only read. |
 | **Sends** | Nothing to its authors. Two small web reads: a package name to the npm registry, and the public Claude status page. |
 | **Never** | Says yes for you, writes your `settings.json`, or edits your source files. Undo restores a file only on your yes. |
-| **Version** | 1.168.6. See the [releases](https://github.com/johanmatsgard/vaken/releases). |
+| **Version** | 1.168.7. See the [releases](https://github.com/johanmatsgard/vaken/releases). |
 
 The safety stop is a seat belt, not a sandbox: [SECURITY.md](SECURITY.md) says what it does and does not promise.
 
