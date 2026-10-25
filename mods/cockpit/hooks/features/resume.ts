@@ -10,7 +10,7 @@ import { homeFrom } from '../core/platform'
 import type { Io } from '../core/io'
 import { startOfDay } from '../core/ledger'
 import { readRecord } from '../core/record'
-import { CONTINUE_TEXT, MAX_PER_DAY, REMIND_WHAT, RESUME_WHAT, countKey, dueVerdict, parseWait, planWait, remindToast, replanWait, statusText, waitKey, waitingToast } from '../core/resume'
+import { CONTINUE_TEXT, MAX_PER_DAY, REMIND_WHAT, RESUME_BAND_ID, RESUME_WHAT, countKey, dueVerdict, parseWait, planWait, remindToast, replanWait, statusText, waitKey, waitingToast, wroteSince } from '../core/resume'
 import { LIMIT_HIT_KEY, atLimit } from '../core/overnight'
 import { parseRun } from '../core/orchestra'
 import { readSetting } from '../core/settings'
@@ -18,7 +18,9 @@ import { serialUpdate } from '../core/serial'
 import { LEDGER_KEY, pushLog } from './compaction'
 import { armOnce } from './everyonce'
 import { subArgs } from '../core/menu'
-import { tEn } from '../i18n/t'
+import { t } from '../i18n/t'
+import { fillIn } from '../core/fillin'
+import { sayIn } from './saylang'
 
 // IO-BLOCK-START
 function io($: EngineInterface): Io {
@@ -69,7 +71,7 @@ async function check($: EngineInterface): Promise<void> {
     const rec = await readRecord(i, id)
     const doneToday = Number((await i.get(countKey(dayKey(now)))) ?? 0)
     const usage = now >= w.dueAt ? parseStoredUsage(await i.get(APP_USAGE_KEY)) : undefined
-    const v = dueVerdict(w, { now, halted: parseHalt(await i.get(haltKey(id))) !== undefined, wroteSince: rec !== undefined && rec.lastEventAt > w.failedAt + 5_000 && rec.state === 'working', doneToday, stillFull: atLimit(usage, now) })
+    const v = dueVerdict(w, { now, halted: parseHalt(await i.get(haltKey(id))) !== undefined, wroteSince: wroteSince(rec, w.failedAt), doneToday, stillFull: atLimit(usage, now) })
     if (v.act === 'again') {
       await i.set(waitKey(id), replanWait(w, usage, now))
       return
@@ -84,7 +86,7 @@ async function check($: EngineInterface): Promise<void> {
     await i.del(waitKey(id))
     if (w.mode === 'remind') {
       await pushLog(i, LEDGER_KEY, { at: now, session: id, what: REMIND_WHAT, how: 'auto', did: true })
-      await postBand(i, 'warn', 'resume', 'Limit reset: type continue', 15 * 60_000)
+      await postBand(i, 'warn', RESUME_BAND_ID, 'Limit reset: type continue', 15 * 60_000)
       i.toast(remindToast())
       return
     }
@@ -121,7 +123,8 @@ export function registerResume(on: On): void {
         if (w !== undefined) {
           await i.set(waitKey(await i.sessionId()), w)
           i.toast(waitingToast(w))
-          await postBand(i, 'warn', 'resume', 'Waiting for the limit to reset', 60 * 60_000)
+          // Plain info: the band says which limit is used up and when it resets (band.tsx usedUpWords); nothing waits on the person
+          await postBand(i, 'info', RESUME_BAND_ID, 'Waiting for the limit to reset', 60 * 60_000)
         }
       }
     } catch {
@@ -133,13 +136,14 @@ export function registerResume(on: On): void {
     const rest0 = subArgs(e.args, 'run', 'after-limit')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i)
     const id = await i.sessionId()
     const arg = rest0.trim().toLowerCase()
     if (arg === 'off') {
       await i.del(waitKey(id))
-      return { text: 'Cancelled. Nothing waits for a reset in this session now.' } // en-only: plain answer of a slash command (text twin)
+      return { text: tr('Cancelled. Nothing waits for a reset in this session now.') }
     }
-    if (arg === 'off all') { // en-only: plain answer of a slash command (text twin)
+    if (arg === 'off all') { // en-only: a command word
       let n = 0
       for (const k of await i.keys()) {
         if (k.startsWith('cockpit:resume:') && !k.startsWith('cockpit:resume:count:')) {
@@ -155,7 +159,7 @@ export function registerResume(on: On): void {
           }
         }
       }
-      return { text: n === 0 ? 'Nothing was waiting for a reset.' : `Cancelled ${tEn('words.wait', { n: n })}. A paused task run stays paused: /vaken-tasks go starts it again.` } // en-only: plain answer of a slash command (text twin)
+      return { text: n === 0 ? tr('Nothing was waiting for a reset.') : fillIn(tr('Cancelled {waits}. A paused task run stays paused: /vaken-tasks go starts it again.'), { waits: t('words.wait', { n }) }) }
     }
     const now = await i.now()
     return { text: statusText(await readSetting(i, 'resume.mode'), parseWait(await i.get(waitKey(id))), now, Number((await i.get(countKey(dayKey(now)))) ?? 0)) }

@@ -3,7 +3,7 @@ import { expect, mock } from 'claude-code/testing'
 import { test } from './slow'
 import type { On } from 'claude-code'
 
-import { CONTINUITY_SETTINGS, PACKET_PATH, briefClaims, firstSteps, looksPrivate, parseBranch, parseGitStatus, relativeTo, renderBrief, renderPacket, storyLines } from '../hooks/core/continuity'
+import { CONTINUITY_SETTINGS, PACKET_PATH, STATUS_ARGV, briefClaims, firstSteps, looksPrivate, parseBranch, parseGitStatus, relativeTo, renderBrief, renderPacket, storyLines } from '../hooks/core/continuity'
 import type { BriefFacts } from '../hooks/core/continuity'
 import { SNIPPET_MAX, jsonArrayIn, lastWork, matchWords, parseCount, parseHits, resumeText, snippetLine, standupLines, timelineText } from '../hooks/core/continuity2'
 import { emptyState, recordEdit, recordReceipts } from '../hooks/core/proof'
@@ -36,6 +36,12 @@ const facts = (over: Partial<BriefFacts> = {}): BriefFacts => ({
 })
 
 const lineOf = (lines: string[], start: string): string => lines.find(l => l.startsWith(start)) ?? ''
+
+test('the git status vaken reads takes no optional lock, so it never makes another git command fail on index.lock', () => {
+  // A global option: before the subcommand
+  expect(STATUS_ARGV.slice(0, 2)).toEqual(['git', '--no-optional-locks'])
+  expect(STATUS_ARGV.indexOf('--no-optional-locks')).toBeLessThan(STATUS_ARGV.indexOf('status'))
+})
 
 test('git output is read into files and a branch; a private-looking name is flagged', () => {
   expect(parseGitStatus(' M src/a.ts\n?? new file.ts\nR  old.ts -> new.ts\n D gone.ts\nA  added.ts\n')).toEqual([
@@ -370,6 +376,15 @@ test('/vaken-today standup lists the sessions that had work today with the cost 
   expect(r.text).toMatch(/Sat 10 Oct: 1 session had work, 2 files changed/)
   expect(r.text).toMatch(/- p: Fix the login bug \(2 files changed\)/)
   expect(r.text).toMatch(/Cost: about \$3\.50 in 1 session/)
+})
+
+test('/vaken-today standup counts what vaken did from the day counts too, as the glance does, when the ledger has dropped the lines', async ($, on) => {
+  const { mem } = engine(on, { list_sessions: listAnswer })
+  seedSession(mem)
+  mem.set('cockpit:session:test-session', { sessionId: 'test-session', cwd: '/w/p', model: 'm', state: 'idle', startedAt: NOW - 120 * MIN, updatedAt: NOW, lastEventAt: NOW - 5 * MIN, stateSince: NOW })
+  mem.set('cockpit:counts', { '2026-10-10': { 'Kept the cache warm': 7 } })
+  const r = (await $.command.run(viaParent('vaken-standup', ''))) as { text: string }
+  expect(r.text).toMatch(/vaken acted 7 times/)
 })
 
 test('/vaken-help run packet without an answer to the question writes nothing', async ($, on) => {

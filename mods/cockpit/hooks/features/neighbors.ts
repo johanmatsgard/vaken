@@ -14,6 +14,10 @@ import { readSetting } from '../core/settings'
 import { LEDGER_KEY, pushLog } from './compaction'
 import { classify, nameOf } from './home/logic'
 import { subArgs } from '../core/menu'
+import { tr } from '../core/lang'
+import { sayIn } from './saylang'
+
+const EXPLAINED_KEY = 'cockpit:neighbors:explained'
 
 // IO-BLOCK-START
 function io($: EngineInterface): Io {
@@ -146,10 +150,15 @@ export function registerNeighbors(on: On): void {
     if (rest0 === undefined) return next(e)
     try {
       const i = io($)
+      await sayIn(i)
       const cwd = await $.session.cwd()
-      return { text: neighborsText(await readSetting(i, 'neighbors.warn'), cwd === '' ? [] : await findNeighbors(i, cwd), cwd !== '') }
+      // What it watches is said once; after that only the answer
+      const explain = (await i.get(EXPLAINED_KEY)) === undefined
+      const text = neighborsText(await readSetting(i, 'neighbors.warn'), cwd === '' ? [] : await findNeighbors(i, cwd), cwd !== '', explain)
+      if (explain) await i.set(EXPLAINED_KEY, await i.now())
+      return { text }
     } catch {
-      return { text: 'Vaken could not look for other sessions now. Try again in a moment.' } // en-only: plain answer of a slash command (text twin)
+      return { text: tr('Vaken could not look for other sessions now. Try again in a moment.') }
     }
   })
 }

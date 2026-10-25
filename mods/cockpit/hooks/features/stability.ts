@@ -2,7 +2,7 @@
 import type { EngineInterface, On } from 'claude-code'
 
 import { postBand } from '../core/band'
-import { BROKEN_WHAT, CHECKED_WHAT, HEALTH_KEY, changed, failures, healthText, summary } from '../core/stability'
+import { BROKEN_WHAT, CHECKED_WHAT, HEALTH_KEY, changed, failures, healthText, summary, updatedText } from '../core/stability'
 import type { Health, TestResult } from '../core/stability'
 import { withToastGate } from '../core/io'
 import { tr } from '../core/lang'
@@ -11,6 +11,7 @@ import type { Io } from '../core/io'
 import { readSetting } from '../core/settings'
 import { LEDGER_KEY, pushLog, why } from './compaction'
 import { subArgs } from '../core/menu'
+import { sayIn } from './saylang'
 
 // IO-BLOCK-START
 function io($: EngineInterface): Io {
@@ -39,7 +40,7 @@ const PROBE_KEY = 'cockpit:selftest'
 
 const attempt = async (name: string, fn: () => Promise<boolean>): Promise<TestResult> => {
   try {
-    return (await fn()) ? { name, ok: true } : { name, ok: false, why: 'unexpected answer' } // en-only: plain answer of a slash command (text twin)
+    return (await fn()) ? { name, ok: true } : { name, ok: false, why: 'unexpected answer' } // en-only: kept in the health record; healthText says it in the language
   } catch (err) {
     // A part this run mode does not offer (a headless run has no session to register commands in) is not a broken part.
     if (/not available in this mode/i.test(why(err))) return { name, ok: true }
@@ -78,12 +79,12 @@ async function selfTest($: EngineInterface): Promise<void> {
       await pushLog(i, LEDGER_KEY, { at: stamp, session: await i.sessionId(), what: BROKEN_WHAT, detail: `${summary(health)} ${reasons}`, how: 'auto', did: true })
       // Typed commands keep working when the second registration fails
       if (bad.some(r => r.name !== 'commands')) {
-        await postBand(i, 'warn', 'health', 'Vaken self-test failed')
+        await postBand(i, 'fail', 'health', 'Vaken self-test failed')
         i.toast(`${summary(health)} ${tr('Type /vaken-help run health to see why.')}`)
       }
     } else if (changed(previous, version)) {
       await pushLog(i, LEDGER_KEY, { at: stamp, session: await i.sessionId(), what: CHECKED_WHAT, detail: summary(health), how: 'auto', did: true })
-      i.toast(summary(health))
+      i.toast(updatedText(health))
     }
   } catch {
     // the self-test never breaks the session
@@ -103,6 +104,7 @@ export function registerStability(on: On): void {
     const rest0 = subArgs(e.args, 'run', 'health')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i)
     return { text: healthText((await i.get(HEALTH_KEY)) as Health | undefined) }
   })
 }

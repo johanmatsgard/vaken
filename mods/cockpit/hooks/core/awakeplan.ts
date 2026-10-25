@@ -24,12 +24,13 @@ export const AWAKE_CAP_DETAIL = 'The Mac was kept awake for 8 hours, which is th
 export type AwakeAway = 'off' | 'waiting' | 'phone'
 export const awayOf = (value: string): AwakeAway => (value === 'off' || value === 'waiting' ? value : 'phone')
 
-export type Reason = 'working' | 'phone' | 'waiting' | 'background'
+export type Reason = 'working' | 'night' | 'phone' | 'waiting' | 'background'
 export const REASONS: Record<Reason, { rank: number; on: readonly AwakeAway[]; why: string; whyUntil: string }> = {
   working: { rank: 0, on: ['off', 'waiting', 'phone'], why: 'a session is working', whyUntil: 'a session is working' },
   phone: { rank: 1, on: ['waiting', 'phone'], why: 'a phone is connected', whyUntil: 'a phone is connected, until {time}' },
   waiting: { rank: 2, on: ['waiting'], why: 'waiting for your answer', whyUntil: 'waiting for your answer, until {time}' },
   background: { rank: 3, on: ['waiting', 'phone'], why: 'an agent is running in the background', whyUntil: 'an agent is running in the background' },
+  night: { rank: 4, on: ['off', 'waiting', 'phone'], why: 'a night run is going', whyUntil: 'a night run is going' },
 }
 
 // A phone that never says it left expires after AWAKE_AWAY_MAX_MS.
@@ -63,6 +64,7 @@ export type AwakeFacts = {
   phoneAt?: number
   waiting: { count: number; latestSince?: number }
   background: number
+  night?: boolean
   laptop?: Laptop
 }
 
@@ -85,6 +87,7 @@ export const lowBatteryNow = (l: Laptop | undefined, now: number): boolean => l 
 export function awakeReason(away: AwakeAway, f: AwakeFacts, now: number): Held | undefined {
   const on = (r: Reason): boolean => REASONS[r].on.includes(away)
   if (f.working > 0 && on('working')) return { reason: 'working' }
+  if (f.night === true && on('night')) return { reason: 'night' }
   if (f.phoneAt !== undefined && now - f.phoneAt >= 0 && now - f.phoneAt < AWAKE_AWAY_MAX_MS && on('phone')) return { reason: 'phone', until: f.phoneAt + AWAKE_AWAY_MAX_MS }
   if (f.waiting.count > 0 && f.waiting.latestSince !== undefined && f.waiting.latestSince + AWAKE_WAIT_MAX_MS > now && on('waiting')) return { reason: 'waiting', until: f.waiting.latestSince + AWAKE_WAIT_MAX_MS }
   if (f.background > 0 && on('background')) return { reason: 'background' }
@@ -163,6 +166,7 @@ export const AWAKE_STRINGS: string[] = [
   'waiting for your answer',
   'waiting for your answer, until {time}',
   'an agent is running in the background',
+  'a night run is going',
   'Not holding: battery low',
   'Not holding: the 8 hour limit is reached',
   'Keeping the Mac awake',

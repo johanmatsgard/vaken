@@ -4,7 +4,8 @@ import type { ProofState } from './proof'
 
 export const SUGGEST_AT = 50
 export const AUTO_AT = 70
-export const COMPACT_FROM_PCT = 30
+// The card's advice reads this when it is not told the setting `compact.from` (the same as Auto's own default, FROM_DEFAULT_PCT in compactauto.ts)
+export const COMPACT_FROM_PCT = 60
 export const AUTO_GAP_MS = 30 * 60_000
 // Only when the window is unknown: below this many tokens the chat counts as too small.
 export const MIN_TOKENS = 150_000

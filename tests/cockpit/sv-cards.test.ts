@@ -141,7 +141,8 @@ export const englishIn = (text: string): string[] => {
 }
 
 type Ui = Pane & { redraw: () => Promise<unknown> }
-const PRESSES = /^press-(?!ol-needs:)(glance-[a-z]+|ol-.+|a-.+|o-.+)-0$/
+// Agent setup's Off row turns the setting on, so it is not a press that a second press undoes
+const PRESSES = /^press-(?!ol-needs:|ol-setup:off-)(glance-[a-z]+|ol-.+|a-.+|o-.+)-0$/
 async function seen($: { ui: { mount: (t: unknown) => Promise<unknown> } }): Promise<string[]> {
   const ui = (await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })) as unknown as Ui
   const all = new Set<string>()
@@ -178,7 +179,7 @@ for (const detail of DETAILS) {
     const lines = await seen($ as never)
     const leaks = lines.map(l => ({ l, w: englishIn(l) })).filter(x => x.w.length > 0)
     expect(leaks.map(x => `${x.w.join(',')}: ${x.l}`)).toEqual([])
-    expect(lines.join('\n')).toMatch(/Gränser i din plan|Den här sessionen/)
+    expect(lines.join('\n')).toMatch(/Plangränser|Den här sessionen/)
   })
 }
 
@@ -211,7 +212,7 @@ function allFacts(): CardCtx {
     receipts: [{ kind: 'tests' as const, ok: false, exit: 1, at: MINS(9), seq: 5 }],
     last: { at: MINS(8), seconds: 90, edits: 3, files: 3, ran: [{ kind: 'tests' as const, status: 'failed' as const, exit: 1, at: MINS(9) }], claims: ['tests' as const], unproven: [{ kind: 'tests' as const, why: 'failed' as const }], notChecked: ['lint' as const], doneSet: ['tests' as const, 'lint' as const], doneMet: false },
   }
-  const rest = { at: MINS(2), ready: false, checks: [{ id: 'ended', label: 'The answer ended', ok: true, value: 'yes' }, { id: 'helpers', label: 'Nothing still runs', ok: false, value: '2 agents, 1 background command' }, { id: 'size', label: 'The session is big enough', ok: true, value: '120k tokens, 41% of the window (needs 30%)' }, { id: 'gap', label: 'Not compacted in the last 10 minutes', ok: true, value: 'the last one 25 min ago' }, { id: 'score', label: 'The moment scores high enough', ok: false, value: '38 of 70' }, { id: 'context', label: 'The session fills 30% of its window', ok: true, value: '41%' }, { id: 'cache', label: 'The cache is still warm', ok: false, value: 'gone cold: wait for the next break' }, { id: 'work', label: 'No work is open', ok: false, value: 'files changed and no check ran, task list 2 of 5 done' }] }
+  const rest = { at: MINS(2), ready: false, checks: [{ id: 'ended', label: 'The answer ended', ok: true, value: 'yes' }, { id: 'helpers', label: 'Nothing still runs', ok: false, value: '2 agents, 1 background command' }, { id: 'size', label: 'The session is big enough', ok: true, value: '120k tokens (needs 100k)' }, { id: 'gap', label: 'Not compacted in the last 20 minutes', ok: true, value: 'the last one 25 min ago' }, { id: 'time', label: 'It is time: the session is full, or a break is near its end', ok: false, value: '41% of the window (needs 60%), or a break after 45 min' }] }
   return {
     now: NOW,
     ledger: [
@@ -242,7 +243,7 @@ function allFacts(): CardCtx {
     safety: { undoFiles: 3, checkpoints: [{ name: 'before-theme', at: MINS(40), files: 4 }], preview: ['theme.css: would be put back', 'app.tsx: would be put back'], previewOf: 'undo' },
     homes: { ship: true, prs: true },
     context: {
-      diet: { files: 2, size: '5.1k', heavy: true, repeats: 2, first: 'Always use short names', lines: ['~/.claude/CLAUDE.md: about 3.2k tokens, 120 lines (big)', 'CLAUDE.md: about 1.9k tokens, 80 lines'], advice: ['Together they are heavy: Claude re-reads about 5.1k tokens on every answer. Trim what you do not need in most sessions.', '2 lines appear in more than one file. Keep each rule in one place. First: "Always use short names"', '3 very long lines. Short lines are easier to keep right.'] },
+      diet: { files: 2, tokens: 5_100, heavy: true, repeats: 2, first: 'Always use short names', lines: ['~/.claude/CLAUDE.md: about 3.2k tokens, 120 lines (big)', 'CLAUDE.md: about 1.9k tokens, 80 lines'], advice: ['Together they are heavy: Claude re-reads about 5.1k tokens on every answer. Trim what you do not need in most sessions.', '2 lines appear in more than one file. Keep each rule in one place. First: "Always use short names"', '3 very long lines. Short lines are easier to keep right.'] },
       memory: { notes: 4 },
       brief: { on: true, work: true, unverified: 1 },
       keep: { goal: 'Add a dark mode toggle', branch: 'feat-x', files: 3, rest },
@@ -262,8 +263,8 @@ function viewLines(v: LineCardView): string[] {
     ...v.lines,
     ...v.whats.flatMap(bodyOf),
     ...bodyOf(v.shortWhat),
-    ...(v.groups ?? []).flatMap(g => [g.head, ...g.rows.flatMap(r => [r.title, r.right ?? '', ...bodyOf(r.what)])]),
-    ...(v.pointer === undefined ? [] : [v.pointer.word]),
+    ...(v.groups ?? []).flatMap(g => [g.head, ...g.rows.flatMap(r => [r.title, r.right ?? '', ...(r.note ?? []), ...bodyOf(r.what)])]),
+    ...(v.pointer ?? []).map(p => p.word),
   ]
     .map(s => tr(s).trim())
     .filter(s => s !== '')
@@ -300,12 +301,12 @@ test('the ship verdict that the Pull requests card shows under a row is Swedish 
 })
 
 test('the stored checks of the rest rule, the diet lines and the helper agents are Swedish on the cards and unchanged in English', () => {
-  const checks = [{ id: 'helpers', label: 'Nothing still runs', ok: false, value: '1 agent, 3 background commands' }, { id: 'work', label: 'No work is open', ok: false, value: 'files changed and no check ran, task list 2 of 5 done' }, { id: 'cache', label: 'The cache is still warm', ok: true, value: '4 min left' }]
-  expect(restLines(checks)).toEqual(['✗ Nothing still runs: 1 agent, 3 background commands', '✗ No work is open: files changed and no check ran, task list 2 of 5 done', '✓ The cache is still warm: 4 min left'])
+  const checks = [{ id: 'helpers', label: 'Nothing still runs', ok: false, value: '1 agent, 3 background commands' }, { id: 'size', label: 'The session is big enough', ok: false, value: '60k tokens (needs 100k)' }, { id: 'gap', label: 'Not compacted in the last 20 minutes', ok: true, value: 'the last one 25 min ago' }]
+  expect(restLines(checks)).toEqual(['✗ Nothing still runs: 1 agent, 3 background commands', '✗ The session is big enough: 60k tokens (needs 100k)', '✓ Not compacted in the last 20 minutes: the last one 25 min ago'])
   setLang('sv')
   try {
-    expect(restLines(checks, tr)).toEqual(['✗ Inget körs fortfarande: 1 agent, 3 bakgrundskommandon', '✗ Inget arbete är öppet: filer ändrade och ingen kontroll kördes, uppgiftslistan 2 av 5 klar', '✓ Cachen är fortfarande varm: 4 min kvar'])
-    expect(dietWords('CLAUDE.md: about 3.2k tokens, 120 lines (big)', tr)).toBe('CLAUDE.md: ungefär 3.2k tokens, 120 rader (stor)')
+    expect(restLines(checks, tr)).toEqual(['✗ Inget körs fortfarande: 1 agent, 3 bakgrundskommandon', '✗ Sessionen är tillräckligt stor: 60k tokens (behöver 100k)', '✓ Inte komprimerad de senaste 20 minuterna: den senaste var för 25 min sedan'])
+    expect(dietWords('CLAUDE.md: about 3.2k tokens, 120 lines (big)', tr)).toBe('CLAUDE.md: ungefär 3,2k tokens, 120 rader (stor)')
     expect(dietWords('3 very long lines. Short lines are easier to keep right.', tr)).toBe('3 mycket långa rader. Korta rader är lättare att underhålla.')
   } finally {
     setLang('en')
@@ -319,7 +320,7 @@ test('the same cards in English are the English as before', () => {
   const lines = LINE_CARD_IDS.flatMap(id => viewLines(lineCard(id, ctx))).join('\n')
   for (const want of [/Where you left off and what waits/, /3 sessions use 4\.1 GB/, /Memory 88% · processor 67%/, /PR 12 is open\./, /Together they are heavy/, /Compact when idle, last look/, /2 agents, 1 background command/])
     expect(lines).toMatch(want)
-  expect(lines).not.toMatch(/Gränser i din plan|väntar på|hjälpare|kontroller/)
+  expect(lines).not.toMatch(/Plangränser|väntar på|hjälpare|kontroller/)
 })
 
 test('the same draw in English still has its English', async ($, on) => {
@@ -328,7 +329,7 @@ test('the same draw in English still has its English', async ($, on) => {
   mock.env(on, { HOME: '/home/test' })
   engine(on)
   const lines = (await seen($ as never)).join('\n')
-  for (const want of [/Plan limits/, /This session/, /Other sessions/, /waits to run PowerShell, may need OK/, /Cache lapsed/, /What it means:/, /Where was I|Ship/, /Agents/])
+  for (const want of [/Plan limits/, /This session/, /Other sessions/, /waits for your OK to run a command/, /Cache lapsed/, /What it means:/, /Where was I|Ship/, /Agents/])
     expect(lines).toMatch(want)
-  expect(lines).not.toMatch(/Gränser i din plan|Den här sessionen|Andra sessioner|väntar på|hjälpare/)
+  expect(lines).not.toMatch(/Plangränser|Den här sessionen|Andra sessioner|väntar på|hjälpare/)
 })

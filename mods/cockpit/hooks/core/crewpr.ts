@@ -180,6 +180,36 @@ export function mainRedFrom(raw: unknown): boolean | undefined {
   return all.every(c => c === 'success') ? false : undefined
 }
 
+// Why an ask of GitHub failed, as a kind: the shared answer keeps the kind, never gh's own text, and an older raw text is read into a kind here.
+export type PrFail = 'nogh' | 'signin' | 'offline' | 'slow' | 'odd'
+const FAIL_KINDS: readonly string[] = ['nogh', 'signin', 'offline', 'slow', 'odd']
+export function prFailOf(text: string, code?: number): PrFail {
+  if (FAIL_KINDS.includes(text)) return text as PrFail
+  if (code === 127 || /ENOENT|failed to start|command not found|not recognized as|executable file not found/i.test(text)) return 'nogh'
+  // gh exits 4 when it needs a sign-in
+  if (code === 4 || /auth login|not logged in|authenticat|GH_TOKEN|HTTP 401|bad credentials/i.test(text)) return 'signin'
+  if (/error connecting|could not resolve|no such host|network|dial tcp|connection (refused|reset)|offline|tls handshake/i.test(text)) return 'offline'
+  if (/did not answer in time|timed? ?out|ETIMEDOUT/i.test(text)) return 'slow'
+  return 'odd'
+}
+// A thrown run: the program could not start (not installed), or it ran past its time.
+export const prFailThrown = (err: unknown): PrFail => (/ENOENT|failed to start|not found|unsafe location/i.test(err instanceof Error ? err.message : String(err)) ? 'nogh' : 'slow')
+// The card's row (short, with the step) and the sentence for a toast and the text twin.
+export const PR_FAIL_ROW: Record<PrFail, string> = {
+  nogh: 'Install gh, GitHub\'s program',
+  signin: 'Sign in to GitHub: type gh auth login',
+  offline: 'GitHub could not be reached',
+  slow: 'GitHub did not answer in time',
+  odd: 'GitHub\'s answer could not be read',
+}
+export const PR_FAIL_SAY: Record<PrFail, string> = {
+  nogh: 'The gh program is not installed. Install it from cli.github.com, then sign in.',
+  signin: 'gh is not signed in to GitHub. Type gh auth login in a terminal.',
+  offline: 'Could not reach GitHub. Vaken asks again in a few minutes.',
+  slow: 'GitHub did not answer in time. Vaken asks again in a few minutes.',
+  odd: 'GitHub\'s answer could not be read. Vaken asks again in a few minutes.',
+}
+
 export type PrFacts = { at: number; branch?: string; view?: PrView; none?: boolean; error?: string; mainRed?: boolean; mainAt?: number }
 
 
@@ -198,7 +228,15 @@ export function whyAsk(n: AskNeed): 'start' | 'push' | 'pending' | undefined {
 export const PR_SHARED_KEY = 'cockpit:pr:shared'
 const PR_SHARED_MAX = 20
 const sharedId = (repo: string, branch: string | undefined): string => `${repo}\n${branch ?? ''}`
-const isFacts = (v: unknown): v is PrFacts => typeof v === 'object' && v !== null && typeof (v as PrFacts).at === 'number'
+// A shared answer from another version or a broken write counts as no answer: its view needs a number, a state and a list of checks.
+const goodView = (v: unknown): boolean => {
+  const o = obj(v)
+  return o !== undefined && typeof o.number === 'number' && typeof o.state === 'string' && Array.isArray(o.checks) && o.checks.every(c => obj(c) !== undefined && typeof obj(c)?.name === 'string' && typeof obj(c)?.state === 'string')
+}
+export const isFacts = (v: unknown): v is PrFacts => {
+  const o = obj(v)
+  return o !== undefined && typeof o.at === 'number' && Number.isFinite(o.at) && (o.view === undefined || goodView(o.view)) && (o.branch === undefined || typeof o.branch === 'string') && (o.error === undefined || typeof o.error === 'string')
+}
 const prPeriod = (f: PrFacts): number => ((f.view === undefined || f.view.state !== 'OPEN') && f.error === undefined ? PR_IDLE_EVERY_MS : PR_EVERY_MS)
 export function sharedPr(raw: unknown, repo: string, branch: string | undefined, now: number, since = 0): PrFacts | undefined {
   const f = typeof raw === 'object' && raw !== null ? (raw as Record<string, unknown>)[sharedId(repo, branch)] : undefined
@@ -245,9 +283,9 @@ export function prText(mode: string, f: PrFacts | undefined, durations: Duration
       if (bad.length > 0) out.push(`Failed: ${bad.slice(0, 5).join(', ')}${bad.length > 5 ? ` and ${bad.length - 5} more` : ''}.`)
       if (f.view.url !== '') out.push(f.view.url)
     } else if (f.none === true) out.push(`There is no pull request for ${f.branch ?? 'this branch'}.`)
-    else out.push('gh did not answer, so there is nothing to show yet.')
-    if (f.error !== undefined && f.view !== undefined) out.push(`The last ask failed (${f.error}). This is from ${ago(f.at)}.`)
-    else if (f.error !== undefined) out.push(`The last ask failed: ${f.error}.`)
+    else if (f.error === undefined) out.push('gh did not answer, so there is nothing to show yet.')
+    if (f.error !== undefined && f.view !== undefined) out.push(`The last ask failed: ${PR_FAIL_SAY[prFailOf(f.error)]} This is from ${ago(f.at)}.`)
+    else if (f.error !== undefined) out.push(`The last ask failed: ${PR_FAIL_SAY[prFailOf(f.error)]}`)
     if (f.mainRed === true) out.push('Main is red.')
     else if (f.mainRed === false) out.push('Main is green.')
     out.push(`Asked ${ago(f.at)}.`)

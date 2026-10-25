@@ -2,7 +2,8 @@
 
 import { hhmm } from './time'
 import { detectStyle, parts as pathParts } from './platform'
-import { tEn } from '../i18n/t'
+import { t as tNow, tr } from '../i18n/t'
+import { fillIn } from './fillin'
 
 export type RiskKind = 'ci' | 'migration' | 'security' | 'config'
 export type Receipt2 = 'ok' | 'failed' | 'unclear' | 'missing'
@@ -24,6 +25,7 @@ const RULES: { kind: RiskKind; re: RegExp }[] = [
 export const riskOf = (path: string): RiskKind[] => RULES.filter(r => r.re.test(path)).map(r => r.kind)
 const RISK_POINTS: Record<RiskKind, number> = { ci: 3, migration: 3, security: 3, config: 2 }
 const RISK_WORD: Record<RiskKind, string> = { ci: 'CI or build files', migration: 'a migration or database file', security: 'security-related files', config: 'config files' }
+const riskWords = (list: RiskKind[]): string => list.map(k => tr(RISK_WORD[k])).join(` ${tr('and')} `)
 
 const TEST_PATH = /(?:^|\/)(?:tests?|__tests__|specs?)\/|\.(?:test|spec)\.[a-z0-9]+$|(?:^|\/)test_[^/]*\.py$|_test\.(?:go|py)$/i
 export const isTestPath = (path: string): boolean => TEST_PATH.test(path)
@@ -50,44 +52,44 @@ export function scoreChange(c: Pick<Change, 'lines' | 'code' | 'tests' | 'risk' 
   const risk = Math.min(6, c.risk.reduce((n, k) => n + RISK_POINTS[k], 0))
   if (risk > 0) {
     score += risk
-    reasons.push(`it touches ${c.risk.map(k => RISK_WORD[k]).join(' and ')}`)
+    reasons.push(fillIn(tr('it touches {what}'), { what: riskWords(c.risk) }))
   }
   const size = sizePoints(c.lines)
   if (size > 0) {
     score += size
-    reasons.push(`it is big (${c.lines} lines changed)`)
+    reasons.push(fillIn(tr('it is big ({lines} lines changed)'), { lines: c.lines }))
   }
   if (c.code > 0 && !c.tests) {
     score += 2
-    reasons.push('no test file was touched')
+    reasons.push(tr('no test file was touched'))
   }
   if (c.receipt === 'failed') {
     score += 3
-    reasons.push('a check failed')
+    reasons.push(tr('a check failed'))
   } else if (c.receipt === 'missing') {
     score += 2
-    reasons.push('no passing check after the last edit')
+    reasons.push(tr('no passing check after the last edit'))
   } else if (c.receipt === 'unclear') {
     score += 1
-    reasons.push('a check ran but its result is not clear')
+    reasons.push(tr('a check ran but its result is not clear'))
   }
   return { score, level: score >= 6 ? 'high' : score >= 3 ? 'medium' : 'low', reasons }
 }
 
 // `waiting`: how many of the newest wait for a look.
 export function queueLines(changes: Change[], waiting: number): string[] {
-  if (changes.length === 0) return ['Review queue: empty. No finished answer has changed a file yet.']
+  if (changes.length === 0) return [tr('Review queue: empty. No finished answer has changed a file yet.')]
   const newest = waiting <= 0 ? [] : changes.slice(-waiting).map(c => c.turn)
   const rows = changes
     .map(c => ({ c, s: scoreChange(c) }))
     .sort((a, b) => b.s.score - a.s.score || b.c.turn - a.c.turn)
-  const lines = [`Review queue: ${tEn('words.finished_change', { n: changes.length })}, riskiest first.`]
+  const lines = [fillIn(tr('Review queue: {changes}, riskiest first.'), { changes: tNow('words.finished_change', { n: changes.length }) })]
   rows.forEach(({ c, s }, n) => {
-    const what = `${tEn('words.file', { n: c.files })}, ${c.lines} lines${c.names.length === 0 ? '' : ` (${c.names.join(', ')}${c.files > c.names.length ? ', ...' : ''})`}`
-    lines.push(`${n + 1}. ${s.level.toUpperCase()}: ${what}, ${hhmm(c.at)}${newest.includes(c.turn) ? ', new since your last message' : ''}`)
-    lines.push(`   ${s.reasons.length === 0 ? 'Why: nothing stands out.' : `Why: ${s.reasons.join('; ')}.`}`)
+    const what = `${fillIn(tr('{files}, {lines} lines'), { files: tNow('words.file', { n: c.files }), lines: c.lines })}${c.names.length === 0 ? '' : ` (${c.names.join(', ')}${c.files > c.names.length ? ', ...' : ''})`}`
+    lines.push(`${n + 1}. ${tr(s.level.toUpperCase())}: ${what}, ${hhmm(c.at)}${newest.includes(c.turn) ? `, ${tr('new since your last message')}` : ''}`)
+    lines.push(`   ${s.reasons.length === 0 ? tr('Why: nothing stands out.') : fillIn(tr('Why: {list}.'), { list: s.reasons.join('; ') })}`)
   })
-  lines.push('Risk comes from the kind of file, the size, a missing test and a missing or failing check. It does not say the change is wrong.')
+  lines.push(tr('Risk comes from the kind of file, the size, a missing test and a missing or failing check. It does not say the change is wrong.'))
   return lines
 }
 
@@ -110,16 +112,16 @@ const HEAT_SHOW = 8
 
 export function heatLines(files: Record<string, FileInfo>, testTurns: number[]): string[] {
   const hot = heatOf(files, testTurns)
-  if (hot.length === 0) return ['Reviewer heat: no changed file yet.']
-  const lines = [`Where to look first (${tEn('words.changed_file', { n: hot.length })}, hottest first):`]
+  if (hot.length === 0) return [tr('Reviewer heat: no changed file yet.')]
+  const lines = [fillIn(tr('Where to look first ({files}, hottest first):'), { files: tNow('words.changed_file', { n: hot.length }) })]
   hot.slice(0, HEAT_SHOW).forEach((h, n) => {
-    const bits = [tEn('words.edit', { n: h.n }), `${h.lines} lines`]
-    if (h.risk.length > 0) bits.push(`touches ${h.risk.map(k => RISK_WORD[k]).join(' and ')}`)
-    lines.push(`${n + 1}. ${shortName(h.path)}: ${bits.join(', ')}${h.untested ? '. No test file was touched in the same turn.' : '.'}`)
+    const bits = [tNow('words.edit', { n: h.n }), fillIn(tr('{n} lines'), { n: h.lines })]
+    if (h.risk.length > 0) bits.push(fillIn(tr('touches {what}'), { what: riskWords(h.risk) }))
+    lines.push(`${n + 1}. ${shortName(h.path)}: ${h.untested ? fillIn(tr('{list}. No test file was touched in the same turn.'), { list: bits.join(', ') }) : `${bits.join(', ')}.`}`)
   })
-  if (hot.length > HEAT_SHOW) lines.push(`... and ${hot.length - HEAT_SHOW} more.`)
+  if (hot.length > HEAT_SHOW) lines.push(fillIn(tr('... and {n} more.'), { n: hot.length - HEAT_SHOW }))
   const untested = hot.filter(h => h.untested).length
-  lines.push(untested === 0 ? 'Every changed code file had a test file touched in the same turn.' : `${tEn('words.changed_code_file', { n: untested })} had no test file touched in the same turn.`)
-  lines.push('Heat is counted from edits, size and the kind of file. It does not read the code.')
+  lines.push(untested === 0 ? tr('Every changed code file had a test file touched in the same turn.') : fillIn(tr('{files} had no test file touched in the same turn.'), { files: tNow('words.changed_code_file', { n: untested }) }))
+  lines.push(tr('Heat is counted from edits, size and the kind of file. It does not read the code.'))
   return lines
 }

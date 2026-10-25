@@ -1,5 +1,6 @@
 // Skill coach and decision log. Only a short hash of each request is kept, with a count. Pure.
 import { tr } from './lang'
+import { fillIn } from './fillin'
 import type { HelpEntry } from './registry'
 import type { Setting } from './settings'
 import { ymd } from './time'
@@ -9,7 +10,7 @@ export const COACH_SETTINGS: Setting[] = [
     key: 'coach.mode',
     group: 'Notes for the next session',
     label: 'Skill coach',
-    note: 'Notices a request you repeat and offers a skill.',
+    note: 'Notices a request you repeat and offers a skill.', // en-only: a setting note; /vaken-settings text stays English
     options: [
       { value: 'on', label: 'On' },
       { value: 'off', label: 'Off' },
@@ -20,7 +21,7 @@ export const COACH_SETTINGS: Setting[] = [
     key: 'decisions.mode',
     group: 'Notes for the next session',
     label: 'Decision log',
-    note: 'Writes down your answers and decisions you state.',
+    note: 'Writes down your answers and decisions you state.', // en-only: a setting note; /vaken-settings text stays English
     options: [
       { value: 'off', label: 'Off' },
       { value: 'on', label: 'On' },
@@ -71,9 +72,10 @@ export const cleanDecision = (text: string): string => text.replace(/\s+/g, ' ')
 export const addDecision = (list: Decision[], d: Decision): Decision[] => [d, ...list].slice(0, DECISIONS_MAX)
 
 export function decisionsText(list: Decision[], on: boolean): string {
-  if (list.length === 0) return `No decisions written down yet.${on ? '' : ' The log is off: turn it on in Settings > Prompts and memory to keep your answers. /vaken-memory decide <sentence> works either way.'}`
-  return [`Decisions (${list.length}), newest first:`, ...list.slice(0, 20).map(d => `  ${ymd(d.at)}  ${d.text}${d.how === 'asked' ? '' : ' (noted by you)'}`)].join('\n')
+  if (list.length === 0) return `${tr('No decisions written down yet.')}${on ? '' : ` ${tr('The log is off: turn it on in Settings > Prompts and memory to keep your answers. /vaken-memory decide <sentence> works either way.')}`}`
+  return [fillIn(tr('Decisions ({n}), newest first:'), { n: list.length }), ...list.slice(0, 20).map(d => `  ${ymd(d.at)}  ${d.text}${d.how === 'asked' ? '' : ` (${tr('noted by you')})`}`)].join('\n')
 }
+// en-only: a file written to disk to keep
 export const decisionsFile = (list: Decision[]): string => `# Decisions\n\nWritten by vaken from your answers and notes. Newest first.\n\n${list.map(d => `- ${ymd(d.at)}: ${d.text}`).join('\n')}\n`
 
 // Short and cautious: only a sentence that starts like a decision counts. A question, a quote, code or a long paste never does.

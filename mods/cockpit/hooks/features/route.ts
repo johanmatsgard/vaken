@@ -6,14 +6,17 @@ import { withToastGate } from '../core/io'
 import { shownTitle } from '../core/ledger'
 import { homeFrom } from '../core/platform'
 import type { Io } from '../core/io'
-import { ROUTED_WHAT, STATS_KEY, SUGGEST_WHAT, WARNED_WHAT, addRun, agentFilePaths, decideRoute, definedElsewhere, fileModel, jobType, normalizeStats, routeMode, routeText, routedDetail, shouldWarnSwitch, suggestDetail, suggestDue, switchDetail, switchDue, switchKey, switchWarning } from '../core/route'
+import { ROUTED_WHAT, STATS_KEY, SUGGEST_WHAT, SWITCH_BAND_ID, SWITCH_BAND_MS, WARNED_WHAT, addRun, agentFilePaths, decideRoute, definedElsewhere, fileModel, jobType, normalizeStats, routeMode, routeText, routedDetail, shouldWarnSwitch, suggestDetail, suggestDue, switchBandLine, switchDetail, switchDue, switchKey, switchPercent, switchWarning } from '../core/route'
 import type { JobType } from '../core/route'
+import { postBand } from '../core/band'
+import { HINT_KEY, parseSamples } from '../core/costhint'
 import { lookupModel } from '../core/models'
 import type { Family } from '../core/models'
 import { readSessionSet } from '../core/projects'
 import { readSetting, settingStoreKey } from '../core/settings'
 import { LEDGER_KEY, logLines, pushLog, readLog } from './compaction'
 import { subArgs } from '../core/menu'
+import { sayIn } from './saylang'
 
 // IO-BLOCK-START
 function io($: EngineInterface): Io {
@@ -170,7 +173,7 @@ export function registerRoute(on: On): void {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  // The person switches model: warn when it throws away a warm cache of a big chat.
+  // The person switches model: warn once when it throws away a warm cache of a big chat (a calm band line; never a block).
   on('classic.PreModelSwitch', { to_model: /(?<route>)/ }, async ($, e, next) => {
     try {
       const i = io($)
@@ -180,7 +183,10 @@ export function registerRoute(on: On): void {
         if (switchDue(lastSwitch, key, now)) {
           lastSwitch = { key, at: now }
           await pushLog(i, LEDGER_KEY, { at: now, session: await i.sessionId(), what: WARNED_WHAT, detail: switchDetail(e.from_model, e.to_model, e.estimated_cache_write_usd), how: 'auto', did: true })
-          i.toast(switchWarning(e.context_tokens, e.estimated_cache_write_usd))
+          // One calm band line with vaken's own percent of the 5-hour window; the dollars in a toast only when there is no honest percent yet
+          const pct = switchPercent(parseSamples(await i.get(HINT_KEY)), e.estimated_cache_write_usd)
+          if (pct === undefined) i.toast(switchWarning(e.context_tokens, e.estimated_cache_write_usd))
+          else await postBand(i, 'info', SWITCH_BAND_ID, switchBandLine(pct), SWITCH_BAND_MS)
           i.invalidate()
         }
       }
@@ -193,6 +199,7 @@ export function registerRoute(on: On): void {
     const rest0 = subArgs(e.args, 'route')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i).catch(() => undefined)
     const mode = routeMode(await readSetting(i, 'route.mode'))
     const cheap = await lookupOf(i)
     const kinds = new Set([ROUTED_WHAT, SUGGEST_WHAT, WARNED_WHAT])

@@ -11,6 +11,7 @@ import { CHANGES_KEY, SEEN_KEY, UPDATE_WHAT, VERSIONS_KEY, addChange, changeDeta
 import type { Change, Row, Servers } from '../core/trust'
 import { LEDGER_KEY, pushLog } from './compaction'
 import { subArgs } from '../core/menu'
+import { sayIn } from './saylang'
 
 // IO-BLOCK-START
 function io($: EngineInterface): Io {
@@ -167,6 +168,7 @@ export function registerTrust(on: On): void {
     const rest0 = subArgs(e.args, 'run', 'trust')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i).catch(() => undefined)
     try {
       await tellChanges(i, await i.sessionId())
     } catch {
@@ -178,6 +180,7 @@ export function registerTrust(on: On): void {
     const rest0 = subArgs(e.args, 'run', 'modhealth')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i).catch(() => undefined)
     const mode = (await i.get(HEALTH_MODE_KEY)) === 'off' ? 'off' : 'on'
     return { text: healthText(mode, await readCounts(i), await i.now(), { problems: [...refused.entries()].map(([name, why]) => `${name}: ${why}`) }) }
   })

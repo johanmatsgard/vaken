@@ -1,5 +1,5 @@
 // THE BODY RHYTHM, read from a drawn tree.
-import { BLOCK_RULE_PT, BODY_GAP, BODY_ROW_GAP, BUTTON_PAD, COL_PT, PRESS_FRAME_H, ROW_PT, RULE_BOX_H, VSTEP_PT } from '../hooks/ui/tokens'
+import { BLOCK_RULE_PT, BODY_GAP, BODY_ROW_GAP, BUTTON_PAD, columnPt, PRESS_FRAME_H, ROW_PT, RULE_BOX_H, VSTEP_PT } from '../hooks/ui/tokens'
 
 export type RNode = { type?: string; key?: string; props?: Record<string, unknown>; children?: unknown[] }
 const kids = (n: RNode): RNode[] => (n.children ?? []).filter((c): c is RNode => c !== null && typeof c === 'object')
@@ -98,7 +98,7 @@ function attachment(n: RNode): boolean {
     }
     if (x.type === 'Text' && visible(words(x)) && x.props?.dimColor !== true) bright = true
     if (x.type === 'Button' && visible(String(x.props?.label ?? ''))) bright = true
-    if (x.type === 'Svg' && String(x.props?.alt ?? '') !== '' && num(x.props?.width) > 3 * COL_PT) bar = true
+    if (x.type === 'Svg' && String(x.props?.alt ?? '') !== '' && num(x.props?.width) > 3 * columnPt()) bar = true
     kids(x).forEach(go)
   }
   go(n)
@@ -150,7 +150,7 @@ function firstInkX(n: RNode): number | undefined | 'aligned' {
   if (framed(n)) return 0
   if (n.type === 'Button') return inkLeaf(n) ? BUTTON_PAD : undefined
   if (n.type !== 'Box') return inkLeaf(n) ? 0 : undefined
-  const pad = (num(n.props?.paddingLeft) + num(n.props?.paddingX) + num(n.props?.marginLeft)) * COL_PT
+  const pad = (num(n.props?.paddingLeft) + num(n.props?.paddingX) + num(n.props?.marginLeft)) * columnPt()
   const flow = flowOf(n)
   if (isColumn(n)) {
     for (const c of flow) {
@@ -165,7 +165,7 @@ function firstInkX(n: RNode): number | undefined | 'aligned' {
   for (const c of flow) {
     const cx = firstInkX(c)
     if (cx !== undefined) return j === 'center' || j === 'flex-end' ? 'aligned' : cx === 'aligned' ? cx : x + cx
-    x += num(c.props?.width ?? c.props?.minWidth) * (c.type === 'Svg' ? 1 : COL_PT) + num(n.props?.columnGap) * COL_PT
+    x += num(c.props?.width ?? c.props?.minWidth) * (c.type === 'Svg' ? 1 : columnPt()) + num(n.props?.columnGap) * columnPt()
   }
   return undefined
 }

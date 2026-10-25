@@ -10,6 +10,8 @@ import { setWordSystem, wordSystemNow } from '../core/syswords'
 import type { Io } from '../core/io'
 import { addProbe, remember } from '../core/redraw'
 import { flushNotes, useLater } from '../core/flush'
+import { notePress } from '../core/offerlearn'
+import type { OfferKind } from '../core/offerlearn'
 import { noteActive } from '../core/quiet'
 import { forgetLeader, releaseLease } from '../core/leader'
 import { markSelfStart, noteCall, noteRun } from '../core/selfcost'
@@ -19,51 +21,50 @@ import { runnerOpsOf } from './orchestra'
 import type { RunnerOps } from './orchestra'
 import { PROJECT_OF_KEY } from '../core/projects'
 import { cacheFromUsage } from '../core/cachefacts'
-import { alivePids, dropRecord, label, listRecords } from '../core/record'
-import { CARD_IDS, homeText, titleOf } from './home/logic'
+import { alivePids, dropRecord, label, listRecords, readRecord } from '../core/record'
+import type { SessionRecord } from '../core/record'
+import { CARD_IDS, limitBlocks, titleOf } from './home/logic'
+import { chatReply } from './home/chatreply'
+import { sayIn } from './saylang'
+import { planShortName, statusMem, statusNext, statusText, tellNow } from '../core/tellme'
 import type { CardId } from './home/logic'
-import { isBucket, readOrders, writeOrder } from './home/layouts'
+import { isBucket, readOrderSet, writeLists } from './home/layouts'
 import { readSetting, readSettings, startWindowsLanguage, systemLanguage } from '../core/settings'
-import { PHONE_MODE_KEY, modeOf, phoneCockpitLine } from '../core/phonecmds'
-import { BORDER_X_PT, CARD_MIN_INNER_PT, COL_PT } from '../ui/tokens'
+import { OPEN_START_SEEN, OPEN_START_SETTING, openSeenOf, wantsOpenAtStart } from '../core/openstart'
+import { BORDER_X_PT, CARD_MIN_INNER_PT, columnPt, setColumnSystem } from '../ui/tokens'
 import { elementsFor } from '../ui/kit'
 import { runPress } from '../ui/firstclick'
-import { compactAnyway, compactCheckLines } from './home/actions'
-import { tEn } from '../i18n/t'
+import { compactAnyway, compactCheckLines, runRow } from './home/actions'
+import { FRESH_BRIEF, copyRule as copyRuleRow } from './home/rowact'
+import { t as tNow } from '../i18n/t'
 import { actsOf, flip } from './home/acts'
 import { seedCardHistory } from './home/appear'
-import { HomeBand } from './home/band'
+import { HomeBand, bandChipShown } from './home/band'
+import type { BandStep } from './home/band'
+import { RUNAWAY_BAND_ID, RUNAWAY_NO_STOP, RUNAWAY_STOPPED, RUNAWAY_WAITING, runawayMem, silenceRunaway } from '../core/attention'
+import { clearBand } from '../core/band'
 import { endFocus } from './calm'
 import { compactText, helpText, settingsCommand, usageText } from './home/commands'
-import { BY_PERSON_ONLY, byPerson } from '../core/origin'
+import { BY_PERSON_ONLY, byPerson, originKind } from '../core/origin'
 import type { HomeEngine } from './home/engine'
-import { bandSignature, bandSignatureForCheck, collect, collector, donePatch, ensure, loadView, paneSignature, viewForCheck, write } from './home/load'
-import { HomePane } from './home/pane'
-import { popOut } from './home/popout'
+import { askClear, bandSignature, bandSignatureForCheck, busyEnd, busyReset, busyStart, collect, collector, donePatch, ensure, loadView, nextActs, paneSignature, viewForCheck, write } from './home/load'
+import { QUICK_BUSY, clearPicks, nextMem, nextModeOf } from '../core/actions'
+import type { Action } from '../core/actions'
+import { leanMem, leanModeOf } from '../core/lean'
+import { allowMem, allowRulesModeOf } from '../core/allowrules'
+import { ASK_FAILED, SUBMIT_AFTER_MS } from '../core/phonenote'
+import { tr } from '../core/lang'
+import { HomePane, forgetSteady } from './home/pane'
+import { openRelaySession, popOut } from './home/popout'
 import { cardLouds, cardOrder } from './home/loud'
-import { PANE, PANE_TITLE } from './home/prefs'
-import { prsText } from '../core/prcard'
-import { backCardText } from '../core/backcard'
-import { safetyCardText } from '../core/safetycard'
-import { contextCardText } from '../core/contextcard'
-import { previewCardText } from '../core/previewcard'
-import { doBlocks, doCardText } from '../core/phonedo'
-import { previewFactsOf } from './home/preview'
-import { setupCardText } from '../core/setupcard'
-import { setupFactsOf } from './home/setup'
+import { DRAW_FAILED, PANE, PANE_TITLE } from './home/prefs'
 import { setSetupExists } from './setupfiles'
-import { startTaskText } from './home/starttask'
-import { agentsText } from '../core/agentboard'
-import { explainCmd } from '../core/whatis'
-import { contextFactsOf } from './home/context'
-import { shipCardText } from '../core/shipcard'
-import { backFactsOf } from './home/back'
-import { safetyFactsOf } from './home/safety'
-import { safetyFacts } from './home/linecards'
 import { refreshContext, refreshSessions, refreshUsage } from './home/refresh'
 import { flags, settleCompactAsk } from './home/state'
 import { startTimers, stopTimers } from './home/timers'
-import { fitPatch, noteStep } from './home/modelfit'
+import { askEffort, askMem, fitPatch, forgetAsks, noteAsk, noteStep } from './home/modelfit'
+import { FIT_KEY, fitOn } from '../core/modelfit'
+import { isPersonMessage } from '../core/proof'
 import { HINTS, isFolded, subArgs, unknownWord } from '../core/menu'
 
 export { langOf } from './home/state'
@@ -150,7 +151,16 @@ function engineOf($: EngineInterface): HomeEngine {
     commandList: () => $.command.list(),
     after: (ms, f) => $.clock.after(ms, f),
     toast: text => $.ui.toast(text),
+    copy: async text => {
+      const done = await $.ui.copy({ text })
+      return done.isCopied === true
+    },
+    selection: async () => {
+      const picked = await $.ui.selection()
+      return picked?.text
+    },
     messages: () => $.session.messages(),
+    agentMessages: agentId => $.session.messages({ agentId }),
     runnerOps: () => runnerOps($),
     send: (sessionId, text) => $.session.send({ to: { sessionId }, text }),
     pluginName: () => $.plugin.name,
@@ -199,9 +209,27 @@ async function paneShown($: EngineInterface): Promise<boolean> {
   return panes.some(p => p.id === PANE && p.isShown)
 }
 
+// Open at start (core/openstart.ts): no `focus`, so the chat keeps the keyboard. The result is kept for the live check.
+async function openAtStart($: EngineInterface, i: Io, isInteractive: boolean): Promise<void> {
+  try {
+    if (!wantsOpenAtStart(await readSetting(i, OPEN_START_SETTING), isInteractive, await paneShown($))) return
+    const r = await $.ui.open({ id: PANE, title: PANE_TITLE, closeOnEscape: true, rows: 30 })
+    await i.set(OPEN_START_SEEN, openSeenOf(await i.now(), r))
+  } catch {
+  }
+}
+
+const AGENT_BEAT_MS = 30_000
+let agentBeatAt = 0
+
+// What a tool call carries as `command` (the Bash line), read without casting the event.
+function commandOf(x: object): unknown {
+  return 'command' in x ? x.command : undefined
+}
+
 export function registerHome(on: On): void {
   on('session.start', { cwd: /(?<cockpit>)/ }, async ($, e, next) => {
-    await $.command.register({ name: 'vaken', description: 'Show what needs you, the plan limit and your other sessions. A word after it runs a part: inbox, neighbors.', argumentHint: HINTS['vaken'], immediate: true })
+    await $.command.register({ name: 'vaken', description: 'Show what needs you, the plan limit and your other sessions. A word after it runs a part: inbox, neighbors, show <file>, run <command>, pic [port].', argumentHint: HINTS['vaken'], immediate: true }) // en-only: slash menu text
     await $.command.register({ name: 'vaken-usage', description: 'Read the app usage card now: every plan limit, its reset and its pace. A word after it runs a part: cost, budget, limits, fit, why.', argumentHint: HINTS['vaken-usage'], immediate: true })
     await $.command.register({ name: 'vaken-help', description: 'Help: compacting the session and every other topic, in plain words. A word after it runs a part: glossary, run <name>.', argumentHint: 'glossary | run <name>', immediate: true })
     await $.command.register({ name: 'vaken-compact', description: 'Is now a good moment to compact the session? Also a line to paste after /compact. "now" compacts it at once. "why" says what stops it now.', argumentHint: HINTS['vaken-compact'], immediate: true })
@@ -210,6 +238,7 @@ export function registerHome(on: On): void {
       const i = io($)
       const eng = engineOf($)
       collector.local = undefined
+      forgetAsks()
       // Hot notes (core/flush.ts) are saved a few seconds later by the engine's timer
       useLater((ms, run) => $.clock.after(ms, run))
       const startAt = await $.clock.now()
@@ -219,6 +248,8 @@ export function registerHome(on: On): void {
       try {
         const sysName = await $.env.get('OS')
         setWordSystem(procPlatformOf(sysName))
+        // The pane's text cell is narrower on Windows (ui/tokens.ts, columnPt): set before anything is drawn
+        setColumnSystem(procPlatformOf(sysName))
       } catch {
       }
       try {
@@ -273,6 +304,7 @@ export function registerHome(on: On): void {
       }
       await write(i, { model, state: 'idle' })
       startTimers(eng)
+      void openAtStart($, i, e.isInteractive)
       void refreshUsage(eng)
       void refreshSessions(eng)
       void refreshContext(eng)
@@ -315,9 +347,11 @@ export function registerHome(on: On): void {
       if (title !== undefined) l.title = title
       const typed = !e.text.trimStart().startsWith('/')
       const patch = { ...(title === undefined ? {} : { title }), ...(typed ? { promptAt: now } : {}) }
-      // Only a new title changes what the band shows. The stamp alone rides on the record kept in memory, with no redraw check, so a prompt reads nothing more
+      // Only a new title changes what the band shows. The stamp alone rides on the record kept in memory, with no redraw check, so a prompt reads nothing more (while a step is held, features/inbox.ts saves it at once)
       if (title !== undefined) await collect(() => io($), patch, false)
       else if (typed) await write(io($), patch, false)
+      // Effort fits the ask: memory only, the free word rule alone.
+      if (isPersonMessage(e.text, e.origin)) noteAsk(e.text)
     } catch {
     }
     return next(e)
@@ -327,7 +361,7 @@ export function registerHome(on: On): void {
     const startedAt = await $.clock.now()
     noteActive(startedAt)
     if (settleCompactAsk(startedAt, true)) io($).invalidate()
-    await collect(() => io($), { state: 'working', ask: undefined })
+    await collect(() => io($), { state: 'working', ...(await askClear(io($), undefined)), ...busyReset() })
     return next(e)
   }).catch(($, e, next) => next(e))
 
@@ -335,11 +369,28 @@ export function registerHome(on: On): void {
     const isMain = e.agentId === undefined
     const calledAt = await $.clock.now()
     noteActive(calledAt)
-    if (isMain) await collect(() => io($), e.tool === 'AskUserQuestion' ? { state: 'working', ask: { kind: 'question', tool: e.tool, since: calledAt } } : { state: 'working' })
-    const result = await next(e)
+    // A question waits for you, so it is not work that keeps the session busy.
+    const isQuestion = e.tool === 'AskUserQuestion'
+    if (isMain) {
+      await collect(() => io($), isQuestion ? { state: 'working', ask: { kind: 'question', tool: e.tool, since: calledAt } } : { state: 'working' })
+      if (!isQuestion) busyStart(calledAt)
+      else tellNow({ kind: 'ask' })
+    } else if (calledAt - agentBeatAt >= AGENT_BEAT_MS) {
+      // An agent's step is a sign of life for this session too, at most once in AGENT_BEAT_MS.
+      agentBeatAt = calledAt
+      await collect(() => io($), {})
+    }
+    let ended: Partial<SessionRecord> = {}
+    const result = await Promise.resolve(next(e)).finally(() => {
+      if (isMain && !isQuestion) ended = busyEnd()
+    })
     // Nothing below may throw: a failure after next must not run the tool twice.
     try {
-      if (isMain) await collect(() => io($), { ask: undefined, ...(e.tool === 'Bash' ? await donePatch(io($), false) : {}), ...(await fitPatch(io($), e.tool, (e as { command?: unknown }).command)) })
+      if (isMain) await collect(() => io($), { ...(await askClear(io($), undefined)), ...ended, ...(e.tool === 'Bash' ? await donePatch(io($), false) : {}), ...(await fitPatch(io($), e.tool, commandOf(e))) })
+      else {
+        const clear = await askClear(io($), e.agentId)
+        if ('ask' in clear) await collect(() => io($), clear)
+      }
     } catch {
     }
     return result
@@ -348,11 +399,15 @@ export function registerHome(on: On): void {
   // Claude Code tells the person it needs a permission: from then on the call may wait for your OK. It only notes it, never answers.
   on('classic.Notification', async ($, e, next) => {
     try {
-      if (e.agent_id === undefined && /permission/i.test(e.notification_type)) {
+      if (/permission/i.test(e.notification_type)) {
         const tool = /\buse (.+?)\s*$/i.exec(e.message)?.[1] ?? ''
-        if (tool !== 'AskUserQuestion') {
+        // An agent's ask shows too, but never over one already waiting.
+        const sid = await $.session.id()
+        const isFree = e.agent_id === undefined || (await readRecord(io($), sid))?.ask === undefined
+        if (tool !== 'AskUserQuestion' && isFree) {
           const askedAt = await $.clock.now()
-          await collect(() => io($), { ask: { kind: 'permission', tool: label(tool, 40), since: askedAt } })
+          await collect(() => io($), { ask: { kind: 'permission', tool: label(tool, 40), since: askedAt, ...(e.agent_id === undefined ? {} : { agentId: e.agent_id }) } })
+          tellNow({ kind: 'ask' })
         }
       }
     } catch {
@@ -360,13 +415,24 @@ export function registerHome(on: On): void {
     return next(e)
   }).catch(($, e, next) => next(e))
 
-  // The main loop's model and effort
+  // The main loop's model and effort; low effort only after the person pressed it for quick asks.
   on('turn.step', { turnId: /(?<modelfit>)/ }, async function* ($, e, next) {
+    let effort: 'low' | undefined
     try {
-      if (e.agentId === undefined) noteStep(e.model, e.effort)
+      if (e.agentId === undefined) {
+        noteStep(e.model, e.effort)
+        effort = askEffort(e.effort)
+      }
     } catch {
     }
-    return yield* next(e)
+    return yield* next(effort === undefined ? e : { ...e, effort })
+  })
+
+  // The desktop app runs the session as the SDK (`isInteractive` false), so its pane opens when the app joins; a reopened session gets it back too.
+  on('session.attach', { surface: 'desktop' }, async ($, e, next) => {
+    const r = await next(e)
+    void openAtStart($, io($), true)
+    return r
   })
 
   on('turn.complete', { turnId: /(?<cockpit>)/ }, async ($, e, next) => {
@@ -384,7 +450,7 @@ export function registerHome(on: On): void {
       }
       const cacheAt = await $.clock.now()
       const cache = cacheFromUsage(e.usage, cacheAt)
-      await collect(() => io($), { state: e.reason === 'aborted' || !isWatched ? 'idle' : 'waiting', ask: undefined, ...(cache === undefined ? {} : { cache }), ...(await donePatch(io($), true)) })
+      await collect(() => io($), { state: e.reason === 'aborted' || !isWatched ? 'idle' : 'waiting', ...(await askClear(io($), undefined)), ...busyReset(), ...(cache === undefined ? {} : { cache }), ...(await donePatch(io($), true)) })
       const r = await next(e)
       await flushNotes(false)
       return r
@@ -409,6 +475,7 @@ export function registerHome(on: On): void {
 
   on('command.run', { command: 'vaken-usage' }, async ($, e, next) => {
     if (isFolded(e.command, e.args)) return next(e)
+    await sayIn(io($))
     const unknown = unknownWord(e.command, e.args)
     if (unknown !== undefined) return { text: unknown }
     return { text: await usageText(engineOf($)) }
@@ -416,24 +483,29 @@ export function registerHome(on: On): void {
 
   on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
     if (isFolded(e.command, e.args)) return next(e)
-    flags.paneView = 'help'
-    await $.ui.open({ id: PANE, title: PANE_TITLE, focus: true, closeOnEscape: true, rows: 30 })
-    io($).invalidate()
+    // A word asks for a topic in the chat; only the bare command opens the Help page
+    if (e.args.trim() === '') {
+      flags.paneView = 'help'
+      await $.ui.open({ id: PANE, title: PANE_TITLE, focus: true, closeOnEscape: true, rows: 30 })
+      io($).invalidate()
+    }
+    await sayIn(io($))
     return { text: helpText(e.args, await readSettings(io($))) }
   })
 
   on('command.run', { command: 'vaken-compact' }, async ($, e) => {
     // It starts a moment after the command ends
+    await sayIn(io($))
     const unknown = unknownWord(e.command, e.args, ['now', 'why'])
     if (unknown !== undefined) return { text: unknown }
     if (e.args.trim().toLowerCase() === 'now') {
       // Compacting changes the session, so only the person typing here may start it (core/origin.ts).
       if (!byPerson(e.origin)) return { text: BY_PERSON_ONLY }
       const eng = engineOf($)
-      const notGood = await compactCheckLines(eng, tEn)
+      const notGood = await compactCheckLines(eng, tNow)
       $.clock.after(1500, () => void compactAnyway(eng))
-      const head = 'Compacting the session in a moment, with what Claude keeps. Watch for the compact marker.' // en-only: plain answer of a slash command (text twin)
-      const why = 'Not a good moment by the checks; compacting anyway because you asked:' // en-only: plain answer of a slash command (text twin)
+      const head = tr('Compacting the session in a moment, with what Claude keeps. Watch for the compact marker.')
+      const why = tr('Not a good moment by the checks; compacting anyway because you asked:')
       return { text: [head, ...(notGood.length === 0 ? [] : [why, ...notGood.map(l => `  ${l}`)])].join('\n') }
     }
     return { text: await compactText(engineOf($), e.args) }
@@ -442,7 +514,8 @@ export function registerHome(on: On): void {
   on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
     const rest0 = subArgs(e.args, 'run', 'popout')
     if (rest0 === undefined) return next(e)
-    return { text: (await popOut(engineOf($), s => s)).text }
+    await sayIn(io($))
+    return { text: (await popOut(engineOf($))).text }
   })
 
   on('command.run', { command: 'vaken-settings' }, async ($, e, next) => {
@@ -452,23 +525,43 @@ export function registerHome(on: On): void {
 
   on('command.run', { command: 'vaken' }, async ($, e, next) => {
     if (isFolded(e.command, e.args)) return next(e)
+    // On the phone the pane does not show: features/phone.ts answers with the number menu.
+    if (e.args.trim() === '' && originKind(e.origin) === 'bridge') return next(e)
+    await sayIn(io($))
     const unknown = unknownWord(e.command, e.args)
     if (unknown !== undefined) return { text: unknown }
     await $.ui.open({ id: PANE, title: PANE_TITLE, focus: true, closeOnEscape: true, rows: 30 })
-    const { view, prefs } = await loadView(ioWithExists($))
-    const phoneLine = phoneCockpitLine(modeOf(await readSetting(io($), PHONE_MODE_KEY)))
-    return { text: `${homeText(view, cardOrder(prefs, cardLouds(view, prefs)), { agents: [...agentsText(prefs.agents ?? [], view.now ?? 0, r => prefs.agentFrom[r.session] ?? 'a closed session', explainCmd('agents')), ...startTaskText(prefs)], back: backCardText(backFactsOf(view, prefs)), preview: prefs.hidden.includes('preview') ? [] : previewCardText(previewFactsOf(prefs)), setup: prefs.hidden.includes('setup') ? [] : setupCardText(setupFactsOf(prefs)), do: prefs.hidden.includes('do') ? [] : doCardText(doBlocks()), context: contextCardText(contextFactsOf(view, prefs)), safety: safetyCardText(safetyFacts({ now: view.now ?? 0, ledger: prefs.ledger, ...(view.counts === undefined ? {} : { counts: view.counts }), halted: prefs.halted, modes: {}, safety: safetyFactsOf(prefs) })), prs: prsText(prefs.prs), ship: shipCardText({ ...(prefs.proof === undefined ? {} : { proof: prefs.proof }), ledger: prefs.ledger, now: view.now ?? 0, ...(prefs.prs === undefined ? {} : { prs: prefs.prs }) }) })}\n${phoneLine}` }
+    // A broken store value never fails the command: the pane draws its own plain line
+    try {
+      const { view, prefs } = await loadView(ioWithExists($))
+      const louds = cardLouds(view, prefs)
+      // The pane opens with every card: the chat answer says only what is hot (features/home/chatreply.ts)
+      return { text: chatReply(view, prefs, louds, cardOrder(prefs, louds)) }
+    } catch {
+      return { text: tr(DRAW_FAILED) }
+    }
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const resolved = $.ui.resolve(e)
     const el = elementsFor(resolved, e.surface)
-    // The pane's own load: a view with no cards (Settings, Help
-    const { view, prefs } = await loadView(ioWithExists($), true)
-    remember('home', paneSignature(view, prefs))
-    const eng = engineOf($)
-    const innerPt = Math.max(CARD_MIN_INNER_PT, Math.round(e.props.bodyColumns * COL_PT - 2 * BORDER_X_PT))
-    return HomePane(el, view, prefs, innerPt, key => void flip(eng, key), e.props.bodyColumns, actsOf(eng), e.props.scroll?.bodyRows)
+    // A throw anywhere in the load or the draw leaves one plain line, never a blank pane
+    try {
+      // The pane's own load: a view with no cards (Settings, Help
+      const { view, prefs } = await loadView(ioWithExists($), true)
+      remember('home', paneSignature(view, prefs))
+      const eng = engineOf($)
+      const innerPt = Math.max(CARD_MIN_INNER_PT, Math.round(e.props.bodyColumns * columnPt() - 2 * BORDER_X_PT))
+      return HomePane(el, view, prefs, innerPt, key => void flip(eng, key), e.props.bodyColumns, actsOf(eng), e.props.scroll?.bodyRows)
+    } catch {
+      return <el.Box key="draw-failed"><el.Text>{tr(DRAW_FAILED)}</el.Text></el.Box>
+    }
+  })
+
+  // A pane that closes draws its cards in their own order when it opens again
+  on('ui.close', async (_$, e, next) => {
+    if (e.id === PANE) forgetSteady()
+    return next(e)
   })
 
   on('ui.press', { element: /(?<quiet>)/ }, async ($, e, next) => {
@@ -493,21 +586,31 @@ export function registerHome(on: On): void {
 
   on('ui.message', { element: /^arrange-board$/ }, async ($, e, next) => {
     try {
-      const data = e.data as { order?: unknown; bucket?: unknown } | null
+      const data = e.data as { lists?: unknown; order?: unknown; bucket?: unknown } | null
       const i = io($)
       const values = await readSettings(i)
       const hidden = CARD_IDS.filter(id => values[`cards.${id}`] === 'hide')
       const bucket = data?.bucket
       if (!isBucket(bucket)) return next(e)
-      const old = (await readOrders(i))[bucket]
-      const shown = typeof data?.order === 'string' ? data.order.split(',').filter(id => id !== 'needs') : []
+      const set = await readOrderSet(i)
+      const old = set.orders[bucket]
+      // The board sends its columns split by "|" (an older board sends one order)
+      const text = typeof data?.lists === 'string' ? data.lists : typeof data?.order === 'string' ? data.order : ''
+      const cols = text.split('|').map(part => part.split(',').filter(id => id !== '' && id !== 'needs'))
+      const shown = cols.flat()
       // Only the cards still shown, each once, are a drop.
       const away = (id: CardId): boolean => hidden.includes(id) || (APPEARS[id] !== undefined && !shown.includes(id))
       const want = old.filter(id => !away(id))
       if (shown.length === want.length && want.every(id => shown.includes(id)) && new Set(shown).size === shown.length) {
-        const merged = [...(shown as CardId[]), ...old.filter(away)]
-        if (merged.join(',') !== old.join(',')) {
-          await writeOrder(i, bucket, merged)
+        // A card not on the board keeps its column under the cards there (with no columns kept yet, the last column)
+        const lists = cols.map(c => [...(c as CardId[])])
+        const oldLists = set.lists[bucket]
+        if (oldLists === undefined) lists[lists.length - 1].push(...old.filter(away))
+        else for (const [n, l] of oldLists.entries()) for (const id of l) if (away(id)) lists[Math.min(n, lists.length - 1)].push(id)
+        const before = set.lists[bucket] === undefined ? old.join(',') : set.lists[bucket].map(l => l.join(',')).join('|')
+        const after = lists.length > 1 ? lists.map(l => l.join(',')).join('|') : lists.flat().join(',')
+        if (after !== before) {
+          await writeLists(i, bucket, lists)
           i.invalidate()
         }
       }
@@ -520,9 +623,46 @@ export function registerHome(on: On): void {
     const theirs = await next(e)
     const resolved = $.ui.resolve(e)
     const el = elementsFor(resolved, e.surface)
-    const { view, detail } = await loadView(ioWithExists($))
+    const { view, detail, prefs } = await loadView(ioWithExists($))
+    nextMem.mode = nextModeOf(prefs.values['next.mode'])
+    leanMem.mode = leanModeOf(prefs.values['lean.mode'])
+    allowMem.mode = allowRulesModeOf(prefs.values['allow.rules'])
+    askMem.on = fitOn(prefs.values[FIT_KEY])
     remember('band', bandSignature(view, detail))
+    // The status line under the prompt box, from the facts this draw already loaded
+    try {
+      statusMem.on = prefs.values['status.line'] !== 'off'
+      const lead = limitBlocks(view)[0]
+      statusMem.facts = { context: view.here?.rec.contextPercent, planUsed: lead?.percent, planName: lead === undefined ? undefined : planShortName(lead), bandChip: bandChipShown(view, detail, e.props.bodyColumns, nextActs(view).map(a => tr(a.label)), el.Svg !== undefined) }
+      const line = statusNext(statusMem.on, statusText(statusMem.facts), statusMem.shown)
+      if (line !== null) {
+        statusMem.shown = line
+        $.ui.status(line)
+      }
+    } catch {
+    }
     const { Box } = el
+    // A next step button sends its fixed request a moment later, and only while Claude is not working
+    const pressNext = (a: Action) => {
+      const i = io($)
+      if (nextMem.busy) {
+        i.toast(tr(QUICK_BUSY))
+        return
+      }
+      clearPicks()
+      i.invalidate()
+      void notePress(i, a.id as OfferKind)
+      $.clock.after(SUBMIT_AFTER_MS, () => {
+        void (async () => {
+          try {
+            const r = await $.prompt.submit({ text: a.prompt, asUser: true })
+            if ('drop' in r && r.drop !== undefined) i.toast(tr(ASK_FAILED), true)
+          } catch {
+            i.toast(tr(ASK_FAILED), true)
+          }
+        })()
+      })
+    }
     const openPane = () => {
       flags.bandListOpen = true
       flags.paneView = 'cards'
@@ -538,10 +678,33 @@ export function registerHome(on: On): void {
       void opened
       io($).invalidate()
     }
+    // The runaway step line's presses (core/attention.ts): Stop the answer ends the running answer and its step through the engine's turn.abort,
+    // only while that answer's id is known; Keep waiting keeps vaken quiet about this step. Only on a press.
+    const turnId = runawayMem.turnId
+    const stopStep = async (id: string) => {
+      const i = io($)
+      let stopped = true
+      try {
+        await $.turn.abort({ turnId: id })
+      } catch {
+        stopped = false
+      }
+      await clearBand(i, RUNAWAY_BAND_ID)
+      i.toast(tr(stopped ? RUNAWAY_STOPPED : RUNAWAY_NO_STOP), true)
+      i.invalidate()
+    }
+    const keepWaiting = async () => {
+      const i = io($)
+      silenceRunaway(await i.now())
+      await clearBand(i, RUNAWAY_BAND_ID)
+      i.toast(tr(RUNAWAY_WAITING), true)
+      i.invalidate()
+    }
+    const step: BandStep = { ...(turnId === undefined ? {} : { stop: () => void stopStep(turnId) }), wait: () => void keepWaiting() }
     return (
       <Box flexDirection="column">
         {theirs}
-        {HomeBand(el, view, detail, openPane, () => void endFocus(io($), true), openNeeds, e.props.bodyColumns)}
+        {HomeBand(el, view, detail, openPane, () => void endFocus(io($), true), openNeeds, e.props.bodyColumns, { actions: nextActs(view), press: pressNext }, () => void runRow(engineOf($), FRESH_BRIEF), rule => void runRow(engineOf($), copyRuleRow(rule)), r => void openRelaySession(engineOf($), r), step)}
       </Box>
     )
   })

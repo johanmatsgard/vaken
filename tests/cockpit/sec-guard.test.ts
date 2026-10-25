@@ -26,6 +26,11 @@ test('Monitor runs a command: the guard and Pause all read it; the result blocks
   expect(commandFlavorOfTool('toString')).toBeUndefined()
 })
 
+test('Pause also stops workflows, remote triggers, publishing, sending files and worktree changes; reads, searches and the task list still run', () => {
+  for (const tool of ['Workflow', 'RemoteTrigger', 'ScheduleWakeup', 'AppifactRepl', 'Artifact', 'ArtifactComments', 'ArtifactData', 'ClaudeDesign', 'DesignSync', 'Projects', 'PublishPlugin', 'ShareOnboardingGuide', 'SendFile', 'SendFeedback', 'EnterWorktree', 'ExitWorktree']) expect(haltStops(tool), tool).toBe(true)
+  for (const tool of ['Read', 'Grep', 'Glob', 'WebSearch', 'TodoWrite', 'TaskList', 'AskUserQuestion', 'ToolSearch']) expect(haltStops(tool), tool).toBe(false)
+})
+
 test('Monitor with a risky command has the same findings as Bash; a Monitor on a socket has none', async () => {
   const io = {} as Io
   const viaBash = await judgeTool(io, ENV, 'Bash', { command: 'rm -rf ~' }, HOLD)

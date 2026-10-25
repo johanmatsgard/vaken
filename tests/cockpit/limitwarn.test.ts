@@ -15,7 +15,7 @@ test('a 5-hour window that runs out in an hour, before its reset in two, is name
   const w = limitWarning([{ label: '5-hour limit', percent: 75, resetsAt: iso(NOW + 2 * HOUR) }], NOW)
   expect(w?.hitAt).toBe(NOW + HOUR)
   expect(w?.text).toBe('At this pace the 5-hour limit runs out at 15:00. It resets at 16:00.')
-  expect(bandWords(w!, NOW)).toBe('5-hour limit runs out about 15:00')
+  expect(bandWords(w!, NOW)).toBe('5 h runs out about 15:00 (estimate)')
 })
 
 test('no warning when the pace stays under the limit, when it is still far off, or when the reset comes first', () => {
@@ -44,7 +44,7 @@ test('the setting exists, is On by default, and the band line opens with its not
   expect(bandWhatIs({ id: 'limitwarn', text: '5-hour limit runs out about 15:00', at: NOW }, NOW).setting).toBe('limits.warn')
 })
 
-test('one whole-percent step in a short time never warns about the weekly window (the owner case)', () => {
+test('one whole-percent step in a short time never warns about the weekly window', () => {
   const week = { label: 'Weekly (all models)', percent: 68, resetsAt: iso(NOW + 21 * HOUR) }
   expect(limitWarning([week], NOW, { 'Weekly (all models)': [[NOW - 16 * 60_000, 67]] })).toBeUndefined()
   // Even a two-point change is not enough inside a short span.

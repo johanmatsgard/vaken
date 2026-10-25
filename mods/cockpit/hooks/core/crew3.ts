@@ -53,7 +53,7 @@ export const CREW3_SETTINGS: Setting[] = [
 ]
 
 export const CREW3_HELP: HelpEntry[] = [
-  { title: 'Busy ports and extra project folders: what it checks', text: 'Vaken looks at which program holds a port, and in which session folder it started. When Claude is about to start a server on a port another session holds, Claude gets a note, so two sessions do not fight over one port. It also says which worktrees (extra copies of your project folder, one for each session that works on its own) are clean and merged, so they are safe to remove. It never removes anything: it prints the exact command for you.' },
+  { title: 'Busy ports and extra project folders: what it checks', text: 'Vaken looks at which program holds a port, and in which session folder it started. When Claude is about to start a server on a port another session holds, Claude gets a note, so two sessions do not fight over one port. It also says which worktrees (extra copies of your project folder, one for each session that works on its own) are clean and merged, so they are safe to remove. It removes one only when you press Remove this copy on the Pull requests card, and only a merged one with nothing uncommitted or unpushed; for the rest it prints the exact command for you.' },
   { title: 'How does it help me merge and ship?', text: 'Merge order says which pull request to merge first. CI fix writes a prompt from the failing check, for you to send, and stops after 3 tries a day. The branch digest lists your changes, riskiest first. The orphan finder lists leftover programs and the command to stop each one; you run it.' },
 ]
 

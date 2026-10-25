@@ -3,6 +3,7 @@ import type { Io } from './io'
 import { ALLOW_TTL_MS, allowKey } from './guard'
 import { sha256Hex } from './fileops'
 import { runsCommand } from './tools'
+import { shortStepOf } from './allowrules'
 
 export const heldKey = (sid: string): string => `cockpit:guard:held:${sid}`
 const HELD_KEYS_MAX = 20
@@ -106,10 +107,38 @@ function queued<T>(job: () => Promise<T>): Promise<T> {
   return p
 }
 
+// The open stop's masked short form lives in memory only and goes with the stop. `kept` holds the steps the person chose to keep stopped in this session.
+type OpenStop = { sid: string; at: number; short?: string; input?: string }
+export const stopMem: { open?: OpenStop; kept: Set<string> } = { kept: new Set() }
+
+export function openShort(sid: string, now: number): string | undefined {
+  const o = stopMem.open
+  return o !== undefined && o.sid === sid && live(o.at, now) ? o.short : undefined
+}
+export function closeStop(sid: string): void {
+  if (stopMem.open?.sid === sid) stopMem.open = undefined
+}
+export function keepOpenStop(sid: string): boolean {
+  const o = stopMem.open
+  if (o === undefined || o.sid !== sid || o.input === undefined) return false
+  stopMem.kept.add(`${sid}|${o.input}`)
+  stopMem.open = undefined
+  return true
+}
+export async function isKeptStopped(sid: string, step: StepArg): Promise<boolean> {
+  if (stopMem.kept.size === 0) return false
+  const input = await hashOf(step)
+  return input !== undefined && stopMem.kept.has(`${sid}|${input}`)
+}
+export const stopSignature = (): string => `${stopMem.open?.at ?? 0}:${stopMem.kept.size}`
+
 export function noteHeld(i: Io, sid: string, step: StepArg, keys: readonly string[], words: string): Promise<void> {
   return queued(async () => {
     const input = await hashOf(step)
-    await i.set(heldKey(sid), withHeld(parseHeld(await i.get(heldKey(sid))), idOf(step), keys, words, await i.now(), input))
+    const now = await i.now()
+    const short = typeof step === 'object' ? shortStepOf(step.call) : undefined
+    stopMem.open = { sid, at: now, ...(short === undefined ? {} : { short }), ...(input === undefined ? {} : { input }) }
+    await i.set(heldKey(sid), withHeld(parseHeld(await i.get(heldKey(sid))), idOf(step), keys, words, now, input))
   })
 }
 
@@ -119,6 +148,7 @@ export function grantAllow(i: Io, sid: string, onlyBound = false): Promise<{ set
     const a = allowFor(held, await i.now())
     if (onlyBound && a.keys === undefined) return { set: false, bound: false }
     await i.set(allowKey(sid), a)
+    closeStop(sid)
     return a.keys === undefined ? { set: true, bound: false } : { set: true, bound: true, ...(held?.words === undefined ? {} : { words: held.words }) }
   })
 }
@@ -151,3 +181,5 @@ export function heldOpen(held: HeldStep | undefined, allow: AllowOnce | undefine
   if (allow !== undefined && allow.at >= held.at) return undefined
   return held
 }
+
+export const KEPT_STOPPED_REASON = 'The person chose to keep this exact step stopped in this session. Do not try it again or look for another way around it. Ask the person what to do instead.' // en-only: text for Claude, not shown in the pane

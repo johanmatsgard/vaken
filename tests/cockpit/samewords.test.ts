@@ -79,24 +79,24 @@ function store(on: On, seed: Record<string, unknown>): Map<string, unknown> {
 }
 const record = (over: Partial<SessionRecord>): SessionRecord => ({ sessionId: 'test-session', cwd: '/work/app', model: 'claude-opus-5', state: 'idle', startedAt: NOW - 60 * MIN, updatedAt: NOW - 7 * MIN, lastEventAt: NOW - 7 * MIN, stateSince: NOW - 7 * MIN, ...over }) as SessionRecord
 
-test('/vaken-today glance says the limit, its reset and its age, the paused session and the one Needs you number, as /vaken does', SLOW, async ($, on) => {
+test('/vaken-today glance says the limit, its reset and its age, the paused session and the one Needs you number; /vaken says only the pause', SLOW, async ($, on) => {
   store(on, {
     'cockpit:session:test-session': record({ contextPercent: 30, sevenDayPercent: 40, sevenDayResetsAt: new Date(NOW + 2 * DAY).toISOString() }),
     [haltKey('test-session')]: { at: NOW - MIN },
   })
   const glance = ((await $.command.run(viaParent('vaken-glance', ''))) as { text: string }).text.split('\n')
   const home = ((await $.command.run({ command: 'vaken', args: '' } as never)) as { text: string }).text
-  const twin = /Weekly limit: 40% used, (resets \w{3} \d\d:\d\d), read 7 min ago\./.exec(home)
-  expect(twin).not.toBeNull()
-  expect(glance[1]).toBe(`Weekly limit: 40% used, ${twin![1]}, read 7 min ago.`)
-  expect(home).toMatch(/Needs you: 1/)
+  expect(glance[1]).toMatch(/^Weekly limit: 40% used, resets \w{3} \d\d:\d\d, read 7 min ago\.$/)
+  // The /vaken chat answer holds only hot facts: the pause that needs you, not a calm 40% limit
+  expect(home).not.toMatch(/Weekly limit/)
+  expect(home).toMatch(/Needs you: this session is paused/)
   expect(glance[0]).toBe('1 needs you.')
   expect(glance[2]).toMatch(/^This session: Needs you: paused, it waits for you to resume it/)
 })
 
 test('the Glance lines count the held rows too and name the sessions that ask', () => {
   expect(glanceLines({ needs: [], needsTotal: 2, hereState: 'Idle', didCount: 0 })[0]).toBe('2 need you.')
-  expect(glanceLines({ needs: [{ name: 'A', reason: 'asks' }], needsTotal: 3, hereState: 'Idle', didCount: 0 })[0]).toBe('3 need you: A (asks), +2 more.')
+  expect(glanceLines({ needs: [{ name: 'A', reason: 'asks' }], needsTotal: 3, hereState: 'Idle', didCount: 0 })[0]).toBe('3 need you: A (asks), 2 more in Needs you.')
   expect(glanceLines({ needs: [], limitPercent: 50, limitLabel: '5-hour limit', limitReset: 'resets 14:00', limitAgo: '25 min ago', hereState: 'Idle', didCount: 0 })[1]).toBe('5-hour limit: 50% used, resets 14:00, read 25 min ago.')
 })
 
@@ -193,9 +193,9 @@ test('in Swedish a mode title is said in Swedish on the band and in the Autopilo
     const band = tLine('band.preset_name', { preset: 'Everything useful' })
     expect(sayStored({ text: band, key: 'band.preset_name', vars: { preset: 'Everything useful' } })).toBe('Läge: Allt användbart')
     expect(trFill(presetWhat('Everything useful'))).toBe('Tog i bruk läget Allt användbart')
-    expect(othersHead({ waiting: 0, working: 0, total: 1 }, tr)).toBe('1 inaktiv')
-    expect(othersHead({ waiting: 0, working: 0, total: 3 }, tr)).toBe('3 inaktiva')
-    expect(othersWord({ needs: [], working: [], waiting: [], idle: [{}] } as unknown as View, tr)).toBe('1 inaktiv')
+    expect(othersHead({ waiting: 0, working: 0, total: 1 }, tr)).toBe('1 vilar')
+    expect(othersHead({ waiting: 0, working: 0, total: 3 }, tr)).toBe('3 vilar')
+    expect(othersWord({ needs: [], working: [], waiting: [], idle: [{}] } as unknown as View, tr)).toBe('1 vilar')
     expect(tr(COUNTS_LINE)).toMatch(/\{off\} avstängda\./)
   } finally {
     setLang('en')

@@ -1,7 +1,9 @@
 // "Ship it": says whether the work looks ready from the evidence other blocks keep. It never merges or pushes.
 import type { Entry } from './ledger'
-import { didKind, didToday } from './ledger'
-import { GUARD_WHATS, HALT_WHAT } from './guard'
+import { didToday } from './ledger'
+import { HELD_WHAT, WARNED_WHAT } from './guard'
+import { HELD_WHAT as WORLD_HELD_WHAT, WARNED_WHAT as WORLD_WARNED_WHAT } from './guardworld'
+import { HELD_WHAT as BACK_HELD_WHAT, WARNED_WHAT as BACK_WARNED_WHAT } from './guardback'
 import type { Confidence } from './proof2'
 import { kindWord, relevantKinds, statusOf, statusWord } from './proof'
 import type { ProofState } from './proof'
@@ -11,9 +13,14 @@ import type { Tr } from './fillin'
 type ShipFacts = { proof: ProofState; confidence: Confidence; ledger: Entry[]; counts?: Record<string, number>; now: number; doneOn: boolean }
 type Ship = { ready: boolean; blockers: string[]; evidence: string[]; look: string[] }
 
-export const stoppedWhat = (what: string): boolean => what !== HALT_WHAT && (GUARD_WHATS.includes(what) ? what.startsWith('Held') || what.startsWith('Refused') : didKind(what) === 'stopped')
+// Only a real risky step counts as warned (the guard's kinds, steps that reach outside, secrets, migrations); the same-folder notice and the other notices do not
+const RISKY_WARNED: readonly string[] = [...Object.values(WARNED_WHAT), ...Object.values(WORLD_WARNED_WHAT), BACK_WARNED_WHAT]
+export const riskyWarned = (what: string): boolean => RISKY_WARNED.includes(what)
+// Only a real risky step counts as stopped, the same kinds: an extra agent, a call over budget, the pause and a step refused while paused are not risky steps
+const RISKY_STOPPED: readonly string[] = [...Object.values(HELD_WHAT), ...Object.values(WORLD_HELD_WHAT), BACK_HELD_WHAT]
+export const riskyStopped = (what: string): boolean => RISKY_STOPPED.includes(what)
 // The counts store keeps every line, the ledger only the last 60, so both are read.
-export const stoppedToday = (ledger: Entry[], now: number, counts?: Record<string, number>): number => didToday(ledger, now, counts).filter(d => stoppedWhat(d.what)).reduce((n, d) => n + d.n, 0)
+export const stoppedToday = (ledger: Entry[], now: number, counts?: Record<string, number>): number => didToday(ledger, now, counts).filter(d => riskyStopped(d.what)).reduce((n, d) => n + d.n, 0)
 
 export function ship(f: ShipFacts, t: Tr = same): Ship {
   const p = f.proof

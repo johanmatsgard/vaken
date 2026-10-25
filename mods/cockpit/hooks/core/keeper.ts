@@ -15,6 +15,7 @@ const EYES_DAYS = 7
 
 export const END_FAMILIES: readonly string[] = [
   'cockpit:assume:last:',
+  'cockpit:assume:sent:',
   'cockpit:band:',
   'cockpit:compactdiff:',
   'cockpit:compact:rest:',
@@ -34,6 +35,7 @@ export const END_FAMILIES: readonly string[] = [
   'cockpit:neighbors:at:',
   'cockpit:planfirst:',
   'cockpit:promptcheck:last:',
+  'cockpit:tasks:last:',
   'cockpit:resume:',
   'cockpit:rules:',
   'cockpit:pr:state:',
@@ -43,6 +45,7 @@ export const END_FAMILIES: readonly string[] = [
   'cockpit:projectof:',
   'cockpit:undo:pending:',
   'cockpit:undo:mark:',
+  'cockpit:undo:skipped:',
   'cockpit:failed:',
   'cockpit:watch:',
 ]

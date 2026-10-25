@@ -1,5 +1,5 @@
 // The settings registry: one list read by the settings view and the text command.
-import { SETTINGS_KEY, SETTING_PREFIX } from './io'
+import { PROJSET_PREFIX, SESSSET_PREFIX, SETTINGS_KEY, SETTING_PREFIX } from './io'
 import type { Io } from './io'
 import { PREVIEW_NOTE, PREVIEW_TITLE } from './previewwords'
 import { SETUP_NOTE, SETUP_TITLE } from './setupwords'
@@ -7,12 +7,21 @@ import { sysWord } from './syswords'
 import { DO_CARD_LABEL, DO_NOTE } from './dowords'
 import { FEATURE_SETTINGS } from './registry'
 import { cardsDefault, cardsOptions } from './cardrules'
-import { ADVANCED_SECTION, COUNT_CHIP, SECTION_TABLE, cardOfFocus, decorate, isAdvanced, sectionNamed, sectionOfCard, sectionOfGroup, sectionOfSetting, tally } from './settingsmap'
+import { ADVANCED_SECTION, COUNT_CHIP, SECTION_TABLE, cardOfFocus, decorate, isAdvanced, isTextOnly, sectionNamed, sectionOfCard, sectionOfGroup, sectionOfSetting, tally } from './settingsmap'
 import type { Section } from './settingsmap'
 import { REGISTRY } from '../i18n/langs'
-import { tEn } from '../i18n/t'
+import { tEn, tr } from '../i18n/t'
+import { fmt } from './fmt'
+import { OPEN_START_LABEL, OPEN_START_NOTE, OPEN_START_SETTING } from './openstart'
 
-export type Choice = { value: string; label: string }
+// A size choice in the words of the front of the card ("100k tokens", as "164k of 200k tokens"): the one formatter, core/fmt.ts
+// The cost word of a choice that sends Claude extra text: the same words as the tag of Settings' mode list (settings.mode_tag_plan)
+export const COST_TAG = 'uses a little plan'
+
+const tokensLabel = (n: number): string => tEn('pane.n_tokens', { n: fmt.tokens(n) })
+
+// tag: a dim cost word for a choice that uses plan ("uses a little plan"), drawn at the right of its radio row, as Settings' mode list draws it
+export type Choice = { value: string; label: string; tag?: string }
 export type Setting = {
   key: string
   group: string
@@ -32,7 +41,7 @@ const DETAIL_LEGACY: Record<string, string> = { minimal: 'simple' }
 const CARD_DETAIL_OPTIONS: Choice[] = [
   { value: 'inherit', label: 'Default' },
   { value: 'simple', label: 'Short' },
-  { value: 'explained', label: 'All' },
+  { value: 'explained', label: 'Explained' },
 ]
 
 const BASE: Setting[] = [
@@ -44,7 +53,7 @@ const BASE: Setting[] = [
     options: [
       { value: 'glance', label: 'Glance' },
       { value: 'simple', label: 'Short' },
-      { value: 'explained', label: 'All' },
+      { value: 'explained', label: 'Explained' },
     ],
     default: 'glance',
     legacy: DETAIL_LEGACY,
@@ -61,10 +70,22 @@ const BASE: Setting[] = [
     default: 'on',
   },
   {
+    key: OPEN_START_SETTING,
+    group: 'View',
+    label: OPEN_START_LABEL,
+    note: OPEN_START_NOTE,
+    options: [
+      { value: 'off', label: 'Off' },
+      { value: 'on', label: 'On' },
+    ],
+    default: 'on',
+    desktopOnly: true,
+  },
+  {
     key: 'look.view',
     group: 'View',
     label: 'View',
-    note: 'Standard: Needs you plus six cards. All: every card. Custom: your own choice and order.',
+    note: 'Standard: Needs you plus seven cards. All: every card. Custom: your own choice and order.',
     options: [
       { value: 'standard', label: 'Standard' },
       { value: 'all', label: 'All' },
@@ -104,10 +125,10 @@ const BASE: Setting[] = [
     key: 'compact.mode',
     group: 'Compacting',
     label: 'Compact by itself',
-    note: 'Suggest hints Claude (uses a little plan). Watch only shows it. Auto compacts when idle.',
+    note: 'Suggest hints Claude (uses a little plan). Watch only shows it. Auto compacts for you.',
     options: [
       { value: 'off', label: 'Off' },
-      { value: 'suggest', label: 'Suggest' },
+      { value: 'suggest', label: 'Suggest', tag: COST_TAG },
       { value: 'watch', label: 'Watch only' },
       { value: 'auto', label: 'Auto' },
     ],
@@ -116,20 +137,44 @@ const BASE: Setting[] = [
   {
     key: 'compact.from',
     group: 'Compacting',
-    label: 'Advise compacting from',
-    note: 'Vaken considers compacting once the session fills this much of its window.',
+    label: 'Compact when it fills',
+    note: 'Auto compacts after an answer once the session fills this much of its window.',
     options: [
-      { value: '30', label: '30%' },
-      { value: '50', label: '50%' },
-      { value: '70', label: '70%' },
+      { value: '50', label: fmt.percent(50) },
+      { value: '60', label: fmt.percent(60) },
+      { value: '70', label: fmt.percent(70) },
     ],
-    default: '30',
+    default: '60',
+  },
+  {
+    key: 'compact.min',
+    group: 'Compacting',
+    label: 'Never compact under',
+    note: "Auto leaves a smaller session alone. A small window uses half its size instead.",
+    options: [
+      { value: '50000', label: tokensLabel(50000) },
+      { value: '100000', label: tokensLabel(100000) },
+      { value: '200000', label: tokensLabel(200000) },
+    ],
+    default: '100000',
+  },
+  {
+    key: 'compact.lead',
+    group: 'Compacting',
+    label: 'Compact in a break',
+    note: 'Auto compacts a break this long before the one-hour cache runs out.',
+    options: [
+      { value: '10', label: '10 min before' },
+      { value: '15', label: '15 min before' },
+      { value: '20', label: '20 min before' },
+    ],
+    default: '15',
   },
   {
     key: 'compact.card',
     group: 'Compacting',
     label: 'What Claude keeps',
-    note: 'Adds goal, branch and next steps to every compaction.',
+    note: 'Adds goal, branch, next steps, edited files and failing checks to every compaction.',
     options: [
       { value: 'off', label: 'Off' },
       { value: 'on', label: 'On' },
@@ -143,7 +188,7 @@ const BASE: Setting[] = [
     note: 'Stops a long break from making your next answer cost more.',
     options: [
       { value: 'off', label: 'Off' },
-      { value: 'on', label: 'On' },
+      { value: 'on', label: 'On', tag: COST_TAG },
     ],
     default: 'off',
   },
@@ -169,6 +214,10 @@ const BASE: Setting[] = [
       { value: 'violet', label: 'Violet' },
       { value: 'teal', label: 'Teal' },
       { value: 'rose', label: 'Rose' },
+      { value: 'green', label: 'Green' },
+      { value: 'ocean', label: 'Ocean' },
+      { value: 'slate', label: 'Slate' },
+      { value: 'plum', label: 'Plum' },
     ],
     default: 'native',
   },
@@ -215,14 +264,14 @@ const BASE: Setting[] = [
       ['others', 'Other sessions', 'Your other sessions, live.'],
       ['autopilot', 'Autopilot', 'What vaken did for you.'],
       ['proof', 'Checks', 'Did it really work: checks, claims, goal.'],
-      ['guard', 'Risky steps', 'What vaken stopped or flagged.'],
+      ['guard', 'Risky steps', 'How strict the safety rules are.'],
       ['agents', 'Agents', 'Agents: running and done.'],
       ['computer', 'Computer', 'Memory, processor and room for agents.'],
       ['skills', 'Skills', 'Which skills you use most, and what the list costs.'],
       ['prs', 'Pull requests', 'Your open pull requests: checks, merging and the next step.'],
       ['ship', 'Ship', 'Ready to ship: what blocks it, and the next step.'],
       ['back', 'Where was I', 'Where you were, what is still open, what happened while away.'],
-      ['safety', 'Safety', 'Pause all, undo, saved points and which risky steps were stopped.'],
+      ['safety', 'Safety', 'Pause this session, undo, saved points and which risky steps were stopped.'],
       ['context', 'Memory and notes', 'Instruction files, memory notes, handoff and what compacting keeps.'],
       ['preview', PREVIEW_TITLE, PREVIEW_NOTE],
       ['setup', SETUP_TITLE, SETUP_NOTE],
@@ -313,8 +362,9 @@ export async function writeSetting(i: Io, key: string, value: string): Promise<b
   return true
 }
 
+// Every choice: All projects, each project's own rows and each session's own rows
 export async function resetSettings(i: Io): Promise<void> {
-  for (const k of await i.keys()) if (k.startsWith(SETTING_PREFIX)) await i.del(k)
+  for (const k of await i.keys()) if (k.startsWith(SETTING_PREFIX) || k.startsWith(PROJSET_PREFIX) || k.startsWith(SESSSET_PREFIX)) await i.del(k)
   await i.set(SETTINGS_KEY, {})
 }
 
@@ -329,7 +379,9 @@ export function rowsFor(canDrag: boolean, withHidden = false): { group: string; 
   return groups
 }
 
-export const settingPath = (s: Setting): string => `Settings > ${isAdvanced(s) ? ADVANCED_SECTION.title : sectionOfSetting(s).title} > ${s.label}`
+export const settingPath = (s: Setting): string => (isTextOnly(s) ? '/vaken-settings all' : `Settings > ${isAdvanced(s) ? ADVANCED_SECTION.title : sectionOfSetting(s).title} > ${s.label}`)
+// The same path in the language of this answer (each part through the table)
+export const settingPathSaid = (s: Setting): string => (isTextOnly(s) ? '/vaken-settings all' : [tr('Settings'), tr(isAdvanced(s) ? ADVANCED_SECTION.title : sectionOfSetting(s).title), tr(s.label)].join(' > '))
 const labelOf = (s: Setting, value: string): string => sysWord(s.options.find(o => o.value === value)?.label ?? value)
 
 export function settingsText(values: Values, canDrag: boolean, layoutNames: string[] = [], all = false): string {

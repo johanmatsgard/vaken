@@ -35,7 +35,7 @@ function fake(): Fake {
 
 const washed = (tree: unknown): boolean => JSON.stringify(tree).includes('backgroundColor')
 
-test('LV16: dozens of press Clients redrawn and swept by the pointer stay quiet; a draw sends nothing', async () => {
+test('dozens of press Clients redrawn and swept by the pointer stay quiet; a draw sends nothing', async () => {
   const all = Array.from({ length: 60 }, (_, i) => ({ look: (i % 3 === 0 ? 'row' : i % 3 === 1 ? 'button' : 'lit') as 'row' | 'button' | 'lit', f: fake() }))
   // A resize redraws every instance many times: the listener is set once, nothing else is sent.
   for (let r = 0; r < 30; r++) for (const a of all) a.f.draw(a.look)
@@ -62,7 +62,7 @@ test('LV16: dozens of press Clients redrawn and swept by the pointer stay quiet;
   }
 })
 
-test('LV16: a press still posts once on a down and an up inside; cancelled, repeated and right-button events do not', async () => {
+test('a press still posts once on a down and an up inside; cancelled, repeated and right-button events do not', async () => {
   const a = fake()
   a.draw('button')
   a.fire({ type: 'down', x: 3, y: 0, button: 'left' })
@@ -150,7 +150,7 @@ test('a prop change adds no second listener, and the press reads the newest rows
   expect(a.counts.post).toBe(1)
 })
 
-test('R9: no press Client paints, at rest, under the pointer or held, in any look; it only joins its part\'s hover group', async () => {
+test('no press Client paints, at rest, under the pointer or held, in any look; it only joins its part\'s hover group', async () => {
   for (const look of ['row', 'button', 'lit'] as const) {
     const f = fake()
     const render = Press as unknown as (p: unknown, s: unknown) => unknown

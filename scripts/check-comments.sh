@@ -1,7 +1,8 @@
 #!/bin/sh
 # Finds comment text that a stranger does not need: task codes, batch/wave/phase words,
 # dates, the word for who owns the project, live-round words, and links to docs that do not ship.
-# Looks only at comments (// and /* */ in .ts .tsx .mjs .js, # in .sh .py), never at code or strings.
+# Looks at comments (// and /* */ in .ts .tsx .mjs .js, # in .sh .py) and at test titles (the first string of each test( call
+# under tests/, which also must not hold a short task code or review words), never at other code or strings.
 # Scans mods/cockpit/hooks, tests/cockpit and scripts. Skips the test-driver scripts, scripts/types/*.d.ts
 # and every path in scripts/release/cut.txt or ask.txt (they do not ship).
 # A docs/ link is fine when the doc matches scripts/release/keep.txt. When those lists are missing

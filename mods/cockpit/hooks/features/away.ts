@@ -1,5 +1,7 @@
 // Away recap and the Away mode.
 import { tr } from '../core/lang'
+import { fillIn } from '../core/fillin'
+import { sayIn } from './saylang'
 import type { EngineInterface, On } from 'claude-code'
 
 import { buildDigest, costSince, awayCall, modeLines, parseDigest, parseEvents, parseRun, parseSaved, restoreLines, watchEvents, digestText } from '../core/away'
@@ -80,7 +82,7 @@ export async function freshWhileAway(i: Io, text: string): Promise<string> {
   const fresh = awayText({ away: parseAway(await i.get(AWAY_KEY)) !== undefined, policy: (await i.get(settingStoreKey(AWAY_POLICY_KEY))) === 'careful' ? 'careful' : 'off', refused: [] }).split('\n')[1] ?? ''
   return text
     .split('\n')
-    .map(l => (l.startsWith('While away: ') ? fresh : l)) // en-only: the start of the switch's own line, matched, not shown
+    .map(l => (l.startsWith('While away: ') || l.startsWith(`${tr('While away')}: `) ? fresh : l)) // en-only: the start of the switch's own line, matched, not shown
     .join('\n')
 }
 
@@ -119,6 +121,7 @@ async function putBack(i: Io, key: string, entry: { old: string | null; set: str
 async function finishRun(i: Io, how: 'auto' | 'typed'): Promise<{ lines: string[]; digest?: Digest } | undefined> {
   const run = parseRun(await i.get(AWAY_RUN_KEY))
   if (run === undefined) return undefined
+  await sayIn(i)
   await i.del(AWAY_RUN_KEY)
   const saved = parseSaved(await i.get(AWAY_SAVED_KEY))
   await i.del(AWAY_SAVED_KEY)
@@ -188,8 +191,9 @@ export function registerAway(on: On): void {
   on('command.run', { command: 'vaken-away' }, async ($, e, next) => {
     if (isFolded(e.command, e.args)) return next(e)
     const call = awayCall(e.args)
-    if (call.durationError !== undefined) return { text: call.durationError }
     const i = io($)
+    await sayIn(i)
+    if (call.durationError !== undefined) return { text: tr(call.durationError) }
 
     if (call.ask.kind === 'on') {
       const r = await next({ ...e, args: call.passArgs })
@@ -204,7 +208,7 @@ export function registerAway(on: On): void {
           if (started === undefined && run !== undefined && call.forMs !== undefined) {
             run = { ...run, until: now + call.forMs }
             await i.set(AWAY_RUN_KEY, run)
-            lines.push('The end time is changed.') // en-only: plain answer of a slash command (text twin)
+            lines.push(tr('The end time is changed.'))
           }
           if (run !== undefined) {
             if (run.until !== undefined) arm($, run.until - now)
@@ -246,10 +250,11 @@ export function registerAway(on: On): void {
     const rest0 = subArgs(e.args, 'digest')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i)
     const now = await i.now()
     const run = parseRun(await i.get(AWAY_RUN_KEY))
-    if (run !== undefined) return { text: `${(await digestNow(i, run, false, now)).text}\n\nAway mode is still on. /vaken-away off ends it and keeps the digest.` }
+    if (run !== undefined) return { text: `${(await digestNow(i, run, false, now)).text}\n\n${tr('Away mode is still on. /vaken-away off ends it and keeps the digest.')}` }
     const saved = parseDigest(await i.get(DIGEST_KEY))
-    return { text: saved === undefined ? NO_DIGEST : digestText(saved, now) }
+    return { text: saved === undefined ? tr(NO_DIGEST) : digestText(saved, now) }
   })
 }

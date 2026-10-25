@@ -2,7 +2,7 @@
 import { expect, mock } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { LOOP_FAILS, THRASH_EDITS, THRASH_QUIET_MS, THRASH_WINDOW_MS, afterCall, beforeCall, errKey, fileWord, newThrash, nudgeText, stepKey, stopReason, thrashClear, thrashEdit, thrashFailure } from '../hooks/core/loopbreaker'
+import { LOOP_FAILS, THRASH_EDITS, THRASH_QUIET_MS, THRASH_WINDOW_MS, afterCall, afterEdit, beforeCall, errKey, fileWord, newThrash, nudgeText, stepKey, stopReason, thrashClear, thrashEdit, thrashFailure } from '../hooks/core/loopbreaker'
 import type { Seen } from '../hooks/core/loopbreaker'
 import { didLine, didToday, shortSummary } from '../hooks/core/ledger'
 import { SLOW, test } from './slow'
@@ -138,7 +138,7 @@ test('the words and the ledger count', () => {
   expect(didLine({ what: 'Caught a repeating step', n: 1 })).toBe('Caught a repeating step once.')
   const list = [{ at: NOW, what: 'Caught a repeating step', did: true }, { at: NOW - 30 * 60 * MIN, what: 'Caught a repeating step', did: true }, { at: NOW, what: 'Blocked the same step again', did: true }]
   expect(didToday(list, NOW)).toEqual([{ what: 'Caught a repeating step', n: 1 }, { what: 'Blocked the same step again', n: 1 }])
-  expect(shortSummary({ count: 1, freed: 305_000 }, [{ what: 'Kept the cache warm', n: 2 }, { what: 'Caught a repeating step', n: 1 }])).toBe('compacted the session once, about 305k freed, kept the cache warm 2 times, caught a repeating step once')
+  expect(shortSummary({ count: 1, freed: 305_000 }, [{ what: 'Kept the cache warm', n: 2 }, { what: 'Caught a repeating step', n: 1 }])).toBe('Compacted the session once, about 305k tokens freed, kept the session cheap 2 times, and 1 more')
 })
 
 function memStore(on: On): Map<string, unknown> {
@@ -197,6 +197,33 @@ test('Stop: the fourth try is refused with a reason, once in the ledger', async 
   expect(ledger.map(l => l.what)).toEqual(['Blocked the same step again', 'Caught a repeating step'])
 })
 
+test('an edit that worked between tries starts the count again; a step already stopped stays stopped', () => {
+  const seen: Seen = new Map()
+  afterCall(seen, 'a', true, 'e')
+  afterCall(seen, 'a', true, 'e')
+  for (let n = 0; n < LOOP_FAILS; n += 1) afterCall(seen, 'b', true, 'e')
+  afterEdit(seen)
+  expect(seen.has('a')).toBe(false)
+  expect(afterCall(seen, 'a', true, 'e').fails).toBe(1)
+  expect(beforeCall(seen, 'b', 'Bash', 'stop').block).toBe(true)
+})
+
+test('Warn: the same failing step with a code edit between the tries is no loop', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  const mem = memStore(on)
+  mock.session(on)
+  on('session.id', () => ({ value: 'test-session' }))
+  on('tool.call', { tool: 'Bash' }, () => ({ result: { stdout: '', stderr: 'test failed', code: 1 }, text: 'test failed', isError: true }) as never)
+  on('tool.call', { tool: 'Edit' }, () => ({ result: { ok: true }, text: 'edited' }) as never)
+  const out: string[] = []
+  for (let n = 0; n < 4; n += 1) {
+    out.push(JSON.stringify(await $.tool.call({ tool: 'Bash', command: 'npm test' })))
+    await $.tool.call({ tool: 'Edit', file_path: `/w/app/src/f${n}.ts`, old_string: 'a', new_string: 'b' } as never)
+  }
+  expect(out.filter(x => /Vaken saw/.test(x))).toEqual([])
+  expect(((mem.get('cockpit:ledger:compact') ?? []) as Array<{ what: string }>).some(l => l.what === 'Caught a repeating step')).toBe(false)
+})
+
 async function editEngine($: Parameters<Parameters<typeof test>[1]>[0], on: On, mode: string | undefined): Promise<Map<string, unknown>> {
   mock.clock(on, { now: NOW })
   const mem = memStore(on)
@@ -248,7 +275,7 @@ test('Off: no note and no ledger line', async ($, on) => {
   expect(mem.get('cockpit:ledger:compact')).toBeUndefined()
 })
 
-test('R7: when the loop breaker trips, the note and the toast point to /vaken-undo last if copies were kept since the last message', async ($, on) => {
+test('when the loop breaker trips, the note and the toast point to /vaken-undo last if copies were kept since the last message', async ($, on) => {
   mock.clock(on, { now: NOW })
   const mem = memStore(on)
   mock.session(on)
@@ -268,7 +295,7 @@ test('R7: when the loop breaker trips, the note and the toast point to /vaken-un
   expect(toasts.join(' ')).toMatch(/failed 3 times.*\/vaken-undo last/)
 })
 
-test('R7: Stop mode and a thrash note also point to /vaken-undo last, and stay silent with no copies', async ($, on) => {
+test('Stop mode and a thrash note also point to /vaken-undo last, and stay silent with no copies', async ($, on) => {
   const mem = await editEngine($, on, 'stop')
   const none = await rounds($, 'noundo.ts')
   expect(none.filter(x => /going round in circles/.test(x)).length).toBe(1)

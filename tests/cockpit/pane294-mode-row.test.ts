@@ -4,7 +4,7 @@ import type { On } from 'claude-code'
 import { test } from './slow'
 
 import { headerWraps } from '../hooks/ui/kit'
-import { BORDER_X_PT, COL_PT, ROW_PT } from '../hooks/ui/tokens'
+import { BORDER_X_PT, columnPt, ROW_PT } from '../hooks/ui/tokens'
 
 const NOW = Date.parse('2026-10-12T12:00:00Z')
 const MIN = 60_000
@@ -42,7 +42,7 @@ function fill(mem: Map<string, unknown>) {
   mem.set('cockpit:session:test-session', rec('test-session', { cwd: '/work/app', contextPercent: 38 }))
   for (let n = 1; n <= 3; n += 1) mem.set(`cockpit:session:s${n}`, rec(`s${n}`))
 }
-const propsAt = (wPt: number) => ({ title: 'Vaken', isFocused: false, bodyColumns: wPt / COL_PT, placement: 'dock' as const, scroll: { bodyRows: Math.round(1400 / ROW_PT), offset: 0, total: 200 }, view: {} })
+const propsAt = (wPt: number) => ({ title: 'Vaken', isFocused: false, bodyColumns: wPt / columnPt(), placement: 'dock' as const, scroll: { bodyRows: Math.round(1400 / ROW_PT), offset: 0, total: 200 }, view: {} })
 
 type Node = { type?: string; key?: string; text?: string; props?: Record<string, unknown>; children?: unknown[] }
 type Pane = { drawn: () => Promise<Node>; redraw: (p?: unknown) => Promise<void>; press: (q: unknown) => Promise<void>; unmount: () => Promise<void> }
@@ -57,17 +57,17 @@ const keyOf = (n: Node): string | undefined => n.key ?? (n.props?.key as string 
 const wide = (n: Node): number => {
   if (n.type === 'Svg') return Number(n.props?.width ?? 0)
   if (n.type === 'Client') return 0
-  if (n.type === 'Button') return String(n.props?.label ?? '').length * COL_PT
-  const own = typeof n.props?.width === 'number' ? (n.props.width as number) * COL_PT : 0
-  const text = (n.children ?? []).filter((c): c is string => typeof c === 'string').join('').length * COL_PT
+  if (n.type === 'Button') return String(n.props?.label ?? '').length * columnPt()
+  const own = typeof n.props?.width === 'number' ? (n.props.width as number) * columnPt() : 0
+  const text = (n.children ?? []).filter((c): c is string => typeof c === 'string').join('').length * columnPt()
   const parts = kids(n).map(wide).filter(w => w > 0)
-  const gap = (typeof n.props?.columnGap === 'number' ? (n.props.columnGap as number) * COL_PT : 0) * Math.max(0, parts.length - 1)
+  const gap = (typeof n.props?.columnGap === 'number' ? (n.props.columnGap as number) * columnPt() : 0) * Math.max(0, parts.length - 1)
   const inner = n.props?.flexDirection === 'row' ? (n.props?.flexWrap === 'wrap' ? Math.max(0, ...parts) : parts.reduce((a, b) => a + b, 0) + gap) : Math.max(0, ...parts)
   return Math.max(own, text, inner)
 }
 
 for (const widthPt of [288, 294]) {
-  test(`LV14 and LV15: at ${widthPt} pt the mode choices are a radio list inside the card and no header link is wider than the card`, { timeoutMs: 60_000 }, async ($, on) => {
+  test(`at ${widthPt} pt the mode choices are a radio list inside the card and no header link is wider than the card`, { timeoutMs: 60_000 }, async ($, on) => {
     const mem = new Map<string, unknown>()
     mock.clock(on, { now: NOW })
     mock.env(on, { HOME: '/home/test' })
@@ -102,12 +102,17 @@ for (const widthPt of [288, 294]) {
       const line = walk(card).find(p => keyOf(p)?.endsWith('-controls-line'))
       if (line !== undefined) for (const p of kids(line)) expect(wide(p)).toBeLessThanOrEqual(inner + CLOSE)
     }
-    expect(walk(look).some(p => keyOf(p)?.endsWith('-controls-line'))).toBe(false)
+    // The link is a body row, never on a header line; a chip that does not fit beside the title goes under it whole
+    const lookLine = walk(look).find(p => keyOf(p)?.endsWith('-controls-line'))
+    if (lookLine !== undefined) {
+      expect(walk(lookLine).includes(link)).toBe(false)
+      expect(walk(lookLine).some(x => keyOf(x)?.startsWith('count-settings-'))).toBe(true)
+    }
     await ui.unmount()
   })
 }
 
-test('LV15: the header rule keeps a few points free, so a link is not clipped by an estimate that runs short', () => {
+test('the header rule keeps a few points free, so a link is not clipped by an estimate that runs short', () => {
   const inner = 294 - 2 * BORDER_X_PT
   const exact = (title: string, restPt: number) => Math.ceil(inner - title.length * 7.4 - 8 - restPt)
   expect(exact('Cards and look', 0)).toBeGreaterThan(0)

@@ -7,7 +7,7 @@ import { SECTION_TABLE } from '../hooks/core/settingsmap'
 import { forgetStartCheck } from '../hooks/features/home/starttask'
 import { checkShown } from '../hooks/features/orchestra'
 import { hoverScope } from '../hooks/ui/firstclick'
-import { CARD_FILL, CARD_FILL_SHARE, COL_PT, HOVER_FILL, PRESS_WASH_OPACITY, ROW_PT } from '../hooks/ui/tokens'
+import { CARD_FILL, CARD_FILL_SHARE, columnPt, HOVER_FILL, PRESS_WASH_OPACITY, ROW_PT } from '../hooks/ui/tokens'
 import { test } from './slow'
 
 const NOW = Date.parse('2026-10-11T12:00:00Z')
@@ -143,7 +143,7 @@ function maskProblems(box: Node, up: Node[], at: string): string[] {
   const out: string[] = []
   const src = String(mask.props?.source ?? '')
   if (String(mask.props?.alt ?? '') === '') out.push(`${name}: its corner masks have no name`)
-  const wPt = Number(box.props?.width) * COL_PT
+  const wPt = Number(box.props?.width) * columnPt()
   const hPt = Number(box.props?.height) * ROW_PT
   if (!near(mask.props?.width, wPt) || !near(mask.props?.height, hPt)) out.push(`${name}: its masks are ${String(mask.props?.width)} by ${String(mask.props?.height)} pt, its box ${wPt.toFixed(2)} by ${hPt.toFixed(2)}`)
   const onCard = up.some(a => a.type === 'Box' && a.props?.backgroundColor === CARD_FILL)

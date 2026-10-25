@@ -3,7 +3,7 @@ import { isInside as insideBy, parts } from './platform'
 
 const WIN_DRIVE = /^[A-Za-z]:([\\/]|$)/
 export const looksWin = (p: string): boolean => WIN_DRIVE.test(p) || /^\\\\[^\\]/.test(p)
-const WIN_HOME = /^(?:~|%USERPROFILE%|\$env:USERPROFILE|\$\{env:USERPROFILE\}|\$env:HOME)(?=$|[\\/])/i
+const WIN_HOME = /^(?:~|%USERPROFILE%|\$env:USERPROFILE|\$\{env:USERPROFILE\}|\$env:HOME|\$HOME|\$\{HOME\})(?=$|[\\/])/i
 
 export function expandHome(p: string, home: string): string {
   if (home === '') return p

@@ -5,7 +5,7 @@ import type { On } from 'claude-code'
 
 import { VIEW_STRINGS } from '../hooks/core/lang'
 import { checkRegistry, SETTINGS } from '../hooks/core/settings'
-import { FAILS_IN_ROW, FIT_GAP_MS, LOOK_MIN_MS, LOOK_MIN_STEPS, endFit, failsInRow, fitFacts, fitKey, isLookCommand, isLookStretch, modelIdIn, nextStretch, paceFit, parseFit, parseSessionSetting, stepKind, suggestFit, weekTight } from '../hooks/core/modelfit'
+import { FAILS_IN_ROW, FIT_GAP_MS, LOOK_MIN_MS, LOOK_MIN_STEPS, endFit, failsInRow, fitFacts, fitKey, isLookCommand, isLookStretch, modelIdIn, nextStretch, paceFit, parseFit, parseSessionSetting, stepKind, suggestFit, weekTight, whyText, hereWord } from '../hooks/core/modelfit'
 import type { FitInput, Stretch } from '../hooks/core/modelfit'
 import { byEnglish, englishOf } from '../hooks/i18n/table'
 const SV = byEnglish('sv')
@@ -128,15 +128,25 @@ test('a tight week on a model already as cheap as the map\'s, or an unknown mode
 })
 
 test('checks failed twice in a row: back up, the effort to high first, else one model step up from the map', () => {
-  expect(suggestFit({ ...base, fit: { fails: FAILS_IN_ROW, effort: 'low' } })).toEqual({ why: 'fails', change: { effort: 'high' } })
-  expect(suggestFit({ ...base, model: 'claude-sonnet-4-5', fit: { fails: 2, effort: 'high' } })).toEqual({ why: 'fails', change: { model: 'opus' } })
-  expect(suggestFit({ ...base, model: 'claude-haiku-4-5', fit: { fails: 3 } })).toEqual({ why: 'fails', change: { model: 'sonnet' } })
+  expect(suggestFit({ ...base, fit: { fails: FAILS_IN_ROW, effort: 'low' } })).toEqual({ why: 'fails', change: { effort: 'high' }, fails: FAILS_IN_ROW })
+  expect(suggestFit({ ...base, model: 'claude-sonnet-4-5', fit: { fails: 2, effort: 'high' } })).toEqual({ why: 'fails', change: { model: 'opus' }, fails: 2 })
+  expect(suggestFit({ ...base, model: 'claude-haiku-4-5', fit: { fails: 3 } })).toEqual({ why: 'fails', change: { model: 'sonnet' }, fails: 3 })
   expect(suggestFit({ ...base, fit: { fails: 2, effort: 'high' } })).toBeUndefined()
   expect(suggestFit({ ...base, fit: { fails: 1, effort: 'low' } })).toBeUndefined()
 })
 
 test('failures come before look-ups', () => {
-  expect(suggestFit({ ...base, week: tight, fit: { ...looks, fails: 2, effort: 'medium' } })).toEqual({ why: 'fails', change: { effort: 'high' } })
+  expect(suggestFit({ ...base, week: tight, fit: { ...looks, fails: 2, effort: 'medium' } })).toEqual({ why: 'fails', change: { effort: 'high' }, fails: 2 })
+})
+
+test('three or more failures say the real count, in English and Swedish; two say twice', () => {
+  const sv = (x: string): string => byEnglish('sv')[x] ?? x
+  const three = { why: 'fails' as const, change: { effort: 'high' as const }, fails: 3 }
+  expect(whyText({ ...three, fails: 2 }, x => x)).toBe('Checks failed twice in a row')
+  expect(whyText(three, x => x)).toBe('Checks failed 3 times in a row')
+  expect(whyText(three, sv)).toBe('Kontroller misslyckades 3 gånger i rad')
+  expect(hereWord(three, x => x)).toBe('Checks failed 3 times in a row. You can raise the effort in the model menu.')
+  expect(hereWord({ why: 'fails', change: { model: 'opus' }, fails: 4 }, sv)).toBe('Kontroller misslyckades 4 gånger i rad. Du kan välja Opus i modellmenyn.')
 })
 
 test('one hint per session per 30 minutes: the same one keeps showing, the next waits after one ended', () => {

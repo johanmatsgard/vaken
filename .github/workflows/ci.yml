@@ -12,7 +12,43 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  # Decides whether the change is documents only (scripts/ci-docs-only.sh). A documents-only change runs just the quick text checks here and skips the `check` job.
+  # A skipped job reports success, so no required check stays pending. An unknown base (first push, forced push) counts as code.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      docs_only: ${{ steps.decide.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Is this change documents only
+        id: decide
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          docs_only=false
+          if [ -n "$BASE_SHA" ] && git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            if git diff --name-only "$BASE_SHA" "$HEAD_SHA" | sh scripts/ci-docs-only.sh; then docs_only=true; fi
+          fi
+          echo "docs_only=$docs_only" >> "$GITHUB_OUTPUT"
+          echo "documents only: $docs_only"
+      - uses: actions/setup-node@v7
+        if: steps.decide.outputs.docs_only == 'true'
+        with:
+          node-version: 22
+      - name: Quick text checks
+        if: steps.decide.outputs.docs_only == 'true'
+        run: |
+          scripts/check-public.sh
+          scripts/check-strings.sh --strict
+          sh scripts/check-names.sh
+          sh scripts/check-comments.sh
+
   check:
+    needs: changes
+    if: needs.changes.outputs.docs_only != 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -22,8 +58,8 @@ jobs:
       run:
         shell: bash   # Git Bash on the Windows runner
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -49,6 +85,10 @@ jobs:
         run: scripts/check-tokens.sh
       - name: Command check
         run: scripts/check-commands.sh
+      - name: Model gate check
+        run: |
+          scripts/check-model-gate.sh --selftest
+          scripts/check-model-gate.sh
       # The one text table (`mods/cockpit/hooks/i18n`): every row has every language; a name used in code is in the table. Visible texts not yet in it are only listed.
       - name: Strings check
         run: |
@@ -62,6 +102,12 @@ jobs:
           npm install --prefix "$RUNNER_TEMP/ts" typescript@5.9.3
           TYPESCRIPT_JS="$RUNNER_TEMP/ts/node_modules/typescript/lib/typescript.js" node scripts/check-plain-capability.mjs --selftest
           TYPESCRIPT_JS="$RUNNER_TEMP/ts/node_modules/typescript/lib/typescript.js" node scripts/check-plain-capability.mjs
+      # The plugin directory's pre-submission rules: a blocking finding fails the run; policy holds are printed and allowed.
+      - name: Directory check
+        run: |
+          export TYPESCRIPT_JS="$RUNNER_TEMP/ts/node_modules/typescript/lib/typescript.js"
+          bash scripts/check-directory.sh --selftest
+          bash scripts/check-directory.sh
       - name: Comment check
         run: |
           sh scripts/check-comments.sh --selftest

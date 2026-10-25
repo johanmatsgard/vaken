@@ -2,12 +2,12 @@
 import { expect } from 'claude-code/testing'
 import { test } from './slow'
 
-import { choiceStacks, glanceControlsFit, glanceMoreUp, glanceNote, glancePickFit, glanceTrailPt, headerFit, sectionPt } from '../hooks/ui/kit'
+import { choiceStacks, framePt, glanceControlsFit, glanceMoreUp, glanceNote, glancePickFit, glanceTrailPt, headerFit, headerWraps, sectionPt, valueBeside } from '../hooks/ui/kit'
 import type { CardOpts } from '../hooks/ui/kit'
 import { NEW_CHIP } from '../hooks/core/cardrules'
 import { limitHead } from '../hooks/core/headline'
 import { glanceFits } from '../hooks/features/home/headline'
-import { BOLD_CHAR_PT, CHEVRON_GAP, CHEVRON_SLOT, DOT, GLANCE_DOT_GAP, GLANCE_VALUE_GAP, NOTE_MIN_LETTERS, TEXT_CHAR_PT } from '../hooks/ui/tokens'
+import { BOLD_CHAR_PT, BORDER_X_PT, CHEVRON_GAP, CHEVRON_SLOT, DOT, GLANCE_DOT_GAP, GLANCE_VALUE_GAP, NOTE_MIN_LETTERS, TEXT_CHAR_PT } from '../hooks/ui/tokens'
 import { LIST_SCOPES } from '../hooks/features/home/prefs'
 
 const SETUP_PICK = [{ label: 'All projects', short: 'All' }, { label: 'This project', short: 'Project' }, { label: 'This session', short: 'Session' }]
@@ -16,7 +16,10 @@ const setup = (innerPt: number, note = 'Agent files and instructions') => header
 test('Agent setup: the long labels while they fit, the short ones next, the Pick on its own line in a narrow column', () => {
   expect(setup(900, '')).toMatchObject({ pickShort: false, pickOwnLine: false })
   expect(setup(500, '')).toMatchObject({ pickShort: true, pickOwnLine: false })
-  expect(setup(340, '')).toMatchObject({ pickShort: false, pickOwnLine: true })
+  expect(setup(340, '')).toMatchObject({ pickShort: true, pickOwnLine: true })
+  // Framed (the desktop) the long labels keep their own line while they fit as drawn; past the card's edge they take the short ones
+  expect(headerFit(340, { title: 'Agent setup', fold: false, note: '', pick: SETUP_PICK, restPt: 71.5, framed: true })).toMatchObject({ pickShort: false, pickOwnLine: true })
+  expect(headerFit(250, { title: 'Agent setup', fold: false, note: '', pick: SETUP_PICK, restPt: 71.5, framed: true })).toMatchObject({ pickShort: true, pickOwnLine: true })
 })
 
 test('the note is whole while it fits and dropped when nothing else can yield, never cut with an ellipsis', () => {
@@ -26,7 +29,7 @@ test('the note is whole while it fits and dropped when nothing else can yield, n
   expect(setup(100, 'Agent files and instructions').note).toBe('')
 })
 
-test('P6: a note that would keep fewer than NOTE_MIN_LETTERS letters is dropped, never a stub like "1 yo…"', () => {
+test('a note that would keep fewer than NOTE_MIN_LETTERS letters is dropped, never a stub like "1 yo…"', () => {
   const others = (innerPt: number) => headerFit(innerPt, { title: 'Other sessions', fold: true, note: '1 your turn · 5 working', noteShort: '1 your turn', pick: [{ label: 'Now' }, { label: 'All' }], restPt: 71.5 })
   for (let w = 150; w <= 700; w += 10) {
     const note = others(w).note
@@ -50,7 +53,7 @@ test('a header with no Pick only drops the note', () => {
 
 // A note that does not fit is never cut: it is whole, its short form, or dropped.
 test('a header note is whole, short or dropped at every width, never cut', () => {
-  const whole = 'Pause, undo, and which risky steps were stopped'
+  const whole = 'Pause this session, undo, and which risky steps were stopped'
   const seen = new Set<string>()
   for (let w = 100; w <= 700; w += 5) {
     const note = headerFit(w, { title: 'Safety', fold: false, note: whole, noteShort: 'Pause and undo', restPt: 71.5 }).note
@@ -122,9 +125,11 @@ test('Glance: the Plan limits headline takes the longest form that fits beside t
   const blocks = [{ short: 'Week', percent: 38, reset: 'resets Mon 11:00' }]
   const open = (widthPt: number) => limitHead(blocks, s => s, glanceFits('Plan limits', widthPt - glanceTrailPt({ isFull: true })))
   expect(open(1000)).toBe('Week: 38% used · resets Mon 11:00')
-  expect(open(380)).toBe('38% used · resets Mon 11:00')
-  expect(open(250)).toBe('38% used')
-  for (const w of [380, 330, 300, 250]) {
+  // The name never goes: the reset gives way first
+  expect(open(380)).toBe('Week: 38% used')
+  // The narrowest open row (under the 288 pt pane's card) is offered the shortest form; the row itself drops what does not fit whole (glanceShown)
+  expect(open(250)).toMatch(/^Week:? 38%/)
+  for (const w of [380, 330, 300]) {
     const v = open(w)
     expect(v.length * TEXT_CHAR_PT + 'Plan limits'.length * BOLD_CHAR_PT + GLANCE_VALUE_GAP + GLANCE_DOT_GAP + DOT + CHEVRON_GAP + CHEVRON_SLOT + glanceTrailPt({ isFull: true }), `${w}: ${v}`).toBeLessThanOrEqual(w)
   }
@@ -140,4 +145,35 @@ test('a section label is as wide as its letters, wide letters included', () => {
 test('a settings row stacks its choices when the label does not fit beside them', () => {
   expect(choiceStacks(600, 'Detail of this card', ['Short', 'All'], 'All')).toBe(false)
   expect(choiceStacks(260, 'Detail of this card', ['Default', 'Short', 'All'], 'All')).toBe(true)
+})
+
+// With the 8.8 pt cells and their wider letters, the long Swedish title shares its row with "Visa mindre" from 310 pt, and at 288 pt
+// the word takes the controls line under the title (a button is never cut); the English title keeps one row at 288 pt
+test('a Full-look header whose one control is a framed More or Less word stays one row while the letters as drawn fit: "Show less" at 288 pt, a long Swedish title with "Visa mindre" at 310 pt', () => {
+  const inner = 288 - 2 * BORDER_X_PT
+  const more = (word: string) => framePt(word)
+  expect(headerWraps(310 - 2 * BORDER_X_PT, { title: 'Minne och anteckningar', fold: false, restPt: more('Visa mindre'), framed: true })).toBe(false)
+  expect(headerWraps(inner, { title: 'Minne och anteckningar', fold: false, restPt: more('Visa mindre'), framed: true })).toBe(true)
+  expect(headerWraps(inner, { title: 'Memory and notes', fold: false, restPt: more('Show less'), framed: true })).toBe(false)
+  // Only when even the letters as drawn cannot share the row does it wrap: never a cut button
+  expect(headerWraps(200, { title: 'Minne och anteckningar', fold: false, restPt: more('Visa mindre'), framed: true })).toBe(true)
+})
+
+test('a row value goes under its label when the two do not fit one row; a label is never cut', () => {
+  expect(valueBeside('Instruction files', 'small', 262)).toBe(true)
+  expect(valueBeside('Instruktionsfiler', 'ungefär 6,8k tokens · tung', 262)).toBe(false)
+  expect(valueBeside('Anteckning till nästa session', '3 inte kontrollerade än', 262)).toBe(false)
+  expect(valueBeside('Anteckning till nästa session', '3 inte kontrollerade än', 440)).toBe(true)
+})
+
+// Other sessions with only "1 idle": the note has no shorter form, and at 420 to 440 pt it once had no room beside the Pick and was dropped
+test('a sole count is never dropped beside a Pick: it stays beside the title, or leads the Pick\'s own line', () => {
+  const others = (innerPt: number) => headerFit(innerPt, { title: 'Other sessions', fold: true, note: '1 idle', noteShort: '1 idle', pick: [{ label: 'Now' }, { label: 'All' }], restPt: 71.5 })
+  for (let w = 240; w <= 900; w += 5) {
+    const fit = others(w)
+    expect(fit.note === '1 idle' || fit.below === '1 idle', `${w} pt`).toBe(true)
+  }
+  // A note with no short form still yields as before (Agent setup's words)
+  expect(setup(340).note).toBe('')
+  expect(setup(500, 'Agent files and instructions').pickOwnLine).toBe(false)
 })

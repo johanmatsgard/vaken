@@ -37,6 +37,7 @@ import { ALLOW_USED_WHAT } from '../hooks/core/guard'
 import { EXTENDED_WHAT, HELD_WHAT as BUDGET_HELD } from '../hooks/core/budget'
 import type { Entry } from '../hooks/core/ledger'
 import { viaParent } from './viaparent'
+import { LEADER_LEASE_MS, LEADER_SCHEMA } from '../hooks/core/leader'
 
 const MIN = 60_000
 const NOW = Date.parse('2026-10-10T12:00:00Z')
@@ -132,19 +133,20 @@ test('the order: questions, permissions, holds, budget, halts, then finished cha
   expect(items.map(x => `${x.kind}:${x.name}`)).toEqual(['question:Fix login', 'question:Billing', 'hold:Billing', 'budget:Fix login', 'halt:Docs', 'review:Fix login'])
 })
 
-test('the band counts stopped steps and budget stops only, and says it in under 60 letters', () => {
+test('the band counts stopped steps and budget stops only, one per row as the card shows them, and says it in under 60 letters', () => {
   const items = buildInbox(facts({ asks: [{ sid: 'a', kind: 'question', tool: 'AskUserQuestion', since: NOW }], ledger: [held('a', 'Held a risky command', MIN), held('a', 'Held a risky command', 2 * MIN), held('b', BUDGET_HELD, MIN)] }))
-  expect(heldCount(items)).toBe(3)
+  expect(items.filter(x => x.kind === 'hold' || x.kind === 'budget')).toHaveLength(2)
+  expect(heldCount(items)).toBe(2)
   expect(heldCount(items.filter(x => x.kind === 'question'))).toBe(0)
   expect(inboxBandWords(1)).toBe('1 stopped step waits for you. Open Needs you.')
   expect(inboxBandWords(12)).toBe('12 stopped steps wait for you. Open Needs you.')
   expect(inboxBandWords(12).length).toBeLessThanOrEqual(60)
 })
 
-test('/vaken inbox text: a numbered list, then what vaken cannot do', () => {
+test('/vaken inbox text: a numbered list, then what vaken cannot do; calm says only that nothing waits', () => {
   const items = buildInbox(facts({ asks: [{ sid: 'a', kind: 'question', tool: 'AskUserQuestion', since: NOW - 2 * MIN }] }))
-  expect(inboxText(items, NOW, true)).toBe(['Waiting for you: 1 thing.', '', '1. Fix login: Asks you a question.', '   Waiting 2 min. Open that session and answer it.', '', LIMITS_NOTE].join('\n'))
-  expect(inboxText([], NOW, true)).toBe(`Nothing waits for you.\n\n${LIMITS_NOTE}`)
+  expect(inboxText(items, NOW, true)).toBe(['Waiting for you: 1 thing.', '', '1. Fix login: Asks you a question.', '', '   Waiting 2 min. Open that session and answer it.', '', LIMITS_NOTE].join('\n'))
+  expect(inboxText([], NOW, true)).toBe('Nothing waits for you.')
   expect(inboxText([], NOW, false)).toMatch(/^The inbox is off\. Turn it on: Settings > Notices\.\n\nNothing waits for you\./)
 })
 
@@ -258,11 +260,11 @@ function world(on: On, seed: (now: number) => Record<string, unknown> = () => ({
 }
 
 
-function ioOf(w: { clock: { now: () => number }; mem: Map<string, unknown>; toasts: string[] }): Io {
+function ioOf(w: { clock: { now: () => number }; mem: Map<string, unknown>; toasts: string[] }, sid = 'me'): Io {
   return {
     now: async () => w.clock.now(),
     home: async () => '',
-    sessionId: async () => 'me',
+    sessionId: async () => sid,
     get: async key => w.mem.get(key),
     set: async (key, value) => void w.mem.set(key, value),
     del: async key => void w.mem.delete(key),
@@ -296,7 +298,7 @@ test('/vaken inbox lists a question, a hold and finished changes of the sessions
     'cockpit:proof:me': { ...emptyState(), debt: 2 },
   }))
   const t = await text($, 'vaken-inbox')
-  expect(t).toMatch(/^Waiting for you: 3 things\.\n\n1\. Fix login: Asks you a question\.\n {3}Waiting 12 min\. Open that session and answer it\.\n2\. Fix login: Stopped a risky command\. This would delete files\.\n {3}Stopped 4 min ago\. It will not run unless you allow it\. Open that session; its pane has Allow once\./)
+  expect(t).toMatch(/^Waiting for you: 3 things\.\n\n1\. Fix login: Asks you a question\.\n\n {3}Waiting 12 min\. Open that session and answer it\.\n\n2\. Fix login: Stopped a risky command\. This would delete files\.\n\n {3}Stopped 4 min ago\. It will not run unless you allow it\. Open that session; its pane has Allow once\./)
   expect(t).toMatch(/3\. Docs \(this session\): 2 finished answers changed files and wait for your look\./)
   expect(t).not.toMatch(/closed/)
   expect(t).toMatch(/cannot press OK/)
@@ -318,6 +320,37 @@ test('stopped steps put a count in the band of every session; it goes when nothi
   await check(w)
   expect(band()).toEqual([])
   expect(await text($, 'vaken-inbox')).toMatch(/^The inbox is off/)
+})
+
+test('a typed message clears its stopped step from the band at once, though the leader counted it seconds before', async ($, on) => {
+  const w = world(on, now => ({
+    'cockpit:session:a': rec('a', now, { title: 'Docs' }),
+    'cockpit:session:b': rec('b', now, { title: 'Fix login' }),
+    'cockpit:leader': { sid: 'a', until: now + LEADER_LEASE_MS, quiet: false, v: LEADER_SCHEMA },
+    // A stamp of its own, so no records copy kept from an earlier test is read.
+    'cockpit:records:stamp': `${now}:b`,
+    'cockpit:ledger:compact': [held('b', 'Held a risky command', 4 * MIN)],
+  }), 'b')
+  const inboxLine = (sid: string) => ((w.mem.get(`cockpit:band:${sid}`) ?? []) as Array<{ id: string; text: string }>).filter(b => b.id === 'inbox').map(b => b.text)
+  await inboxCheck(ioOf(w, 'a'), boxOf(w))
+  expect(inboxLine('a')).toEqual(['1 stopped step waits for you. Open Needs you.'])
+  // B's own timer (one check period, 20 s) shows the line, as it does in a real session.
+  on('session.start', (_$, e) => ({ cwd: e.cwd }))
+  on('command.register', () => ({ value: { command: 'x' } }))
+  await $.session.start({ cwd: '/w/b', surface: 'desktop', isInteractive: true } as never)
+  await w.clock.advance(20_000)
+  await inboxCheck(ioOf(w, 'a'), boxOf(w))
+  expect(inboxLine('b')).toEqual(['1 stopped step waits for you. Open Needs you.'])
+  await w.clock.advance(3_000)
+  await $.prompt.submit({ text: 'leave that, do the docs' } as never).catch(() => undefined)
+  await w.clock.settle()
+  expect(inboxLine('b')).toEqual([])
+  // The shared count is seconds old, but the records moved since, so B counts again rather than trust it.
+  await w.clock.advance(3_000)
+  await inboxCheck(ioOf(w, 'b'), boxOf(w))
+  expect(inboxLine('b')).toEqual([])
+  await inboxCheck(ioOf(w, 'a'), boxOf(w))
+  expect(inboxLine('a')).toEqual([])
 })
 
 test('/vaken-pause steer queue: the sentence is stored for this session; at a quiet moment it is proposed in the prompt box; a typed copy takes it out', async ($, on) => {

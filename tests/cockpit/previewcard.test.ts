@@ -12,7 +12,7 @@ import { SETTINGS } from '../hooks/core/settings'
 import { lineCard } from '../hooks/features/home/linecards'
 import { CARD_IDS, LINE_CARD_IDS, cardLoudness } from '../hooks/features/home/logic'
 import type { LoudFacts } from '../hooks/features/home/logic'
-import { PREVIEW_FRESH_MS, PREVIEW_QUIET_MS, forgetPreview, loadPreview } from '../hooks/features/home/preview'
+import { PREVIEW_FRESH_MS, PREVIEW_QUIET_MS, forgetPreview, loadPreview, picturePrompt } from '../hooks/features/home/preview'
 import { lookPreview } from '../hooks/features/home/rowact'
 import { byEnglish, englishOf } from '../hooks/i18n/table'
 const SV = byEnglish('sv')
@@ -46,9 +46,9 @@ test('the dev server fact reads the dev-server lines, and the state says up, err
 
 test('the short line says only what is true now', () => {
   expect(previewShort(facts(), id)).toBe('No dev server')
-  expect(previewShort(facts({ dev: up() }), id)).toBe('Dev server up on 5173')
+  expect(previewShort(facts({ dev: up() }), id)).toBe('Port 5173 is up')
   expect(previewShort(facts({ dev: broken }), id)).toBe('The page shows an error')
-  expect(previewShort(facts({ dev: silent }), id)).toBe('Dev server on 8080 does not answer')
+  expect(previewShort(facts({ dev: silent }), id)).toBe('Port 8080 does not answer')
 })
 
 test('the card shows only where a dev server was found or a screen file was edited', () => {
@@ -63,7 +63,7 @@ test('the nudge needs the setting on, an edit since the last look and a page tha
   expect(previewNudge(facts({ dev: up(), edits: 2, changed: false, auto: true }))).toBe(false)
   expect(previewNudge(facts({ edits: 2, changed: true, auto: true }))).toBe(false)
   expect(previewNudge(facts({ dev: silent, edits: 2, changed: true, auto: true }))).toBe(false)
-  expect(previewShort(facts({ dev: up(), edits: 2, changed: true, auto: true }), id)).toBe('Changed - look now')
+  expect(previewShort(facts({ dev: up(), edits: 2, changed: true, auto: true }), id)).toBe('Changed – look now')
 })
 
 test('loudness: an error page, a silent server and the nudge warn; a server that is up is normal; otherwise calm', () => {
@@ -84,33 +84,38 @@ test('screen files are html, css, tsx, jsx, vue and svelte; tests and node_modul
 
 test('the rows: the server, then the three sizes only when the page answers; a press is a typed action', () => {
   const v = previewView(facts({ dev: up() }), id)
-  expect(v.groups.map(g => g.head)).toEqual(['Dev server', 'Pictures'])
-  expect(v.groups[0]?.rows.map(r => [r.title, r.right])).toEqual([['Port 5173', 'up · 200']])
-  expect(v.groups[1]?.rows.map(r => [r.title, r.right])).toEqual([['Take a picture (Phone size)', 'Take'], ['Take a picture (iPad size)', 'Take'], ['Take a picture (Desktop size)', 'Take']])
-  expect(v.groups[1]?.rows.map(r => r.press)).toEqual([{ do: 'look', width: 390 }, { do: 'look', width: 768 }, { do: 'look', width: 1280 }])
+  // The first row points to the app's own browser pane, a fact row with no press
+  expect(v.groups.map(g => g.head)).toEqual(['', 'Dev server', 'Pictures'])
+  expect(v.groups[0]?.rows.map(r => [r.key, r.title, r.right, r.press])).toEqual([['app', "Live view: the app's browser pane", undefined, undefined]])
+  expect(v.lines).not.toContain("Live view: the app's browser pane")
+  expect(v.groups[1]?.rows.map(r => [r.title, r.right])).toEqual([['Port 5173', 'up · 200']])
+  expect(v.groups[2]?.rows.map(r => [r.title, r.right])).toEqual([['Phone size', 'Take a picture'], ['iPad size', 'Take a picture'], ['Desktop size', 'Take a picture']])
+  expect(v.groups[2]?.rows.map(r => r.press)).toEqual([{ do: 'look', width: 390 }, { do: 'look', width: 768 }, { do: 'look', width: 1280 }])
   const err = previewView(facts({ dev: broken }), id)
-  expect(err.groups[0]?.rows[0]?.right).toBe('error · 500')
-  expect(err.groups).toHaveLength(2)
+  expect(err.groups[1]?.rows[0]?.right).toBe('error · 500 · Internal Server Error')
+  expect(err.groups).toHaveLength(3)
   const none = previewView(facts({ edits: 1 }), id)
   expect(none.short).toBe('No dev server')
-  expect(none.groups.map(g => g.head)).toEqual(['Dev server'])
-  expect(previewView(facts({ dev: silent }), id).groups[0]?.rows[0]?.right).toBe('no answer')
+  expect(none.groups.map(g => g.head)).toEqual(['', 'Dev server'])
+  expect(previewView(facts({ dev: silent }), id).groups[1]?.rows[0]?.right).toBe('no answer')
+  // A nudge leads; the app's pane row follows it
   const nudge = previewView(facts({ dev: up(), edits: 1, changed: true, auto: true }), id)
-  expect(nudge.groups[0]?.rows[0]).toMatchObject({ title: 'Changed - look now', right: 'Take all three', press: { do: 'look', width: 'all' } })
+  expect(nudge.groups[0]?.rows[0]).toMatchObject({ title: 'Changed – look now', right: 'Take all three', press: { do: 'look', width: 'all' } })
+  expect(nudge.groups[1]?.rows[0]?.key).toBe('app')
 })
 
 test('the line card: a press becomes the typed action with its width, and no row in it holds another card', () => {
   const v = lineCard('preview', { now: NOW, ledger: [], halted: false, modes: {}, preview: facts({ dev: up() }) })
   const acts = v.groups?.flatMap(g => g.rows.map(r => r.action))
-  expect(acts).toEqual([undefined, lookPreview(390), lookPreview(768), lookPreview(1280)])
-  expect(v.short).toBe('Dev server up on 5173')
+  expect(acts).toEqual([undefined, undefined, lookPreview(390), lookPreview(768), lookPreview(1280)])
+  expect(v.short).toBe('Port 5173 is up')
   expect(v.title).toBe('Preview')
 })
 
 test('the text twin says where the pictures are, and says nothing where the card is not shown', () => {
   expect(previewCardText(facts())).toEqual([])
   expect(previewCardText(undefined)).toEqual([])
-  expect(previewCardText(facts({ dev: up() }))).toEqual(['Preview: Dev server up on 5173', 'Pictures at phone, iPad and desktop size: press a row on the Preview card, when it shows.'])
+  expect(previewCardText(facts({ dev: up() }))).toEqual(['Preview: Port 5173 is up', 'Pictures at phone, iPad and desktop size: press a row on the Preview card, when it shows.'])
   expect(previewCardText(facts({ edits: 1 }))).toEqual(['Preview: No dev server'])
 })
 
@@ -135,7 +140,7 @@ function fakeIo(listening: Record<number, string>): Fake {
   return { io, runs, toasts }
 }
 
-test('T25: a server that runs in another folder is not shown, one inside the project is, and with no folder known nothing is claimed', async () => {
+test('a server that runs in another folder is not shown, one inside the project is, and with no folder known nothing is claimed', async () => {
   forgetPreview()
   serverCwd = '/work/other'
   const f = fakeIo({ 5173: '<html>ok</html>' })
@@ -208,11 +213,11 @@ test('a hidden card reads nothing, and nothing listening is no dev server', asyn
   forgetPreview()
 })
 
-test('the card is a line card with its own Show or Hide, the setting preview.auto is on by default (Recommended), notes are 12 words or fewer and every new word has a Swedish line', () => {
+test('the card is a line card with its own Show or Hide, hidden on a new install (the app shows the page itself), the setting preview.auto is on by default (Recommended), notes are 12 words or fewer and every new word has a Swedish line', () => {
   expect(LINE_CARD_IDS).toContain('preview')
   expect(CARD_IDS).toContain('preview')
   const s = SETTINGS.find(x => x.key === 'cards.preview')
-  expect(s).toMatchObject({ label: 'Preview', default: 'auto' })
+  expect(s).toMatchObject({ label: 'Preview', default: 'hide' })
   expect(s?.note.split(/\s+/).length).toBeLessThanOrEqual(12)
   expect(SETTINGS.find(x => x.key === 'detail.preview')).toMatchObject({ label: 'Preview' })
   const auto = SETTINGS.find(x => x.key === 'preview.auto')
@@ -225,9 +230,10 @@ test('the card is a line card with its own Show or Hide, the setting preview.aut
   expect(words.filter(w => (SV[w] ?? '') === '')).toEqual([])
   for (const w of ['Phone', 'Pictures', 'On', 'Off']) expect(SV[w] ?? '').not.toBe('')
   const sv = previewView(facts({ dev: up(), edits: 1, changed: true, auto: true }), w => SV[w] ?? w)
-  expect(sv.short).toBe('Ändrad - titta nu')
-  expect(sv.groups.map(g => g.head)).toEqual(['', 'Utvecklingsserver', 'Bilder'])
-  expect(sv.groups[2]?.rows.map(r => r.title)).toEqual(['Ta en bild (storlek: Telefon)', 'Ta en bild (storlek: iPad)', 'Ta en bild (storlek: Dator)'])
+  expect(sv.short).toBe('Ändrad – titta nu')
+  expect(sv.groups.map(g => g.head)).toEqual(['', '', 'Utvecklingsserver', 'Bilder'])
+  expect(sv.groups[1]?.rows[0]?.title).toBe('Direktvy: appens webbläsarpanel')
+  expect(sv.groups[3]?.rows.map(r => r.title)).toEqual(['Storlek: Telefon', 'Storlek: iPad', 'Storlek: Dator'])
 })
 
 const MIN = 60_000
@@ -279,6 +285,8 @@ function harness(on: On, seed: Record<string, unknown>, listening: Record<number
 const world = (now: number, over: Record<string, unknown> = {}) => ({
   'cockpit:firstrun': 'done',
   'cockpit:setting:detail.preview': 'explained',
+  // Preview starts hidden on a new install; this person chose Auto, so it shows where a dev server answers
+  'cockpit:setting:cards.preview': 'auto',
   // The project folder, written by the session at its start; the dev server is shown only when it runs there.
   'cockpit:projectof:test-session': '/work/app',
   'cockpit:session:test-session': { sessionId: 'test-session', cwd: '/work/app', model: 'm', state: 'idle', startedAt: now - 60 * MIN, updatedAt: now - 2000, lastEventAt: now - 2000, stateSince: now - 3 * MIN, title: 'Fix login', branch: 'feat-x' },
@@ -296,11 +304,32 @@ test('the pane shows the card where a dev server answers: its port and answer, a
   expect(await textOf(ui, /^Preview$/)).toBe(true)
   expect(await textOf(ui, /^Port 5173$/)).toBe(true)
   expect(await textOf(ui, /^up · 200$/)).toBe(true)
-  for (const t of ['Phone', 'iPad', 'Desktop']) expect(await textOf(ui, new RegExp(`^Take a picture \\(${t} size\\)$`))).toBe(true)
+  for (const t of ['Phone', 'iPad', 'Desktop']) expect(await textOf(ui, new RegExp(`^${t} size$`))).toBe(true)
   await ui.press({ key: 'press-ol-preview:look-390-0' })
   await clock.settle()
   expect(w.toasts.some(t => /Taking the picture in the background/.test(t))).toBe(true)
   expect(w.runs.some(r => r.includes('localhost:5173'))).toBe(true)
+  await ui.unmount()
+  forgetPreview()
+})
+
+test('the picture taken last is a row with its size and age; its press asks Claude to look at that file', () => {
+  const v = lineCard('preview', { now: NOW, ledger: [], halted: false, modes: {}, t: id, preview: { dev: devFact(5173, { command: 'node', pid: 1 }, { status: 200, seconds: 0.02, head: '<html>' }), edits: 0, changed: false, auto: false, picture: { width: 390, path: '/work/app/shots/localhost-5173-390.png', at: NOW - 2 * 60_000 }, now: NOW } })
+  const row = (v.groups ?? []).flatMap(g => g.rows).find(r => r.key === 'picture')
+  expect(row).toMatchObject({ title: 'Picture · Phone size · 2 min ago', action: { kind: 'seePicture', path: '/work/app/shots/localhost-5173-390.png', width: 390 } })
+  expect(picturePrompt('/p/a.png', 390)).toMatch(/^Look at the picture \/p\/a\.png/)
+})
+
+test('a new install never shows the card, even where a dev server answers: the app\'s browser pane shows the page', { timeoutMs: 15_000 }, async ($, on) => {
+  forgetPreview()
+  mock.clock(on, { now: NOW })
+  mock.env(on, { HOME: '/home/test' })
+  const fresh: Record<string, unknown> = world(NOW)
+  delete fresh['cockpit:setting:cards.preview']
+  const w = harness(on, fresh, { 5173: '<html>ok</html>' })
+  const ui = await mountPane($)
+  expect(await textOf(ui, /^Preview$/)).toBe(false)
+  expect(w.runs.some(r => r.includes('localhost:5173'))).toBe(false)
   await ui.unmount()
   forgetPreview()
 })
@@ -326,7 +355,7 @@ test('the card is left out where there is no dev server and no screen file was e
   forgetPreview()
 })
 
-test('with preview.auto off an edit adds no nudge; with it on, the row says Changed - look now, and a press clears it', { timeoutMs: 15_000 }, async ($, on) => {
+test('with preview.auto off an edit adds no nudge; with it on, the row says Changed – look now, and a press clears it', { timeoutMs: 15_000 }, async ($, on) => {
   forgetPreview()
   const clock = mock.clock(on, { now: NOW })
   mock.env(on, { HOME: '/home/test' })
@@ -335,16 +364,16 @@ test('with preview.auto off an edit adds no nudge; with it on, the row says Chan
   await $.tool.call({ tool: 'Write', file_path: '/work/app/index.html', content: '<p>x</p>' } as never)
   w.mem.set('cockpit:setting:preview.auto', 'off')
   const off = await mountPane($)
-  expect(await textOf(off, /^Changed - look now$/)).toBe(false)
+  expect(await textOf(off, /^Changed – look now$/)).toBe(false)
   await off.unmount()
   w.mem.set('cockpit:setting:preview.auto', 'on')
   const ui = await mountPane($)
-  expect(await textOf(ui, /^Changed - look now$/)).toBe(true)
+  expect(await textOf(ui, /^Changed – look now$/)).toBe(true)
   await ui.press({ key: 'press-ol-preview:changed-0' })
   await clock.settle()
   await ui.redraw()
-  expect(await textOf(ui, /^Changed - look now$/)).toBe(false)
-  expect([...w.mem.keys()].filter(k => k.includes('preview'))).toEqual(['cockpit:setting:detail.preview', 'cockpit:setting:preview.auto'])
+  expect(await textOf(ui, /^Changed – look now$/)).toBe(false)
+  expect([...w.mem.keys()].filter(k => k.includes('preview'))).toEqual(['cockpit:setting:detail.preview', 'cockpit:setting:cards.preview', 'cockpit:setting:preview.auto'])
   await ui.unmount()
   forgetPreview()
 })

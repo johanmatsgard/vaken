@@ -1,5 +1,6 @@
 // Nudges to plan first when a big task starts with few edits. A message is big when it is long or names two or more big verbs. The message itself is never stored.
 import { isPersonMessage } from './proof'
+import { trFill } from './lang'
 import type { HelpEntry } from './registry'
 import type { Setting } from './settings'
 
@@ -27,6 +28,7 @@ export const PLAN_BAND_SUGGEST = 'Big task. A plan first is cheaper than a redo.
 export const PLAN_BAND_ASK = 'Asked Claude to plan first.'
 export const PLAN_BAND_ID = 'planfirst'
 export const PLAN_SUGGEST_TTL_MS = 10 * 60_000
+// en-only: a note to Claude
 export const PLAN_NOTE = 'Vaken note: this is a big task. Write a short plan (5 lines at most) and wait for a yes before you change files.'
 const PLAN_LONG_WORDS = 40
 const PLAN_VERBS_NEEDED = 2
@@ -73,6 +75,7 @@ export function advancePlan(state: PlanState, v: PlanVerdict, now: number): Plan
 }
 
 export function planLine(mode: string, state: PlanState): string {
-  if (mode !== 'suggest' && mode !== 'ask') return 'Plan first: off. Turn it on: Settings > Prompts and memory.'
-  return `Plan first: ${mode === 'ask' ? 'ask' : 'suggest'}. ${state.last === undefined ? 'No message checked yet.' : state.last.why}`
+  if (mode !== 'suggest' && mode !== 'ask') return trFill('Plan first: off. Turn it on: Settings > Prompts and memory.')
+  // The reason was stored in English: it is said here, a sentence at a time
+  return trFill(`Plan first: ${mode === 'ask' ? 'ask' : 'suggest'}. ${state.last === undefined ? 'No message checked yet.' : state.last.why}`)
 }

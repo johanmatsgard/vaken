@@ -137,9 +137,11 @@ function looksLikeShell(text: string, sys: ProcPlatform = 'posix'): boolean {
   if (NOT_SHELL.test(first)) return false
   if (/^\s*[$%]\s/.test(lines[0] as string)) return true
   const word = first.split(/\s+/)[0] ?? ''
-  const base = word.includes('/') ? (word.split('/').pop() ?? '') : word
+  // On Windows a program may be named by a backslash path and with .exe or .cmd (git.exe, C:\tools\npm.cmd).
+  const base = sys === 'win32' ? word.replace(/^.*[\\/]/, '').replace(/\.(exe|cmd|bat)$/i, '').toLowerCase() : word.includes('/') ? (word.split('/').pop() ?? '') : word
   if (/^[A-Z_][A-Z0-9_]*=/.test(word)) return true
   if (sys === 'win32' && (WIN_PROGRAMS.has(word.replace(/^.*[\\/]/, '').replace(/\.exe$/i, '').toLowerCase()) || /^\$[A-Za-z_][\w:]*\s*=/.test(first) || /^\$env:/i.test(first))) return true
+  if (sys === 'win32' && (/^[A-Za-z]:[\\/]/.test(word) || word.startsWith('.\\'))) return word.startsWith('.\\') || KNOWN_PROGRAMS.has(base)
   if (word.startsWith('./') || word.startsWith('~/') || word.startsWith('/')) return word.startsWith('./') || word.startsWith('~/') || KNOWN_PROGRAMS.has(base)
   return KNOWN_PROGRAMS.has(base)
 }

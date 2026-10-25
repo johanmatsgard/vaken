@@ -1,4 +1,4 @@
-// First-user fixes, the stopped step and the typed commands: a stopped step never runs by itself.
+// The stopped step and the typed commands: a stopped step never runs by itself.
 import { expect } from 'claude-code/testing'
 import { test } from './slow'
 
@@ -39,7 +39,8 @@ const rowOf = (it: InboxItem) => itemRow(it, 0, NOW, id)
 test('this session\'s open stopped step says it will not run unless allowed, and names Allow once', () => {
   const [it] = buildInbox(facts({ ledger: [held('me', 4 * MIN)] as never }))
   const row = rowOf(it as InboxItem)
-  expect(row.title).toBe('Docs: Stopped a risky command')
+  // This session's row carries no session name
+  expect(row.title).toBe('Stopped a risky command')
   expect(row.right).toBe('4 min ago')
   expect(row.what.why).toBe('Stopped 4 min ago. It will not run unless you allow it.')
   expect(row.what.next).toBe('Press Allow once, then tell Claude to try again. Allow once lets this one step run if Claude tries it again within 30 minutes.')
@@ -54,7 +55,8 @@ test('another session\'s stopped step and pause say to open that session, where 
   const items = buildInbox(facts({ ledger: [held('web', 2 * MIN)] as never, halts: [{ sid: 'web', at: NOW - 7 * MIN }] }))
   const groups = needsGroups(items, NOW, id)
   const [hold] = groups[0]?.rows ?? []
-  expect(hold?.title).toBe('Web fixes: Stopped a risky command')
+  expect(hold?.title).toBe('Stopped a risky command')
+  expect(hold?.session).toEqual({ name: 'Web fixes' })
   expect(hold?.what.why).toBe('Stopped 2 min ago. It will not run unless you allow it.')
   expect(hold?.what.next).toBe('Open that session; its pane has Allow once.')
   expect(hold?.inside).toEqual({ label: 'Dismiss', action: { kind: 'dismissHold', sid: 'web' } })
@@ -62,12 +64,12 @@ test('another session\'s stopped step and pause say to open that session, where 
   expect(halt?.what.next).toBe('Open that session and press Resume.')
 })
 
-test('a stale stopped step keeps its own words: try again in Claude, then allow', () => {
+test('a stale stopped step keeps its own title and its age; its detail says Allow once has timed out, and the detail says try again in Claude, then allow', () => {
   const [it] = buildInbox(facts({ ledger: [held('me', 40 * MIN)] as never }))
   const row = rowOf(it as InboxItem)
-  expect(row.title).toBe(`Docs: ${STOPPED_OLD}`)
+  expect(row.title).toBe('Stopped a risky command')
   expect(row.right).toBe('40 min ago')
-  expect(row.what.why).toBe('It waits 40 min.')
+  expect(row.what.why).toBe(`Stopped 40 min ago. ${STOPPED_OLD}.`)
   expect(row.what.next).toBe('Try the step again in Claude. When it is stopped again, allow it then.')
   expect(row.inside).toEqual({ label: 'Dismiss', action: { kind: 'dismissHold', sid: 'me' } })
 })
@@ -95,9 +97,9 @@ test('no explanation of a kind that has a button starts with "type /", and each 
 
 test('the press, the failed-check words and the run-commands line name the button; every new line has Swedish', () => {
   expect(ALLOWED_SAID).toBe('Allowed once. Tell Claude to try the step again.')
-  expect(SS_T_CHECK_NEXT_FIX).toBe('A check failed. Press Fix in Needs you or on the Pull requests card, or type /vaken-ship fix yes.')
+  expect(SS_T_CHECK_NEXT_FIX).toBe('A check failed. Open the pull request in Needs you, or type /vaken-ship fix yes.')
   expect(DO_NEXT.startsWith('Press a row')).toBe(true)
-  const lines = [ALLOWED_SAID, SS_T_CHECK_NEXT_FIX, DO_NEXT, HOLD_NEXT, HOLD_WHY, HOLD_WHY_NOW, HERE_FACT, 'Open that session; its pane has Allow once.', 'Open that session and press Resume.', 'Pull request {n}: {m} check failed. Press Fix in Needs you or on the Pull requests card.', 'Pull request {n}: {m} checks failed. Press Fix in Needs you or on the Pull requests card.']
+  const lines = [ALLOWED_SAID, SS_T_CHECK_NEXT_FIX, DO_NEXT, HOLD_NEXT, HOLD_WHY, HOLD_WHY_NOW, HERE_FACT, 'Open that session; its pane has Allow once.', 'Open that session and press Resume.', 'Pull request {n}: {m} check failed. Open it in the pane.', 'Pull request {n}: {m} checks failed. Open it in the pane.']
   expect(lines.filter(l => (SV[l] ?? '') === '')).toEqual([])
   for (const x of Object.values(EXPLAIN)) for (const l of [x.means, x.why, x.next]) expect(l.includes(' at rest'), l).toBe(false)
 })
@@ -113,15 +115,28 @@ test('a group of stops counts from the last one, the same clock as the 30 minute
   expect(fresh.right).toBe('just now')
 })
 
-test('this session with no record yet is called This session, in the pane\'s language, with no session line', () => {
+test('this session with no record yet: its row has no session name, in the pane\'s language, and no session line', () => {
   const [it] = buildInbox(facts({ sessions: [{ sid: 'me', name: HERE_FALLBACK, here: true }], ledger: [held('me', 4 * MIN)] as never }))
   const row = rowOf(it as InboxItem)
-  expect(row.title).toBe('This session: Stopped a risky command')
+  expect(row.title).toBe('Stopped a risky command')
   expect(row.what.facts).toEqual([])
   setLang('sv')
   try {
-    expect(itemRow(it as InboxItem, 0, NOW, tr).title).toBe('Den här sessionen: Stoppade ett riskabelt kommando')
+    expect(itemRow(it as InboxItem, 0, NOW, tr).title).toBe('Stoppade ett riskabelt kommando')
   } finally {
     setLang('en')
   }
+})
+
+test('on a Swedish pane the stored English step is never mixed into a Swedish sentence: it stands as a quote on its own line', () => {
+  const [it] = buildInbox(facts({ ledger: [held('me', 4 * MIN, 'This would delete the archive of a made-up project')] as never }))
+  setLang('sv')
+  try {
+    const what = itemRow(it as InboxItem, 0, NOW, tr).what
+    expect(what.means).not.toMatch(/archive/)
+    expect(what.facts?.[0]).toBe('“This would delete the archive of a made-up project.”')
+  } finally {
+    setLang('en')
+  }
+  expect(rowOf(it as InboxItem).what.means).toMatch(/This would delete the archive of a made-up project\.$/)
 })

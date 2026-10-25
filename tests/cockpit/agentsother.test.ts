@@ -86,10 +86,11 @@ const mine = entry('m1', 'test-ses', { state: 'done', startedAt: NOW - 25 * MIN,
 test('filter This session with helpers only in other sessions: the line "2 in other sessions", Show all switches the filter, the headline is not None', async ($, on) => {
   const mem = world({ 'cockpit:agentboard': board, 'cockpit:pref:lists': { others: 'now', agents: 'now', from: 'here' }, 'cockpit:setting:detail': 'explained' })
   const ui = await mount($, on, mem)
-  expect(await has(ui, 'No agent ran in this session yet.')).toBe(true)
+  expect(await has(ui, 'No agent in this session yet')).toBe(true)
   expect(await has(ui, '2 in other sessions')).toBe(true)
   expect(await has(ui, 'None here')).toBe(true)
-  expect(await has(ui, /^None$/)).toBe(false)
+  // The calm Needs you card says None; the Agents headline must not, so None shows once
+  expect((await ui.findAll({ type: 'Text', text: /^None$/ })).length).toBe(1)
   expect(await ui.find({ key: 'agents-others-all' })).toBeDefined()
   await ui.press({ key: 'agents-others-all' })
   await ui.redraw()
@@ -102,9 +103,10 @@ for (const [look, more] of [['simple', false], ['explained', true]] as const) {
   test(`${more ? 'Show more' : 'Show less'}: ${more ? 'the cost is in the second line, the right column is the time' : 'the right column is the time only, no cost'}`, async ($, on) => {
     const ui = await mount($, on, world({ 'cockpit:agentboard': [...board, mine], 'cockpit:setting:detail': look }))
     expect(await has(ui, /min · \$0/), 'no cost beside a time').toBe(false)
-    expect(await has(ui, /^2 min$/)).toBe(true)
+    // An ended helper's right column says when it ended; how long it took is in the second line
+    expect(await has(ui, /^18 min ago$/)).toBe(true)
     expect(await has(ui, /\$0\.59/), 'cost shown').toBe(more)
-    if (more) expect(await has(ui, /haiku · Explore · about \$0\.59/)).toBe(true)
+    if (more) expect(await has(ui, /took 2 min · about\u00a0\$0\.59 \(estimate\)/)).toBe(true)
     await ui.unmount()
   })
 }

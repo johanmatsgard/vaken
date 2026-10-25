@@ -53,7 +53,7 @@ export const isLongQuiet = (r: Pick<FactRow, 'kind' | 'sinceMs'>): boolean => r.
 
 export function rowFact(r: FactRow, hereCwd: string | undefined): Fact | undefined {
   if (r.kind === 'needs' && r.reason !== '') return { what: 'needs', text: r.reason }
-  if (r.contextPercent !== undefined && r.contextPercent > CONTEXT_FACT_PERCENT) return { what: 'context', text: tr('context {n}%').replace('{n}', String(Math.round(r.contextPercent))) }
+  if (r.contextPercent !== undefined && r.contextPercent >= CONTEXT_FACT_PERCENT) return { what: 'context', text: tr('context {n}%').replace('{n}', String(Math.round(r.contextPercent))) }
   if (hereCwd !== undefined && samePlace({ cwd: r.cwd }, { cwd: hereCwd })) return { what: 'folder', text: tr('same folder as you') }
   if (r.costUsd !== undefined && r.costUsd > COST_FACT_USD) return { what: 'cost', text: fmt.moneyPlain(r.costUsd) }
   const done = isLongQuiet(r) ? doneLine(r.done) : undefined
@@ -69,13 +69,18 @@ export function groupOfRow(group: string | undefined, cwd: string): string {
   return base.filter(p => !p.startsWith('.')).pop() ?? tr('No folder')
 }
 
-export function groupRows<T>(rows: readonly T[], groupOf: (r: T) => string): { head: string; rows: T[] }[] {
-  const out: { head: string; rows: T[] }[] = []
+// The groups in the order of their most urgent row (the lowest `rank`, then the first seen), so a group holding a Your-turn row is never below a group of only working rows
+export function groupRows<T>(rows: readonly T[], groupOf: (r: T) => string, rank: (r: T) => number = () => 0): { head: string; rows: T[] }[] {
+  const out: { head: string; rows: T[]; best: number }[] = []
   for (const r of rows) {
     const head = groupOf(r)
     const g = out.find(x => x.head === head)
-    if (g === undefined) out.push({ head, rows: [r] })
-    else g.rows.push(r)
+    if (g === undefined) out.push({ head, rows: [r], best: rank(r) })
+    else {
+      g.rows.push(r)
+      g.best = Math.min(g.best, rank(r))
+    }
   }
-  return out
+  // Inside a group the rows keep their order, the best rank first (Your turn above Working)
+  return [...out].sort((a, b) => a.best - b.best).map(({ head, rows: of }) => ({ head, rows: [...of].sort((a, b) => rank(a) - rank(b)) }))
 }

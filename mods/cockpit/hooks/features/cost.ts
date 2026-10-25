@@ -1,11 +1,16 @@
 // Cost, why it cost, the limit consequence and budgets.
 import { tr } from '../core/lang'
+import { fillIn } from '../core/fillin'
+import { sayIn } from './saylang'
 import type { EngineInterface, On } from 'claude-code'
 
 import { APP_SESSIONS_KEY, parseStoredSessions } from '../core/appsessions'
 import { APP_USAGE_KEY, parseStoredUsage } from '../core/appusage'
-import { COST_SETTINGS, DAY_BUDGETS, SESSION_BUDGETS, addSample, addTool, addTurn, costText, estimateTotal, parseState, spendOf, turnOf, whyText } from '../core/cost'
-import type { CostState } from '../core/cost'
+import { COST_SETTINGS, DAY_BUDGETS, SESSION_BUDGETS, addSample, addTool, addTurn, costText, estimateTotal, parseState, leanCutsRead, sizeKindOf, spendOf, turnOf, whereOf, whyText } from '../core/cost'
+import type { CostState, WhereWent } from '../core/cost'
+import { finishMem } from '../core/continuity'
+import { fieldsOf } from '../core/eventfields'
+import { isShellTool } from '../core/tools'
 import { EXTENDED_WHAT, HELD_WHAT, WARNED_WHAT, budgetLines, isCostly, ledgerHeld, ledgerWarned, noteText, optionNumber, parseAsk, readings, rises, stopReason, toExtend, toastText, worst } from '../core/budget'
 import type { Facts, Level, Which } from '../core/budget'
 import { limitsText, runningNow } from '../core/costlimits'
@@ -13,7 +18,7 @@ import { withToastGate } from '../core/io'
 import { homeFrom, lastName } from '../core/platform'
 import type { Io } from '../core/io'
 import { HISTORY_KEY, parseHistory } from '../core/pace'
-import { PRICES_DATE, money } from '../core/prices'
+import { PRICES_DATE, money, moneyEn } from '../core/prices'
 import { alivePids, listRecords } from '../core/record'
 import { readSetting, settingStoreKey } from '../core/settings'
 import { tellsClaude } from '../core/tellclaude'
@@ -79,6 +84,10 @@ async function ensure(i: Io): Promise<CostState> {
 }
 
 const save = async (i: Io, s: CostState): Promise<void> => i.set(STATE_PREFIX + liveId, s)
+// The engine's cost readings of this session, kept in memory (no read): the Plan limits card's share of the 5-hour window (core/windowshare.ts)
+export const liveSamples = (id: string): ReadonlyArray<readonly [number, number]> | undefined => (live !== undefined && liveId === id ? live.samples : undefined)
+// Where this session's spend went (core/cost.ts whereOf), from memory: the Plan limits card's Where it went row
+export const liveWhere = (id: string | undefined): WhereWent | undefined => (live !== undefined && id !== undefined && liveId === id ? whereOf(live) : undefined)
 
 type DayRec = { base: number; usd: number }
 const isDayRec = (v: unknown): v is DayRec => typeof v === 'object' && v !== null && typeof (v as DayRec).base === 'number' && typeof (v as DayRec).usd === 'number'
@@ -136,7 +145,8 @@ async function evaluate(i: Io): Promise<void> {
     for (const r of rises(told, readings(facts))) {
       // Warn tells the person only, unless the person chose All checks (core/tellclaude.ts).
       if (c.mode === 'stop' || (await tellsClaude(i))) notes.push(noteText(r, c.mode))
-      i.toast(toastText(r, tr))
+      // Used up is urgent: the hourly gate would take it for the 80% toast again, numbers aside.
+      i.toast(toastText(r, tr), r.level === 'over')
       await pushLog(i, LEDGER_KEY, { at: await i.now(), session: liveId, what: WARNED_WHAT, detail: ledgerWarned(r), how: 'auto', did: true })
       i.invalidate()
     }
@@ -199,6 +209,20 @@ export function registerCost(on: On): void {
   // Each turn's tokens and model, from the engine.
   on('turn.complete', { turnId: /(?<cost>)/ }, async ($, e, next) => {
     try {
+      // Finish safely pressed while Claude worked, and the turn ended with no step to carry it: it goes as a message of its own
+      const finish = e.agentId === undefined ? finishMem.note : undefined
+      if (finish !== undefined) {
+        finishMem.note = undefined
+        // After this hook, so the turn has ended before the message is sent
+        $.clock.after(0, () => {
+          void (async () => {
+            try {
+              await $.prompt.submit({ text: finish, asUser: true })
+            } catch {
+            }
+          })()
+        })
+      }
       const i = io($)
       const s = await ensure(i)
       const t = turnOf(e.usage, await i.now(), e.durationMs, e.agentId !== undefined)
@@ -228,7 +252,7 @@ export function registerCost(on: On): void {
             if (!heldLogged.has(key)) {
               heldLogged.add(key)
               await pushLog(i, LEDGER_KEY, { at: await i.now(), session: liveId, what: HELD_WHAT, detail: ledgerHeld(e.tool, over), how: 'auto', did: true })
-              i.toast(tr('Stopped a {tool} call: the {which} cost budget is used up. Type /vaken-usage budget extend to go on.').replace('{tool}', e.tool).replace('{which}', tr(over.which)))
+              i.toast(tr('Stopped a call to {tool}: the {which} cost budget is used up. Type /vaken-usage budget extend to go on.').replace('{tool}', e.tool).replace('{which}', tr(over.which)))
               i.invalidate()
             }
             return { deny: stopReason(e.tool, over) }
@@ -241,9 +265,13 @@ export function registerCost(on: On): void {
     // Nothing below may throw: a failure after next must not run the tool twice.
     try {
       if (result.deny === undefined && live !== undefined) {
-        addTool(live, (result.text ?? '').length)
-        if (notes.length > 0) {
-          const out = { ...result, context: [...(result.context ?? []), ...notes] }
+        const kind = e.agentId === undefined ? sizeKindOf(e.tool, isShellTool(e.tool)) : undefined
+        addTool(live, (result.text ?? '').length, kind, kind === 'read' && leanCutsRead(e.tool, fieldsOf(e), result.text ?? ''))
+        // Finish safely pressed while Claude works (core/continuity.ts): the request goes with this step's result, once
+        const finish = e.agentId === undefined ? finishMem.note : undefined
+        if (finish !== undefined) finishMem.note = undefined
+        if (notes.length > 0 || finish !== undefined) {
+          const out = { ...result, context: [...(result.context ?? []), ...notes, ...(finish === undefined ? [] : [finish])] }
           notes = []
           return out
         }
@@ -257,6 +285,7 @@ export function registerCost(on: On): void {
     const rest0 = subArgs(e.args, 'cost')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i)
     const s = await ensure(i)
     const c = await conf(i)
     const { facts, day, extra } = await factsNow(i, s, c)
@@ -268,17 +297,19 @@ export function registerCost(on: On): void {
     const rest0 = subArgs(e.args, 'why')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i)
     const c = await conf(i)
-    if (!c.why) return { text: 'The "why it cost" paragraph is off. Turn it on: Settings > Money and plan.' } // en-only: plain answer of a slash command (text twin)
+    if (!c.why) return { text: tr('The "why it cost" paragraph is off. Turn it on: Settings > Money and plan.') }
     const s = await ensure(i)
-    const source = s.engineUsd === undefined ? '' : ` The engine's own total for the session is ${money(s.engineUsd)}.`
-    return { text: `${whyText(s)}${estimateTotal(s) > 0 ? `${source}\nSource: the token counts the engine reported for each answer, priced with the list prices of ${PRICES_DATE}. Estimate.` : ''}` }
+    const source = s.engineUsd === undefined ? '' : ` ${fillIn(tr("The engine's own total for the session is {usd}."), { usd: money(s.engineUsd) })}`
+    return { text: `${whyText(s)}${estimateTotal(s) > 0 ? `${source}\n${fillIn(tr('Source: the token counts the engine reported for each answer, priced with the list prices of {date}. Estimate.'), { date: PRICES_DATE })}` : ''}` }
   })
 
   on('command.run', { command: 'vaken-usage' }, async ($, e, next) => {
     const rest0 = subArgs(e.args, 'limits')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i)
     const now = await i.now()
     const usage = parseStoredUsage(await i.get(APP_USAGE_KEY))
     const records = await listRecords(i)
@@ -296,34 +327,39 @@ export function registerCost(on: On): void {
     const rest0 = subArgs(e.args, 'budget')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i)
     const ask = parseAsk(rest0)
     if (ask.kind === 'bad') return { text: ask.why }
     const c = await conf(i)
     const s = await ensure(i)
     const now = await factsNow(i, s, c)
-    if (ask.kind === 'status') return { text: [...budgetLines(now.facts, now.extra, now.day.sessions), '', 'At 100% in Stop mode, /vaken-usage budget extend lifts the block. It adds one more budget to the one that is at 80% or more.'].join('\n') } // en-only: plain answer of a slash command (text twin)
-    if (c.mode === 'off') return { text: 'The budget is off, so there is nothing to extend. Turn it on: Settings > Money and plan.' } // en-only: plain answer of a slash command (text twin)
+    if (ask.kind === 'status') return { text: [...budgetLines(now.facts, now.extra, now.day.sessions), '', tr('At 100% in Stop mode, /vaken-usage budget extend lifts the block. It adds one more budget to the one that is at 80% or more.')].join('\n') }
+    if (c.mode === 'off') return { text: tr('The budget is off, so there is nothing to extend. Turn it on: Settings > Money and plan.') }
     const which = toExtend(ask, readings(now.facts))
-    if (which.length === 0) return { text: 'Nothing to extend: no budget is at 80% yet. To raise one anyway: /vaken-usage budget extend session, or /vaken-usage budget extend day.' } // en-only: plain answer of a slash command (text twin)
+    if (which.length === 0) return { text: tr('Nothing to extend: no budget is at 80% yet. To raise one anyway: /vaken-usage budget extend session, or /vaken-usage budget extend day.') }
     const added: string[] = []
+    // The ledger keeps the English line; the answer says it in the language
+    const addedEn: string[] = []
     for (const w of which) {
       if (w === 'session') {
         s.extra += c.session
         await save(i, s)
-        added.push(`session budget +${money(c.session)}, now ${money(c.session + s.extra)}`)
+        added.push(fillIn(tr('session budget +{add}, now {now}'), { add: money(c.session), now: money(c.session + s.extra) }))
+        addedEn.push(`session budget +${moneyEn(c.session)}, now ${moneyEn(c.session + s.extra)}`)
       } else {
         const extra = now.extra.day + c.day
         await i.set(DAY_EXTRA_PREFIX + ymd(await i.now()), extra)
-        added.push(`day budget +${money(c.day)}, now ${money(c.day + extra)}`)
+        added.push(fillIn(tr('day budget +{add}, now {now}'), { add: money(c.day), now: money(c.day + extra) }))
+        addedEn.push(`day budget +${moneyEn(c.day)}, now ${moneyEn(c.day + extra)}`)
       }
     }
     const after = await factsNow(i, s, c)
     rises(told, readings(after.facts))
     notes = []
     heldLogged.clear()
-    await pushLog(i, LEDGER_KEY, { at: await i.now(), session: liveId, what: EXTENDED_WHAT, detail: `${added.join('; ')} (estimates).`, how: 'typed', did: true })
+    await pushLog(i, LEDGER_KEY, { at: await i.now(), session: liveId, what: EXTENDED_WHAT, detail: `${addedEn.join('; ')} (estimates).`, how: 'typed', did: true })
     i.invalidate()
     const still = worst(readings(after.facts).filter(r => r.level === 'over'))
-    return { text: `Extended: ${added.join('; ')}. ${still === undefined ? 'Costly calls are allowed again.' : `The ${still.which} budget is still used up. Extend again to go on.`}` }
+    return { text: fillIn(tr('Extended: {list}. {then}'), { list: added.join('; '), then: still === undefined ? tr('Costly calls are allowed again.') : fillIn(tr('The {which} budget is still used up. Extend again to go on.'), { which: tr(still.which) }) }) }
   })
 }

@@ -2,22 +2,26 @@
 import type { HelpEntry } from './registry'
 import { tEn } from '../i18n/t'
 
-export const PRESETS_HELP: HelpEntry[] = [{ title: 'What the presets are', text: '/vaken-settings preset lists seven styles: Only alerts (quiet), Recommended (balanced, or type recommended), Everything useful (full), Ask before risky steps (careful), Save usage (thrifty), Every check on (everything) and No coding (backoffice). Pick one to see what changes, then add "yes".' }]
+export const PRESETS_HELP: HelpEntry[] = [{ title: 'What the presets are', text: '/vaken-settings preset lists seven styles: Only alerts (quiet), Recommended (balanced, or type recommended), Everything useful (full), Ask before risky steps (careful), Save usage (thrifty), Every check on (everything) and No coding (backoffice). Pick one to see what changes, then add "yes".' },
+  { title: 'The start questions', text: 'The first time, the Start here card asks five questions, one at a time: how much vaken tells you, risky steps, spending, how Claude works with you, and long chats. The recommended answers are marked, and Skip, use recommended takes them all. Settings, Run setup again asks them again with your answers now chosen.' },
+]
 
 // `name` is what the store keeps and is never renamed; `title` is what a person reads. `clear`: rows put back to their default instead of a value.
 type Preset = { name: string; title: string; about: string; values: Record<string, string>; clear?: string[] }
 
-// Only alerts < Recommended < Everything useful, by cost, each adding to the one before. A fresh store reads as Recommended. No mode touches compact.mode, so a picked Auto stays.
+// Only alerts < Recommended < Everything useful, by cost, each adding to the one before. A fresh store reads as Recommended. Compacting: no preset sets Compact by itself, so a choice the person made always stays and an unset row reads its default, Watch only (it shows the moment; Auto, which compacts at a break and when the session is full, is the person's choice, and a store from before keeps Auto: core/costupgrade.ts).
 export const MODES = ['quiet', 'balanced', 'full'] as const
 export type Mode = (typeof MODES)[number]
-const ALERTS = { 'guard.destructive': 'warn', 'guard.scope': 'warn', 'guard.packages': 'warn', 'guard.tests': 'warn', 'guard.world': 'warn', 'guard.secrets': 'warn', 'guard.migrations': 'warn', 'limits.warn': 'on', 'notify.mode': 'needs', 'compact.card': 'on' }
-// Recommended and Everything useful turn them on; Only alerts turns them off.
+const ALERTS = { 'guard.destructive': 'warn', 'guard.scope': 'warn', 'guard.packages': 'warn', 'guard.tests': 'warn', 'guard.world': 'warn', 'guard.secrets': 'warn', 'guard.migrations': 'warn', 'limits.warn': 'on', 'notify.mode': 'self', 'compact.card': 'on' }
+// Recommended and Everything useful turn them on; Only alerts turns them off. The budget is in no mode, so a mode never changes it and a stored budget never makes a mode read as Custom: the first-start setup or Settings set it (default Off; the cost is always on the card).
 const HELPERS: Record<string, string> = {
   'value.weekly': 'on', 'today.brief': 'on', 'neighbors.warn': 'on', 'heartbeat.mode': 'on', 'recap.mode': 'on', 'happened.mode': 'on', 'proof.claims': 'warn', 'proof.done': 'on', 'proof.drift': 'warn', 'proof.anomaly': 'warn',
-  'coach.mode': 'on', 'decisions.mode': 'on', 'diet.mode': 'on', 'hints.model': 'on', 'route.mode': 'suggest', 'preview.auto': 'on', 'cost.budget': 'warn', 'resume.mode': 'remind', 'fresh.nudge': 'on', 'prompt.check': 'tip', 'plan.first': 'suggest',
+  'coach.mode': 'on', 'decisions.mode': 'on', 'diet.mode': 'on', 'hints.model': 'on', 'route.mode': 'suggest', 'preview.auto': 'on', 'resume.mode': 'remind', 'fresh.nudge': 'on', 'prompt.check': 'tip', 'plan.first': 'suggest',
+  'next.mode': 'buttons', 'lean.mode': 'logs', 'allow.rules': 'offer', 'teach.mode': 'offer',
 }
 const HELPERS_OFF = Object.fromEntries(Object.keys(HELPERS).map(k => [k, 'off'])) as Record<string, string>
-const SENDS = { 'prompt.check': 'ask', 'assume.check': 'on', 'plan.first': 'ask', 'claude.notes': 'all' }
+// Everything useful's own step up; the dim next step hint rides along, though it sends nothing by itself.
+const SENDS = { 'prompt.check': 'ask', 'assume.check': 'on', 'plan.first': 'ask', 'claude.notes': 'all', 'next.mode': 'hint' }
 const SENDS_OFF = { 'assume.check': 'off', 'claude.notes': 'safety' }
 
 export const MODE_CLASSES = { alerts: Object.keys(ALERTS), helpers: Object.keys(HELPERS), sends: Object.keys(SENDS) }
@@ -27,7 +31,6 @@ export const PRESETS: Preset[] = [
     name: 'quiet',
     title: tEn('settings.mode_quiet'),
     about: tEn('settings.mode_quiet_about'),
-    // The person's own compact choice stays.
     values: { ...ALERTS, ...HELPERS_OFF, ...SENDS_OFF },
   },
   {
@@ -52,13 +55,14 @@ export const PRESETS: Preset[] = [
     name: 'thrifty',
     title: tEn('settings.preset_thrifty'),
     about: tEn('settings.preset_thrifty_about'),
-    values: { 'compact.mode': 'auto', 'cache.keeper': 'on', 'route.mode': 'auto', 'cap.mode': 'hold', 'cost.budget': 'warn', 'diet.mode': 'on', 'runner.researcher': 'haiku', 'runner.builder': 'sonnet', 'runner.reviewer': 'haiku', 'runner.fixer': 'opus' },
+    values: { 'route.mode': 'auto', 'cap.mode': 'hold', 'cost.budget': 'warn', 'diet.mode': 'on', 'runner.researcher': 'haiku', 'runner.builder': 'sonnet', 'runner.reviewer': 'haiku', 'runner.fixer': 'opus' },
   },
   {
     name: 'everything',
     title: tEn('settings.preset_everything'),
     about: tEn('settings.preset_everything_about'),
-    values: { 'compact.mode': 'auto', 'cache.keeper': 'on', 'route.mode': 'auto', 'diet.mode': 'on', 'cost.budget': 'warn', 'cap.mode': 'hold', 'cap.max': 'auto', 'loop.breaker': 'warn', 'guard.destructive': 'warn', 'guard.scope': 'warn', 'guard.packages': 'warn', 'guard.tests': 'warn', 'guard.world': 'warn', 'guard.secrets': 'warn', 'guard.migrations': 'warn', 'proof.claims': 'warn', 'happened.mode': 'on', 'errors.mode': 'on', 'steer.mode': 'on', 'heartbeat.mode': 'on', 'fresh.nudge': 'on', 'plan.first': 'suggest', 'prompt.check': 'tip', 'assume.check': 'on', 'value.weekly': 'on', 'today.brief': 'on', 'neighbors.warn': 'on', 'claude.notes': 'all' },
+    // Every check row of the three modes, then its own choices on top
+    values: { ...ALERTS, ...HELPERS, ...SENDS, 'route.mode': 'auto', 'diet.mode': 'on', 'cost.budget': 'warn', 'cap.mode': 'hold', 'cap.max': 'auto', 'loop.breaker': 'warn', 'guard.destructive': 'warn', 'guard.scope': 'warn', 'guard.packages': 'warn', 'guard.tests': 'warn', 'guard.world': 'warn', 'guard.secrets': 'warn', 'guard.migrations': 'warn', 'proof.claims': 'warn', 'happened.mode': 'on', 'errors.mode': 'on', 'steer.mode': 'on', 'heartbeat.mode': 'on', 'fresh.nudge': 'on', 'plan.first': 'suggest', 'prompt.check': 'tip', 'assume.check': 'on', 'value.weekly': 'on', 'today.brief': 'on', 'neighbors.warn': 'on', 'claude.notes': 'all' },
   },
   {
     name: 'backoffice',

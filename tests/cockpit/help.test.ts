@@ -3,13 +3,14 @@ import { expect, mock } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { HELP_TOPICS } from '../hooks/core/registry'
+import { HIDDEN, HIDDEN_ABOUT } from '../hooks/core/menu'
 import { helpText } from '../hooks/features/home/commands'
 import { HELP, HELP_BY_TOPIC } from '../hooks/features/home/views/help'
 import { SLOW, test } from './slow'
 
 const NOW = Date.parse('2026-10-12T12:00:00Z')
 
-test('Help titles name the question, not vaken part (U31)', () => {
+test('Help titles name the question, not vaken part', () => {
   const titles = HELP_TOPICS.flatMap(g => g.entries.map(e => e.title))
   for (const old of ['quota planner', 'wait tracker', 'outside guard', 'back-end guard', 'value meter', 'the audit', 'anomaly sentinel', 'merge order, CI fix']) {
     expect(titles.filter(t => t.toLowerCase().includes(old)), `a title still names "${old}"`).toEqual([])
@@ -20,17 +21,35 @@ test('Help titles name the question, not vaken part (U31)', () => {
   expect(HELP_BY_TOPIC.flatMap(g => g.entries).length).toBe(HELP.length)
 })
 
-test('/vaken-help with a word lists the entries that hold it, and says so when none does (U2)', () => {
+test('/vaken-help with a word lists the entries that hold it, and says so when none does', () => {
   const found = helpText('cache')
   expect(found).toContain('Help topics with "cache"')
   expect(found).toContain('What is the cache?')
   expect(found).not.toContain('Every day:')
-  expect(helpText('zzzzqq')).toBe('No help topic holds "zzzzqq". All topics: /vaken-help all')
-  expect(helpText('')).toContain('Topics: /vaken-help all')
+  expect(helpText('zzzzqq')).toBe('No help topic holds "zzzzqq". All topics: `/vaken-help all`')
+  expect(helpText('')).toContain('`/vaken-help all` reads every topic')
   expect(helpText('all')).toContain('Claude re-reads the whole session on every answer.')
 })
 
-const paneProps = { title: 'Vaken', isFocused: false, bodyColumns: 120, placement: 'inline' as const, scroll: { bodyRows: 40, offset: 0, total: 40 }, view: {} }
+test('/vaken-help starts with Start here, a word matches titles first, many matches show only titles, and run lists each hidden name with its purpose', () => {
+  const lines = helpText('').split('\n')
+  expect(lines.slice(2, 6)).toEqual(['Start here', '- `/vaken`: what needs you now (inbox, neighbors, show, run, pic, quick)', '- `/vaken-today`: today in a few lines (value, recap, glance, standup, waits)', '- `/vaken-undo`: put files back as they were (checkpoint)'])
+  // Each command once, across all groups
+  const named = lines.filter(l => l.startsWith('- `/')).map(l => /`([^`]+)`/.exec(l)?.[1])
+  expect(new Set(named).size).toBe(named.length)
+  const removing = helpText('removing vaken')
+  expect(removing).toContain('Removing vaken')
+  expect(removing.split('\n').filter(l => /^[1-9]\. /.test(l)).length).toBe(4)
+  const many = helpText('what')
+  expect(many).toContain('Type `/vaken-help <title words>` to read one.')
+  expect(many).not.toContain('Claude re-reads the whole session on every answer.')
+  const run = helpText('run').split('\n')
+  expect(run).toHaveLength(HIDDEN.length + 2)
+  for (const h of HIDDEN) expect(run.find(l => l.startsWith(`- \`/vaken-help run ${h}\`: `)), h).toBeDefined()
+  expect(Object.keys(HIDDEN_ABOUT).sort()).toEqual([...HIDDEN].sort())
+})
+
+const paneProps ={ title: 'Vaken', isFocused: false, bodyColumns: 120, placement: 'inline' as const, scroll: { bodyRows: 40, offset: 0, total: 40 }, view: {} }
 function engine(on: On): Map<string, unknown> {
   const mem = new Map<string, unknown>()
   on('store.get', (_$, e) => ({ value: mem.get(e.key) }) as never)
@@ -71,7 +90,7 @@ async function has(mount: Mount, key: string): Promise<boolean> {
   return found
 }
 
-test('Back from the guide or from Settings, opened from Help, returns to Help; opened from the board it returns to the board (U35)', SLOW, async ($, on) => {
+test('Back from the guide or from Settings, opened from Help, returns to Help; opened from the board it returns to the board', SLOW, async ($, on) => {
   mock.clock(on, { now: NOW })
   mock.env(on, { HOME: '/home/test' })
   engine(on).set('cockpit:firstrun', 'done')

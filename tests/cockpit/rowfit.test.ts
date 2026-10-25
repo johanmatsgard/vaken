@@ -9,7 +9,7 @@ import { FactRow, GlanceRow, LinkButton, SessionRow, glanceTrailPt, glanceValueF
 import type { El } from '../hooks/ui/kit'
 import { paneGrid } from '../hooks/features/home/grid'
 import { CARD_IDS } from '../hooks/features/home/logic'
-import { BOLD_CHAR_PT, CHEVRON_GAP, CHEVRON_SLOT, COL_PT, DOT, GLANCE_DOT_GAP, GLANCE_VALUE_GAP, ICON_GAP, LIST_ROW_H, NOTE_MAX_LINES, TEXT_CHAR_PT, rows } from '../hooks/ui/tokens'
+import { BOLD_CHAR_PT, CHEVRON_GAP, CHEVRON_SLOT, columnPt, DOT, GLANCE_DOT_GAP, GLANCE_VALUE_GAP, ICON_GAP, LIST_ROW_H, NOTE_MAX_LINES, TEXT_CHAR_PT, rows } from '../hooks/ui/tokens'
 
 type Raw = Record<string, unknown>
 const make = (name: string) => Object.assign((p: Raw) => ({ ...p, type: name }), { displayName: name })
@@ -30,13 +30,16 @@ const FOLD = glanceTrailPt({ isFull: true })
 test('a Glance value that does not fit whole beside the title, the dot, the chevron and Fold is dropped; the dot keeps the state', () => {
   setLang('en')
   const g = (value: string, widthPt: number) => ({ value, dot: 'neutral' as const, isOpen: true, widthPt, onPress: () => {} })
-  // At the 300 pt pane: the two stubs.
-  const inner = innerAt(300)
-  for (const [title, value] of [['Memory and notes', 'All small'], ['Other sessions', '1 your turn']]) {
-    expect(glanceValueFits(title, g(value, inner), FOLD), `${title} at 300 pt`).toBe(false)
+  // At the 300 and 330 pt panes neither value fits by the average letter (with the wider letters). At 330 pt both fit measured
+  // letter by letter, so the row keeps them and the dot its own word; at 300 pt neither does, so both are dropped and the dot says them
+  const cases = [['Memory and notes', 'All small', 300, false], ['Other sessions', '1 your turn', 300, false], ['Memory and notes', 'All small', 330, true], ['Other sessions', '1 your turn', 330, true]] as const
+  for (const [title, value, w, kept] of cases) {
+    const inner = innerAt(w)
+    expect(glanceValueFits(title, g(value, inner), FOLD), `${title} at ${w} pt`).toBe(false)
     const row = GlanceRow(el(), 'k', title, g(value, inner), undefined, undefined, false, FOLD)
-    expect(texts(row)).not.toContain(value)
-    expect(all(row).some(n => n.type === 'Svg' && n.alt === t('access.dot_calm'))).toBe(true)
+    expect(texts(row).includes(value), `${title} at ${w} pt keeps its value`).toBe(kept)
+    // A dropped value is the dot's word, so it is still said
+    expect(all(row).some(n => n.type === 'Svg' && n.alt === (kept ? t('access.dot_calm') : value))).toBe(true)
   }
   for (const w of [400, 700]) expect(texts(GlanceRow(el(), 'k', 'Memory and notes', g('All small', innerAt(w)), undefined, undefined, false, FOLD))).toContain('All small')
   for (const w of WIDTHS_PT) {
@@ -45,9 +48,9 @@ test('a Glance value that does not fit whole beside the title, the dot, the chev
   }
 })
 
-test('a row link has its chevron at the row end, a mark named by the row (live, an unnamed picture was not drawn), never "›" right after the words', () => {
+test('a row link has its chevron at the row end, a mark named by the row (an unnamed picture is not drawn), never "›" right after the words', () => {
   setLang('en')
-  for (const label of ['Run several tasks ›', 'Pause notices for 50 min ›', 'This session ›', 'Change in Settings']) {
+  for (const label of ['Run several tasks ›', 'Quiet for 50 min ›', 'This session ›', 'Change in Settings']) {
     const row = LinkButton(el(), 'l', label, () => {}, { row: true }) as unknown as Raw
     const parts = (row.children as unknown[]).filter((c): c is Raw => c !== null && typeof c === 'object')
     const button = all([row]).find(p => p.type === 'Button')
@@ -68,7 +71,9 @@ test('a note line wraps to at most two lines; a longer one is cut at a word with
     expect(f.lines, `${w} pt`).toBeLessThanOrEqual(NOTE_MAX_LINES)
     expect(f.text === daily || (f.text.endsWith('…') && daily.startsWith(f.text.slice(0, -1).trimEnd())), `${w} pt: ${f.text}`).toBe(true)
   }
-  expect(noteFit(daily, innerAt(300))).toEqual({ text: daily, lines: 2 })
+  // Two lines whole at 400 pt; at 300 pt it would take three, so it is cut at a word
+  expect(noteFit(daily, innerAt(400))).toEqual({ text: daily, lines: 2 })
+  expect(noteFit(daily, innerAt(300)).text.endsWith('…')).toBe(true)
   expect(noteFit('Short note', innerAt(300))).toEqual({ text: 'Short note', lines: 1 })
   const long = Array.from({ length: 30 }, () => 'word').join(' ')
   expect(noteFit(long, innerAt(300)).text.endsWith('word…')).toBe(true)
@@ -134,7 +139,7 @@ function glanceProblems(root: Node, w: number, at: string): { problems: string[]
     n += 1
     if (value === undefined) continue
     const more = walk(row).find(x => x.type === 'Button' && /^detail-/.test(nameOf(x)))
-    const trail = more === undefined ? 0 : ICON_GAP + String(more.props?.label ?? '').length * COL_PT
+    const trail = more === undefined ? 0 : ICON_GAP + String(more.props?.label ?? '').length * columnPt()
     const room = inner - textOf(title).join('').length * BOLD_CHAR_PT - GLANCE_VALUE_GAP - GLANCE_DOT_GAP - DOT - CHEVRON_GAP - CHEVRON_SLOT - trail
     const said = textOf(value).join('')
     if (said.length * TEXT_CHAR_PT > room + 0.01) problems.push(`${at}: "${textOf(title).join('')}" draws "${said}", which does not fit whole`)

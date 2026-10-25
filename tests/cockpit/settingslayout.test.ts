@@ -6,7 +6,7 @@ import type { On } from 'claude-code'
 import { ADVANCED_SECTION, SECTIONS } from '../hooks/core/settings'
 import { clientKey as fcKey } from '../hooks/ui/firstclick'
 import { columnSizes } from '../hooks/features/home/board'
-import { BORDER_X_PT, COL_PT, LIST_ROW_H, ROW_PT, VSTEP_PT } from '../hooks/ui/tokens'
+import { BORDER_X_PT, columnPt, LIST_ROW_H, ROW_PT, VSTEP_PT } from '../hooks/ui/tokens'
 const roomPt = (x: { props?: Record<string, unknown> } | undefined): number => num(x?.props?.minHeight) * ROW_PT - (num(x?.props?.paddingTop) + num(x?.props?.paddingBottom)) * VSTEP_PT
 import { choiceStacks, pickLines, wrappedLines } from '../hooks/ui/kit'
 import { tr } from '../hooks/core/lang'
@@ -35,7 +35,7 @@ function engine(on: On, mem: Map<string, unknown>) {
   on('session.measure', (_$, e) => ({ changed: e.changed }))
   on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
 }
-const propsAt = (wPt: number) => ({ title: 'Vaken', isFocused: false, bodyColumns: wPt / COL_PT, placement: 'dock' as const, scroll: { bodyRows: Math.round(1400 / ROW_PT), offset: 0, total: 200 }, view: {} })
+const propsAt = (wPt: number) => ({ title: 'Vaken', isFocused: false, bodyColumns: wPt / columnPt(), placement: 'dock' as const, scroll: { bodyRows: Math.round(1400 / ROW_PT), offset: 0, total: 200 }, view: {} })
 type Node = { type?: string; key?: string; props?: Record<string, unknown>; children?: unknown[] }
 type Pane = { pointer: (q: unknown) => Promise<void>; drawn: () => Promise<Node>; redraw: (p?: unknown) => Promise<void>; press: (q: unknown) => Promise<void>; unmount: () => Promise<void> }
 const kids = (n: Node): Node[] => (n.children ?? []).filter((c): c is Node => c !== null && typeof c === 'object')
@@ -51,13 +51,13 @@ const num = (v: unknown): number => (typeof v === 'number' ? v : 0)
 function widthOf(n: Node): number {
   const p = n.props ?? {}
   if (n.type === 'Svg') return num(p.width)
-  if (n.type === 'Button') return (String(p.label ?? '').length + 2) * COL_PT
+  if (n.type === 'Button') return (String(p.label ?? '').length + 2) * columnPt()
   if (n.type === 'Text') return 0
-  if (n.type === 'Box' && typeof p.width === 'number' && String((n as { key?: unknown }).key ?? p.key ?? '').startsWith('fcw-')) return p.width * COL_PT
+  if (n.type === 'Box' && typeof p.width === 'number' && String((n as { key?: unknown }).key ?? p.key ?? '').startsWith('fcw-')) return p.width * columnPt()
   const parts = kids(n).filter(k => k.props?.position !== 'absolute').map(widthOf)
-  const gap = num(p.columnGap) * COL_PT
+  const gap = num(p.columnGap) * columnPt()
   const inner = parts.length === 0 ? 0 : p.flexDirection === 'row' && p.flexWrap !== 'wrap' ? parts.reduce((a, b) => a + b, 0) + gap * (parts.length - 1) : Math.max(...parts)
-  return Math.max(inner + (num(p.marginLeft) + num(p.marginRight)) * COL_PT, num(p.minWidth) * COL_PT)
+  return Math.max(inner + (num(p.marginLeft) + num(p.marginRight)) * columnPt(), num(p.minWidth) * columnPt())
 }
 const pathTo = (t: Node, target: Node, path: Node[] = []): Node[] | undefined => {
   if (t === target) return path
@@ -92,11 +92,11 @@ async function settingsAt(w: number, $: Parameters<Parameters<typeof test>[2]>[0
 const cardKey = (sec: string) => `settings-${sec.toLowerCase().replace(/ /g, '-')}`
 const columnBoxes = (root: Node) => walk(root).filter(x => /^settings-col-\d+$/.test(nameOf(x) ?? ''))
 
-// Each open section spans as many columns as its rows need (one for each 6 rows, at most the grid's).
-const CELLS = ['mode', ...ALL]
+// Each open section spans as many columns as its rows need (one for each 6 rows, at most the grid's). The cells: the mode card, Most used, then the sections.
+const CELLS = ['mode', 'most-used', ...ALL]
 const cardsInOrder = (root: Node): string[] => walk(root).map(nameOf).filter((k): k is string => k !== undefined && CELLS.map(cardKey).includes(k))
 for (const w of [1130, 2400]) {
-  test(`LW11: at ${w} pt and 3 columns every open section spans the columns its rows need and its rows fit`, { timeoutMs: 120_000 }, async ($, on) => {
+  test(`at ${w} pt and 3 columns every open section spans the columns its rows need and its rows fit`, { timeoutMs: 120_000 }, async ($, on) => {
     const ui = await settingsAt(w, $, on, ALL)
     const root = await ui.drawn()
     const nodes = walk(root)
@@ -109,7 +109,7 @@ for (const w of [1130, 2400]) {
       const columns = kids(span)
       expect(columns.length, `${nameOf(span)} has 2 or 3 columns`).toBeGreaterThanOrEqual(2)
       for (const column of columns) {
-        const innerPt = num(column.props?.width) * COL_PT
+        const innerPt = num(column.props?.width) * columnPt()
         for (const row of walk(column).filter(x => (nameOf(x) ?? '').startsWith('row-'))) {
           const rest = kids(row).filter(k => k.props?.position !== 'absolute').slice(1).map(widthOf)
           for (const [i, p] of rest.entries()) expect(p, `${nameOf(row)} part ${i + 1} is ${Math.round(p)} pt in a column ${Math.round(innerPt)} pt wide`).toBeLessThanOrEqual(innerPt)
@@ -126,7 +126,7 @@ for (const w of [1130, 2400]) {
   })
 }
 
-test('P-14: choices cut into even lines, never one alone; a note keeps room beside its choices', () => {
+test('choices cut into even lines, never one alone; a note keeps room beside its choices', () => {
   const six = ['Auto', '2', '3', '4', '6', '8', '12'].map(label => ({ label }))
   for (const widthPt of [60, 100, 150, 200, 345, 600]) {
     const lines = pickLines(six, widthPt)
@@ -142,14 +142,14 @@ test('P-14: choices cut into even lines, never one alone; a note keeps room besi
   expect(choiceStacks(345, 'Detail', ['Off', 'Warn', 'Stop'], 'Warn', note)).toBe(true)
 })
 
-test('P-6: wrappedLines counts the lines a words row takes', () => {
+test('wrappedLines counts the lines a words row takes', () => {
   const text = 'Which agents run, how many at once and what shows when they stop, with a longer second line.'
   expect(wrappedLines('Short', 345)).toBe(1)
   expect(wrappedLines(text, 345)).toBeGreaterThan(1)
   expect(wrappedLines(text, 1000)).toBe(1)
 })
 
-test('P-6: a press on a section header toggles the section once, and a wrapped about line covers all its lines', { timeoutMs: 120_000 }, async ($, on) => {
+test('a press on a section header toggles the section once, and a wrapped about line covers all its lines', { timeoutMs: 120_000 }, async ($, on) => {
   const ui = await settingsAt(1130, $, on, [])
   const sizeOf = async () => walk(await ui.drawn()).length
   const shut = await sizeOf()
@@ -177,7 +177,7 @@ test('P-6: a press on a section header toggles the section once, and a wrapped a
     if (about === undefined) continue
     const row = walk(root).find(x => nameOf(x) === `ol-section:${sec}`)
     expect(row, `${sec} row`).toBeDefined()
-    const colPt = num(columnBoxes(root)[0]?.props?.width) * COL_PT
+    const colPt = num(columnBoxes(root)[0]?.props?.width) * columnPt()
     const lines = wrappedLines(tr(about), Math.floor(colPt - 2 * BORDER_X_PT))
     expect(roomPt(row), `${sec}: ${lines} lines`).toBeGreaterThanOrEqual(lines * ROW_PT + LIST_ROW_H - ROW_PT - 1)
     if (lines > 1) wrapped += 1
@@ -186,11 +186,11 @@ test('P-6: a press on a section header toggles the section once, and a wrapped a
   await ui.unmount()
 })
 
-test('P-15: a one-line about is a list row high, a two-line one is one text row taller, and the press covers both lines', { timeoutMs: 120_000 }, async ($, on) => {
+test('a one-line about is a list row high, a two-line one is one text row taller, and the press covers both lines', { timeoutMs: 120_000 }, async ($, on) => {
   const ui = await settingsAt(1130, $, on, [])
   const root = await ui.drawn()
   const heightOf = (sec: string): number => roomPt(walk(root).find(x => nameOf(x) === `ol-section:${sec}`))
-  const colPt = num(columnBoxes(root)[0]?.props?.width) * COL_PT
+  const colPt = num(columnBoxes(root)[0]?.props?.width) * columnPt()
   const cardsAbout = SECTIONS.find(s => s.name === 'Look and cards')?.about ?? ''
   expect(wrappedLines(tr(cardsAbout), Math.floor(colPt - 2 * BORDER_X_PT)), 'the Cards and look line fits one line').toBe(1)
   const counts = new Map<string, number>()
@@ -213,7 +213,7 @@ test('P-15: a one-line about is a list row high, a two-line one is one text row 
 // All shut: with every section shut the cells (the mode card first, then the sections) fill 3 columns column by column.
 const sizes = columnSizes(CELLS.length, 3)
 const closedColumn = new Map(CELLS.map((name, i) => [name, sizes.flatMap((size, n) => Array.from({ length: size }, () => n))[i] ?? 0]))
-test('P-12: with all sections shut the mode card and the sections fill the columns, column by column, in order', { timeoutMs: 120_000 }, async ($, on) => {
+test('with all sections shut the mode card and the sections fill the columns, column by column, in order', { timeoutMs: 120_000 }, async ($, on) => {
   const ui = await settingsAt(1130, $, on, [])
   const root = await ui.drawn()
   expect(cardsInOrder(root)).toEqual(CELLS.map(cardKey))
@@ -225,15 +225,15 @@ test('P-12: with all sections shut the mode card and the sections fill the colum
   await ui.unmount()
 })
 for (const open of ['Notices', 'Safety', 'Look and cards']) {
-  test(`LW11: with ${open} open the cells keep the list's order and an open section is as wide as its rows need`, { timeoutMs: 120_000 }, async ($, on) => {
+  test(`with ${open} open the cells keep the list's order and an open section is as wide as its rows need`, { timeoutMs: 120_000 }, async ($, on) => {
     const ui = await settingsAt(1130, $, on, [open])
     const root = await ui.drawn()
     expect(cardsInOrder(root), 'every cell once, in the list order').toEqual(CELLS.map(cardKey))
-    const colPt = num(walk(root).find(x => /^settings-col-\d+$/.test(nameOf(x) ?? ''))?.props?.width) * COL_PT
+    const colPt = num(walk(root).find(x => /^settings-col-\d+$/.test(nameOf(x) ?? ''))?.props?.width) * columnPt()
     const box = walk(root).find(x => nameOf(x) === `band-open-${CELLS.indexOf(open)}`)
     if (open === 'Look and cards') {
       expect(box, 'a section with many rows is its own band cell').toBeDefined()
-      expect(num(box?.props?.width) * COL_PT, 'two columns or more').toBeGreaterThan(colPt * 1.5)
+      expect(num(box?.props?.width) * columnPt(), 'two columns or more').toBeGreaterThan(colPt * 1.5)
     }
     await ui.unmount()
   })
@@ -242,7 +242,7 @@ for (const open of ['Notices', 'Safety', 'Look and cards']) {
 // Measured in the tree at 294, 700, 1640 and 3440 pt (1, 2, 4 and 6 columns, the Columns choice on Auto).
 const AUTO = { 'cockpit:setting:look.columns': 'auto', 'cockpit:setting:look.view': 'all' }
 for (const w of [294, 700, 1640, 3440]) {
-  test(`LW3 and LW4: at ${w} pt a section's link is a row under its about line, the mode card is the first cell, and the footer actions sit at the left under the grid`, { timeoutMs: 120_000 }, async ($, on) => {
+  test(`at ${w} pt a section's link is a row under its about line, the mode card is the first cell, and the footer actions sit at the left under the grid`, { timeoutMs: 120_000 }, async ($, on) => {
     const ui = await settingsAt(w, $, on, [], AUTO)
     const root = await ui.drawn()
     const nodes = walk(root)
@@ -263,7 +263,11 @@ for (const w of [294, 700, 1640, 3440]) {
       const lead = kids(card).find(k => nameOf(k) === `settings-${sec}-lead`) as Node
       expect(lead, `${sec}: the title and the about line are the card's lead`).toBeDefined()
       const leadFlow = kids(lead).filter(k => k.props?.position !== 'absolute')
-      expect(nameOf(leadFlow[leadFlow.length - 1] as Node)?.startsWith('ol-section:'), `${sec}: the about line ends the lead`).toBe(true)
+      // The about line sits in its own box (-lead-line, half a row under the title) that ends the lead
+      const lastOfLead = leadFlow[leadFlow.length - 1] as Node
+      expect(nameOf(lastOfLead), `${sec}: the lead ends with the about line's box`).toBe(`settings-${sec}-lead-line`)
+      const lineFlow = kids(lastOfLead).filter(k => k.props?.position !== 'absolute')
+      expect(nameOf(lineFlow[lineFlow.length - 1] as Node)?.startsWith('ol-section:'), `${sec}: the about line ends the lead`).toBe(true)
       const flow = kids(card).filter(k => k.props?.position !== 'absolute')
       const body = flow[flow.indexOf(lead) + 1] as Node
       const firstOf = (n: Node): Node => kids(n).find(k => k.props?.position !== 'absolute') as Node
@@ -277,17 +281,26 @@ for (const w of [294, 700, 1640, 3440]) {
     const mode = nodes.find(x => nameOf(x) === 'settings-mode') as Node
     const modeParent = (pathTo(root, mode) ?? []).map(nameOf)
     if (w > 700) expect(modeParent.some(k => /^settings-col-0$/.test(k ?? '')), 'the mode card is the first cell of the first column').toBe(true)
-    const footer = nodes.find(x => nameOf(x) === 'settings-footer') as Node
-    expect(footer, 'the footer').toBeDefined()
-    expect(footer.props?.alignItems, 'footer actions left aligned, or full width when stacked').toBe(footer.props?.flexDirection === 'column' ? 'stretch' : 'flex-start')
-    if (w < 680) expect(footer.props?.flexDirection, 'one column: the actions are stacked').toBe('column')
-    if (footer.props?.flexDirection === 'row') for (const cell of kids(footer)) expect(num(cell.props?.width), `${nameOf(cell)} is one column wide`).toBeGreaterThan(0)
-    expect(kids(footer).map(nameOf), 'reset then erase').toEqual(['foot-reset', 'foot-erase'])
-    const last = kids(root)[kids(root).length - 1] as Node
-    expect(nameOf(last), 'the footer is last').toBe('settings-footer')
+    const footer = nodes.find(x => nameOf(x) === 'settings-footer') as Node | undefined
+    if (footer === undefined) {
+      // In columns the three foot cards go under the shortest column of the last run (even columns), each one in a settings column
+      expect(w, 'one column keeps the footer row').toBeGreaterThanOrEqual(680)
+      for (const k of ['settings-setup-card', 'settings-reset-card', 'settings-erase-card']) {
+        const card = nodes.find(x => nameOf(x) === k) as Node
+        expect(card, k).toBeDefined()
+        expect((pathTo(root, card) ?? []).map(nameOf).some(n => /^settings-col-/.test(n ?? '')), `${k} is in a column`).toBe(true)
+      }
+    } else {
+      expect(footer.props?.alignItems, 'footer actions left aligned, or full width when stacked').toBe(footer.props?.flexDirection === 'column' ? 'stretch' : 'flex-start')
+      if (w < 680) expect(footer.props?.flexDirection, 'one column: the actions are stacked').toBe('column')
+      if (footer.props?.flexDirection === 'row') for (const cell of kids(footer)) expect(num(cell.props?.width), `${nameOf(cell)} is one column wide`).toBeGreaterThan(0)
+      expect(kids(footer).map(nameOf), 'run setup again, reset, then erase').toEqual(['foot-setup', 'foot-reset', 'foot-erase'])
+      const last = kids(root)[kids(root).length - 1] as Node
+      expect(nameOf(last), 'the footer is last').toBe('settings-footer')
+    }
     await ui.unmount()
   })
-  test(`LW6: at ${w} pt the three Needs you choices are on one line or a radio list, never squeezed`, { timeoutMs: 120_000 }, async ($, on) => {
+  test(`at ${w} pt the three Needs you choices are on one line or a radio list, never squeezed`, { timeoutMs: 120_000 }, async ($, on) => {
     const ui = await settingsAt(w, $, on, ['Look and cards'], AUTO)
     const root = await ui.drawn()
     const pick = walk(root).find(x => nameOf(x) === 'look.needs' || nameOf(x) === 'radio-look.needs') as Node
@@ -300,7 +313,7 @@ for (const w of [294, 700, 1640, 3440]) {
 }
 
 for (const [view, drawn] of [['standard', false], ['all', false], ['custom', true]] as const) {
-  test(`LW5: in the ${view} view "Problems first" and the per-card Show, Hide and Auto rows are ${drawn ? 'drawn' : 'not drawn, and one line says why'}`, { timeoutMs: 120_000 }, async ($, on) => {
+  test(`in the ${view} view "Problems first" and the per-card Show, Hide and Auto rows are ${drawn ? 'drawn' : 'not drawn, and one line says why'}`, { timeoutMs: 120_000 }, async ($, on) => {
     const ui = await settingsAt(1130, $, on, ['Look and cards'], { 'cockpit:setting:look.view': view })
     const nodes = walk(await ui.drawn())
     const keys = nodes.map(nameOf).filter((k): k is string => k !== undefined)
@@ -311,7 +324,7 @@ for (const [view, drawn] of [['standard', false], ['all', false], ['custom', tru
   })
 }
 
-test('LW7: at 400 pt the way back from Custom is a row link with its chevron at the end', { timeoutMs: 120_000 }, async ($, on) => {
+test('at 400 pt the way back from Custom is a row link with its chevron at the end', { timeoutMs: 120_000 }, async ($, on) => {
   const ui = await settingsAt(400, $, on, [], { 'cockpit:setting:guard.world': 'hold' })
   const nodes = walk(await ui.drawn())
   const row = nodes.find(x => nameOf(x) === 'linkrow-mode-back') as Node

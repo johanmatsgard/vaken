@@ -112,11 +112,15 @@ test('Agents with a task run at Glance: the task that failed first, "n. text" an
   expect(at(keys, 'run-pause')).toBeLessThan(at(keys, 'run-stop'))
   expect(keys.some(k => /^t-\d$/.test(k)), 'no Full-look task row at Glance').toBe(false)
   for (const text of ['1. Fix the header', '2. Write the docs', '3. Add a test']) expect(await has(ui, text), text).toBe(true)
-  expect(await has(ui, /^Failed · 1 min$/)).toBe(true)
+  // Failed is in the red state colour at Glance too, the age beside it plain
+  expect((await ui.find({ type: 'Text', text: 'Failed' }))?.props?.color).toBeDefined()
+  expect(await has(ui, /^ · 8 min ago$/)).toBe(true)
   expect(await has(ui, /^Running · 5 min$/)).toBe(true)
-  expect(await has(ui, /^Done · 3 min$/)).toBe(true)
+  expect(await has(ui, /^Done · 6 min ago$/)).toBe(true)
   expect(await has(ui, 'Task run')).toBe(true)
-  expect(await has(ui, '1 of 3 done, 1 running, 1 need you')).toBe(true)
+  expect(await has(ui, '1 of 3 done')).toBe(true)
+  // The header says "1 failed", so the line under the bar does not say it again
+  expect(await has(ui, '1 running')).toBe(true)
   expect(await ui.find({ key: 'task-retry-2' })).toBeUndefined()
   await ui.press({ key: 'press-ol-task:2-0' })
   await ui.redraw()
@@ -143,7 +147,10 @@ for (const [look, name] of [['simple', 'Short'], ['explained', 'Full']] as const
     expect(at(keys, 't-1')).toBeLessThan(at(keys, 't-2'))
     expect(at(keys, 't-2')).toBeLessThan(at(keys, 't-3'))
     expect(await has(ui, 'Task run')).toBe(true)
-    expect(await has(ui, '1 of 3 done, 1 running, 1 need you')).toBe(true)
+    // The bar line says the one count, the line under it the rest (the run's name once)
+    expect(await has(ui, '1 of 3 done')).toBe(true)
+    // The header says "1 failed", so the line under the bar does not say it again
+  expect(await has(ui, '1 running')).toBe(true)
     await ui.unmount()
   })
 }
@@ -190,17 +197,20 @@ test('This session at Glance with advice to compact: the state row, then the adv
   expect(at(keys, 'here-cost')).toBeLessThan(at(keys, 'here-ctx'))
   expect(await has(ui, 'State')).toBe(true)
   expect(await has(ui, 'Your turn')).toBe(true)
-  expect(await has(ui, 'Context 99% full')).toBe(true)
+  // The headline is the state and the cost (at 60 columns it may yield to the state alone); never the context
+  expect(await has(ui, /^Your turn( · \$1\.20)?$/)).toBe(true)
+  expect(await has(ui, /Context \d+% full/)).toBe(false)
   expect(await has(ui, /Context is \d+% full/)).toBe(false)
   expect(await has(ui, /^\d+% of context used/)).toBe(false)
   await ui.unmount()
 })
 
-test('This session at the Full look keeps its old order: the sentence about the context before the advice', async ($, on) => {
+test('This session at the Full look keeps its old order: the context bar and its percent before the advice', async ($, on) => {
   const ui = await mount($, on, world({ 'cockpit:setting:detail': 'explained' }))
   const keys = await keysOf(ui)
   expect(at(keys, 'ctx-bar')).toBeLessThan(at(keys, 'compact-advice'))
-  expect(await has(ui, /Context is 99% full/)).toBe(true)
+  // The percent sits beside the bar; the sentence is not said twice
+  expect(await has(ui, /^99%$/)).toBe(true)
   await ui.unmount()
 })
 
@@ -220,7 +230,7 @@ test('in Swedish the three open forms have Swedish labels and keep no English la
   expect((await ui.find({ key: 'compact-now' }) as { props?: { label?: string } } | undefined)?.props?.label?.trim()).toBe('Komprimera nu')
   expect((await ui.find({ key: 'run-pause' }) as { props?: { label?: string } } | undefined)?.props?.label?.trim()).toBe('Pausa')
   expect((await ui.find({ key: 'run-stop' }) as { props?: { label?: string } } | undefined)?.props?.label?.trim()).toBe('Stoppa alla')
-  expect(await has(ui, 'Misslyckades')).toBe(true)
+  expect(await has(ui, 'Gick fel')).toBe(true)
   expect(await has(ui, 'Körs')).toBe(true)
   expect(await has(ui, 'Klar')).toBe(true)
   expect(await has(ui, 'Uppgiftskörning')).toBe(true)
@@ -248,9 +258,10 @@ for (const cols of [40, 160]) {
     const ui = await mount($, on, world({ 'cockpit:orch:test-session': run(true) }), cols)
     await openCard(ui, 'here', 'ol-here')
     await openCard(ui, 'agents', 'ol-tasks')
-    expect(await has(ui, /^Failed · 1 min$/), 'Failed').toBe(true)
+    expect((await ui.find({ type: 'Text', text: 'Failed' }))?.props?.color, 'Failed').toBeDefined()
+    expect(await has(ui, /^ · 8 min ago$/), 'Failed age').toBe(true)
     expect(await has(ui, /^Running · 5 min$/), 'Running').toBe(true)
-    expect(await has(ui, /^Done · 3 min$/), 'Done').toBe(true)
+    expect(await has(ui, /^Done · 6 min ago$/), 'Done').toBe(true)
     const keys = await keysOf(ui)
     expect(at(keys, 'ol-task:2')).toBeLessThan(at(keys, 'ol-task:1'))
     expect(at(keys, 'ol-task:3')).toBeLessThan(at(keys, 'run-pause'))

@@ -1,17 +1,22 @@
 // Crew: shared-resource registry (`/vaken-help run ports`, and a note to Claude before a server starts on a port another session holds)
 import { isShellTool } from '../core/tools'
-import { tr } from '../core/lang'
+import { tr, trFill } from '../core/lang'
+import { fillIn } from '../core/fillin'
+import { sayIn } from './saylang'
 import type { EngineInterface, On } from 'claude-code'
 import { fieldsOf } from '../core/eventfields'
 import { noteRun } from '../core/selfcost'
 
 import { quietly } from '../core/quiet'
 import { ymd } from '../core/time'
-import { sessionName } from '../core/crew'
+import { resolveGitDir, sessionName } from '../core/crew'
 import { AWAKE_WHAT, FOLDERS_KEY, PORT_WHAT, isPath, learnFolders, liveFolders, parseFolders } from '../core/crew3'
 import type { Folder, Live } from '../core/crew3'
-import { CI_MAX_TRIES, GH_NO_READ, GIT_TIMEOUT_MS, MAX_WORKTREES, NO_GIT_PROGRAM, MERGE_EVERY_MS, NOT_GIT, PR_LIST_ARGV, SAFE_TOAST_MIN, WORKTREE_LIST_ARGV, digestArgv, digestText, ghNeedsGit, ghNoAnswer, gitNoAnswer, isNotGit, isStartFailure, mergeOrder, mergeText, parseBase, parseMerged, parseNumstat, parsePrListText, parseStatusCount, parseWorktrees, safeRows, worktreesText } from '../core/crew3git'
+import { CI_MAX_TRIES, GH_NO_READ, GIT_TIMEOUT_MS, MAX_WORKTREES, NO_GIT_PROGRAM, MERGE_EVERY_MS, NOT_GIT, PR_LIST_ARGV, SAFE_TOAST_MIN, WORKTREE_LIST_ARGV, digestArgv, digestText, ghNeedsGit, ghNoAnswer, gitNoAnswer, isNotGit, isStartFailure, mergeOrder, mergeText, parseBase, parseMerged, parseNumstat, parsePrListText, parseStatusCount, parseWorktrees, safeRows, worktreesText, wtSeen } from '../core/crew3git'
+import { redrawIfChanged } from '../core/redraw'
 import { buildCiFix } from '../core/prcard'
+import { NIGHT_KEY } from '../core/night'
+import { nightClaimLive } from './nightrun'
 import { AWAKE_CAP_DETAIL, AWAKE_CAP_WHAT, AWAKE_PHONE_KEY, AWAKE_SINCE_KEY, REASONS, awakeNow, awayOf, chainAfterStart, chainCapped, latestPhone, parseAwakeArgs, parseChain, setAwakeShown, touchDue, waitingFrom, wantOf, whyLine } from '../core/awakeplan'
 import type { AwakeFacts, AwakeNow } from '../core/awakeplan'
 import { BOARD_KEY, parseBoard, runningCount } from '../core/agentboard'
@@ -29,7 +34,7 @@ import { awakeStartArgv, holdProgram, stopOwnHold } from '../core/awakehold'
 import { WIN_NO_PROGRAM, WIN_NO_START, WIN_NOTHING } from '../core/awakewords'
 import { sysWord } from '../core/syswords'
 import { readWinListeners } from '../core/winnet'
-import { cwdsFromCommands, readWinProcs } from '../core/winprocs'
+import { readWinProcs, winCwds } from '../core/winprocs'
 import type { ProcPlatform } from '../core/procs'
 import { listRecords, readRecord, STALE_MS } from '../core/record'
 import { readSetting, writeSetting } from '../core/settings'
@@ -103,7 +108,7 @@ function hasGh($: EngineInterface): Promise<boolean> {
   ghProbe ??= platOf($).then(plat => hasProgram(runOf($), plat, 'gh', 3_000))
   return ghProbe
 }
-const NO_GH = 'The gh program was not found, so vaken cannot ask GitHub. Install it from cli.github.com and sign in.' // en-only: plain answer of a slash command (text twin)
+const NO_GH = 'The gh program was not found, so vaken cannot ask GitHub. Install it from cli.github.com and sign in.'
 
 type Sessions = { me: string; myCwd: string; folders: Folder[]; live: Live; pids: Set<number>; home: string }
 
@@ -149,7 +154,7 @@ async function portSnapshotWin($: EngineInterface, i: Io): Promise<{ holders: Po
   const pids = [...new Set(listeners.map(x => x.pid))].slice(0, MAX_CWD_LOOKUPS)
   const s = await sessions($, i)
   const procs = pids.length === 0 ? [] : ((await readWinProcs(r, await i.now(), pids)) ?? [])
-  const cwds = cwdsFromCommands(procs, s.folders.map(f => f.cwd))
+  const cwds = await winCwds(r, procs, s.folders.map(f => f.cwd))
   return { holders: resolveHolders(listeners, cwds, s.folders, s.live, s.me), listed: true }
 }
 
@@ -177,7 +182,7 @@ async function scanWorktrees($: EngineInterface, i: Io, force: boolean): Promise
   const now = await i.now()
   const cwd = await $.session.cwd()
   if (wtCache !== undefined && wtCache.cwd === cwd && now - wtCache.at < (force ? 20_000 : WT_CACHE_MS)) return wtCache
-  if (wtBusy) return wtCache ?? { error: 'A check is running. Ask again in a moment.' } // en-only: plain answer of a slash command (text twin)
+  if (wtBusy) return wtCache ?? { error: 'A check is running. Ask again in a moment.' }
   wtBusy = true
   try {
     const list = await run($, WORKTREE_LIST_ARGV, GIT_TIMEOUT_MS)
@@ -203,9 +208,16 @@ async function scanWorktrees($: EngineInterface, i: Io, force: boolean): Promise
         live: [...s.live.keys()].some(c => isPath(c, wt.path)),
       })
     }
-    return (wtCache = { at: now, cwd, scan: { at: now, base, baseKnown: known, rows, cut: all.length > MAX_WORKTREES } })
+    const scan = { at: now, base, baseKnown: known, rows, cut: all.length > MAX_WORKTREES }
+    // The janitor's rows on the Pull requests card read this scan and the shared PR answer, which is keyed by the git common folder
+    const common = await run($, ['git', 'rev-parse', '--git-common-dir'], GIT_TIMEOUT_MS)
+    const repo = common !== undefined && common.code === 0 ? resolveGitDir(cwd, common.out) : undefined
+    wtSeen.scan = scan
+    wtSeen.cwd = cwd
+    wtSeen.repo = repo
+    return (wtCache = { at: now, cwd, scan })
   } catch {
-    return { error: 'The worktrees could not be read.' } // en-only: plain answer of a slash command (text twin)
+    return { error: 'The worktrees could not be read.' }
   } finally {
     wtBusy = false
   }
@@ -230,6 +242,25 @@ async function worktreeToast($: EngineInterface): Promise<void> {
   }
 }
 
+// The worktree janitor's look: a scan every WT_EVERY_MS, and on the next tick after Claude Code removed a worktree
+// (classic WorktreeRemove only marks it; the poll stays as the fallback). The pane redraws only when its rows changed.
+let janitorAt = 0
+let janitorStale = true
+async function janitorTick($: EngineInterface): Promise<void> {
+  const i = io($)
+  try {
+    if ((await readSetting(i, 'crew.worktrees')) === 'off') return
+    const now = await i.now()
+    if (!janitorStale && now - janitorAt < WT_EVERY_MS) return
+    janitorAt = now
+    const force = janitorStale
+    janitorStale = false
+    await scanWorktrees($, i, force)
+    await redrawIfChanged(i)
+  } catch {
+  }
+}
+
 const mergeCache = new Map<string, { at: number; placed: Placed[]; error?: string }>()
 
 async function mergeRead($: EngineInterface, i: Io): Promise<{ at: number; placed: Placed[]; error?: string }> {
@@ -243,7 +274,7 @@ async function mergeRead($: EngineInterface, i: Io): Promise<{ at: number; place
     const r = await run($, PR_LIST_ARGV, GH_TIMEOUT_MS)
     if (r === undefined) out = { at: now, placed: [], error: ghNoAnswer(noStart.has('gh'), NO_GH) }
     else if (r.code !== 0 && isNotGit(r.err)) out = { at: now, placed: [], error: NOT_GIT }
-    else if (r.code !== 0) out = { at: now, placed: [], error: isNoPr(r.err) ? 'no open pull requests.' : ghNeedsGit(r.err) ? NO_GIT_PROGRAM : GH_NO_READ } // en-only: plain answer of a slash command (text twin)
+    else if (r.code !== 0) out = { at: now, placed: [], error: isNoPr(r.err) ? 'no open pull requests.' : ghNeedsGit(r.err) ? NO_GIT_PROGRAM : GH_NO_READ }
     else out = { at: now, placed: mergeOrder(parsePrListText(r.out)) }
   }
   mergeCache.set(cwd, out)
@@ -260,11 +291,12 @@ async function branchOf($: EngineInterface, i: Io): Promise<string | undefined> 
 }
 
 async function ciFix($: EngineInterface, i: Io, send: boolean): Promise<string> {
-  if (!(await hasGh($))) return `Fix CI: ${NO_GH}`
+  if (!(await hasGh($))) return fillIn(tr('Fix CI: {text}'), { text: tr(NO_GH) })
   const built = await buildCiFix(i, () => branchOf($, i))
-  if (built.kind !== 'prompt') return built.text
-  const { head, prompt } = built
-  if (!send) return [head, 'This is the prompt. Nothing was sent. To put it in the prompt box, run /vaken-ship ci-fix send.', '', prompt].join('\n') // en-only: plain answer of a slash command (text twin)
+  if (built.kind !== 'prompt') return trFill(built.text)
+  const { said, prompt } = built
+  // The prompt itself is what Claude reads (English); the lines around it are for the person
+  if (!send) return [said, tr('This is the prompt. Nothing was sent. To put it in the prompt box, run /vaken-ship ci-fix send.'), '', prompt].join('\n')
   // Put it in the prompt box a moment after this command ends (a call cannot run inside the command that waits for it).
   $.clock.after(SEND_DELAY_MS, () => {
     void (async () => {
@@ -276,17 +308,18 @@ async function ciFix($: EngineInterface, i: Io, send: boolean): Promise<string> 
       }
     })()
   })
-  return `${head}\nPutting the prompt in the prompt box in a moment. Press Enter to send it; nothing is sent for you. After ${CI_MAX_TRIES} tries in 24 hours it builds no new prompt.`
+  return `${said}\n${fillIn(tr('Putting the prompt in the prompt box in a moment. Press Enter to send it; nothing is sent for you. After {n} tries in 24 hours it builds no new prompt.'), { n: CI_MAX_TRIES })}`
 }
 
 async function digest($: EngineInterface, i: Io): Promise<string> {
   const { base, known, notGit } = await findBase($)
-  if (notGit) return NOT_GIT
-  if (!known) return 'Branch digest: the main branch could not be found (no origin/HEAD, no main, no master), so there is nothing to compare with.' // en-only: plain answer of a slash command (text twin)
+  if (notGit) return tr(NOT_GIT)
+  if (noStart.has('git')) return tr('Branch digest: git is not installed or not on the path.')
+  if (!known) return tr('Branch digest: the main branch could not be found (no origin/HEAD, no main, no master), so there is nothing to compare with.')
   const a = digestArgv(base)
   const n = await run($, a.numstat, GIT_TIMEOUT_MS)
-  if (n !== undefined && isNotGit(n.err)) return NOT_GIT
-  if (n === undefined || n.code !== 0) return `Branch digest: git could not compare with ${base}.`
+  if (n !== undefined && isNotGit(n.err)) return tr(NOT_GIT)
+  if (n === undefined || n.code !== 0) return fillIn(tr('Branch digest: git could not compare with {base}.'), { base })
   const l = await run($, a.log, GIT_TIMEOUT_MS)
   const commits = l !== undefined && l.code === 0 ? l.out.split(/\r?\n/).map(x => x.trim()).filter(x => x !== '') : []
   return digestText(base, commits, parseNumstat(n.out), await branchOf($, i))
@@ -312,6 +345,7 @@ async function awakeFacts(i: Io, records: Awaited<ReturnType<typeof listRecords>
     ...(phoneAt === undefined ? {} : { phoneAt }),
     waiting: waitingFrom(records, now),
     background: runningCount(parseBoard(await i.get(BOARD_KEY)), now),
+    ...(nightClaimLive(await i.get(NIGHT_KEY), records, now) ? { night: true } : {}),
     ...(typeof laptop === 'object' && laptop !== null ? { laptop } : {}),
   }
 }
@@ -353,13 +387,13 @@ async function awakeTick($: EngineInterface): Promise<void> {
       return
     }
     if (!(await canHold($))) {
-      awakeNote = plat === 'win32' ? WIN_NO_PROGRAM : 'The caffeinate program was not found, so the Mac cannot be held awake.' // en-only: plain answer of a slash command (text twin)
+      awakeNote = plat === 'win32' ? WIN_NO_PROGRAM : 'The caffeinate program was not found, so the Mac cannot be held awake.'
       return
     }
     const started = await run($, awakeStartArgv(plat), PROC_TIMEOUT_MS)
     const fresh = started !== undefined && started.code === 0 ? parsePid(started.out) : undefined
     if (fresh === undefined) {
-      awakeNote = plat === 'win32' ? WIN_NO_START : 'The hold could not be started.' // en-only: plain answer of a slash command (text twin)
+      awakeNote = plat === 'win32' ? WIN_NO_START : 'The hold could not be started.'
       return
     }
     awakeNote = undefined
@@ -392,10 +426,10 @@ async function awakeSwitch(i: Io, to: 'on' | 'off', plat: ProcPlatform): Promise
   if (to === 'on') {
     if ((await readSetting(i, 'awake.away')) !== 'waiting') await writeSetting(i, 'awake.away', 'phone')
     i.invalidate()
-    return sysWord('Keep Mac awake is on. The Mac stays awake while a session works and while a phone is connected, up to 8 hours in a row. Closing the lid still sleeps the Mac. Type /vaken-help run awake off to turn it off.', plat) // en-only: plain answer of a slash command (text twin)
+    return tr(sysWord('Keep Mac awake is on. The Mac stays awake while a session works and while a phone is connected, up to 8 hours in a row. Closing the lid still sleeps the Mac. Type /vaken-help run awake off to turn it off.', plat))
   }
   i.invalidate()
-  return sysWord('Keep Mac awake is off. The hold ends within a minute.', plat) // en-only: plain answer of a slash command (text twin)
+  return tr(sysWord('Keep Mac awake is off. The hold ends within a minute.', plat))
 }
 
 async function orphansWin($: EngineInterface, i: Io): Promise<string> {
@@ -405,7 +439,7 @@ async function orphansWin($: EngineInterface, i: Io): Promise<string> {
   const cands = candidates(procs, { selfPids: s.pids }).sort((a, b) => b.ageS - a.ageS).slice(0, MAX_CWD_LOOKUPS)
   const wl = await run($, WORKTREE_LIST_ARGV, GIT_TIMEOUT_MS)
   const worktrees = wl !== undefined && wl.code === 0 ? parseWorktrees(wl.out).slice(1).map(w => w.path) : []
-  const cwds = cwdsFromCommands(cands, [...worktrees, ...s.folders.map(f => f.cwd)])
+  const cwds = await winCwds(runOf($), cands, [...worktrees, ...s.folders.map(f => f.cwd)])
   const found = findOrphans(cands, cwds, { folders: s.folders, live: s.live, worktrees, selfPids: s.pids })
   return orphansText(found, { ps: true, lsof: cands.length === 0 || cwds.size > 0 }, 'win32')
 }
@@ -430,7 +464,7 @@ export function registerCrew3(on: On): void {
     try {
       const slow = quietly('crew3', () => $.clock.now(), () => {
         void rememberFolders($).catch(() => undefined)
-        void worktreeToast($)
+        void janitorTick($).then(() => worktreeToast($))
       })
       const timer = $.clock.every(TICK_MS, () => {
         slow()
@@ -441,6 +475,14 @@ export function registerCrew3(on: On): void {
       // the commands and the timer are optional: a failure shows less, never breaks the session
     }
     return next(e)
+  }).catch(($, e, next) => next(e))
+
+  // Claude Code removed a worktree: the janitor looks again on its next tick, so a gone copy's row goes. It only observes.
+  // No WorktreeCreate hook: a new copy is never merged, so it would add no row, and a hook there may take over how the engine makes worktrees.
+  on('classic.WorktreeRemove', { worktree_path: /(?<janitor>)/ }, async ($, e, next) => {
+    const r = await next(e)
+    janitorStale = true
+    return r
   }).catch(($, e, next) => next(e))
 
   on('tool.call', { tool: /(?<crew3ports>)/ }, async ($, e, next) => {
@@ -482,6 +524,7 @@ export function registerCrew3(on: On): void {
   on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
     const rest0 = subArgs(e.args, 'run', 'ports')
     if (rest0 === undefined) return next(e)
+    await sayIn(io($))
     const i = io($)
     const snap = await portSnapshot($, i)
     return { text: portsText(await readSetting(i, 'crew.ports'), snap.holders, snap.listed, rest0.trim().toLowerCase() === 'all', await platOf($)) }
@@ -490,6 +533,7 @@ export function registerCrew3(on: On): void {
   on('command.run', { command: 'vaken-ship' }, async ($, e, next) => {
     const rest0 = subArgs(e.args, 'worktrees')
     if (rest0 === undefined) return next(e)
+    await sayIn(io($))
     const i = io($)
     const r = await scanWorktrees($, i, true)
     return { text: worktreesText(await readSetting(i, 'crew.worktrees'), r.scan, r.error, await i.now(), rest0.trim().toLowerCase() === 'all') }
@@ -498,6 +542,7 @@ export function registerCrew3(on: On): void {
   on('command.run', { command: 'vaken-ship' }, async ($, e, next) => {
     const rest0 = subArgs(e.args, 'merge-order')
     if (rest0 === undefined) return next(e)
+    await sayIn(io($))
     const i = io($)
     const r = await mergeRead($, i)
     return { text: mergeText(r.placed, r.at, await i.now(), r.error) }
@@ -506,6 +551,7 @@ export function registerCrew3(on: On): void {
   on('command.run', { command: 'vaken-ship' }, async ($, e, next) => {
     const rest0 = subArgs(e.args, 'ci-fix')
     if (rest0 === undefined) return next(e)
+    await sayIn(io($))
     const i = io($)
     return { text: await ciFix($, i, rest0.trim().toLowerCase() === 'send') }
   })
@@ -513,12 +559,14 @@ export function registerCrew3(on: On): void {
   on('command.run', { command: 'vaken-ship' }, async ($, e, next) => {
     const rest0 = subArgs(e.args, 'digest-branch')
     if (rest0 === undefined) return next(e)
+    await sayIn(io($))
     return { text: await digest($, io($)) }
   })
 
   on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
     const rest0 = subArgs(e.args, 'run', 'awake')
     if (rest0 === undefined) return next(e)
+    await sayIn(io($))
     const i = io($)
     const ask = parseAwakeArgs(rest0)
     const head = ask === 'status' ? '' : `${await awakeSwitch(i, ask, await platOf($))}\n\n`
@@ -529,13 +577,14 @@ export function registerCrew3(on: On): void {
     const facts = await awakeFacts(i, records, now)
     const state: AwakeNow = awakeNow(mode, away, facts, parseChain(await i.get(AWAKE_SINCE_KEY)), now)
     const plat = await platOf($)
-    const why = whyLine(state, undefined, plat) ?? (mode === 'on' ? (plat === 'win32' ? WIN_NOTHING : 'Not keeping the Mac awake now: nothing needs it') : undefined) // en-only: plain answer of a slash command (text twin)
+    const why = whyLine(state, tr, plat) ?? (mode === 'on' ? (plat === 'win32' ? WIN_NOTHING : 'Not keeping the Mac awake now: nothing needs it') : undefined)
     return { text: head + awakeText(mode, await canHold($), facts.working, await i.get(AWAKE_PID_KEY), await i.get(AWAKE_AT_KEY), now, awakeNote, { away, ...(why === undefined ? {} : { why }) }, plat) }
   })
 
   on('command.run', { command: 'vaken-ship' }, async ($, e, next) => {
     const rest0 = subArgs(e.args, 'orphans')
     if (rest0 === undefined) return next(e)
+    await sayIn(io($))
     return { text: await orphans($, io($)) }
   })
 }

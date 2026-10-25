@@ -20,6 +20,7 @@ import { kindWord, memorySpots, memoryText, parseIndex, parseNote } from '../cor
 import { LEDGER_KEY, pushLog, readLog } from './compaction'
 import { subArgs, isFolded } from '../core/menu'
 import { fillIn } from '../core/fillin'
+import { sayIn } from './saylang'
 
 // IO-BLOCK-START
 function io($: EngineInterface): Io {
@@ -109,6 +110,7 @@ export function registerNotes(on: On): void {
     const rest0 = subArgs(e.args, 'rules')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i)
     return { text: rulesText(await rulesNow($), ((await i.get(rulesKey(await i.sessionId()))) as Counts | undefined) ?? {}) }
   })
 
@@ -116,6 +118,7 @@ export function registerNotes(on: On): void {
     const rest0 = subArgs(e.args, 'reflect')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i)
     return { text: reflectText(reflect(await readLog(i, LEDGER_KEY), await i.now())) }
   })
 
@@ -123,6 +126,7 @@ export function registerNotes(on: On): void {
     const rest0 = subArgs(e.args, 'park')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i)
     const root = await $.session.root()
     const key = parkKey(hashOf(root))
     const ideas = parseIdeas(await i.get(key))
@@ -132,17 +136,17 @@ export function registerNotes(on: On): void {
     if (ask.kind === 'list') return { text: listText(ideas, now) }
     if (ask.kind === 'clear') {
       await i.set(key, [])
-      return { text: 'The parking lot is empty.' } // en-only: plain answer of a slash command (text twin)
+      return { text: tr('The parking lot is empty.') }
     }
     if (ask.kind === 'add') {
       await i.set(key, [{ at: now, text: ask.text }, ...ideas].slice(0, 30))
-      return { text: `Parked: ${ask.text}\n${ideas.length + 1} in the lot. Claude keeps working; nothing was sent.` }
+      return { text: fillIn(tr('Parked: {idea}\n{n} in the lot. Claude keeps working; nothing was sent.'), { idea: ask.text, n: ideas.length + 1 }) }
     }
     const idea = ideas[ask.n - 1]
-    if (idea === undefined) return { text: `There is no idea ${ask.n}. ${listText(ideas, now)}` }
+    if (idea === undefined) return { text: fillIn(tr('There is no idea {n}. {list}'), { n: ask.n, list: listText(ideas, now) }) }
     if (ask.kind === 'drop') {
       await i.set(key, ideas.filter((_, n) => n !== ask.n - 1))
-      return { text: `Removed idea ${ask.n}.` }
+      return { text: fillIn(tr('Removed idea {n}.'), { n: ask.n }) }
     }
     // Send: put it into the prompt a moment after this command ends (a call cannot run inside the command that waits for it).
     $.clock.after(1_500, () => {
@@ -155,12 +159,13 @@ export function registerNotes(on: On): void {
         }
       })()
   })
-    return { text: `Putting idea ${ask.n} into the prompt box in a moment. It stays in the lot until you drop it.\nIdea ${ask.n}: ${idea.text}` }
+    return { text: fillIn(tr('Putting idea {n} into the prompt box in a moment. It stays in the lot until you drop it.\nIdea {n}: {idea}'), { n: ask.n, idea: idea.text }) }
     })
 
   on('command.run', { command: 'vaken-memory' }, async ($, e, next) => {
     if (isFolded(e.command, e.args)) return next(e)
     const i = io($)
+    await sayIn(i)
     const home = await i.home()
     const cwd = await $.session.cwd()
     const spots = memorySpots(home, cwd)
@@ -174,7 +179,7 @@ export function registerNotes(on: On): void {
           const note = parseNote(await i.read(under(s.dir, file)))
           return { text: `${kindWord(note.type)}${note.description === undefined ? '' : `: ${note.description}`}\n\n${note.body}` }
         }
-        return { text: `No note called ${file}. Looked for: ${[...new Set(spots.map(s => s.label))].join(', ')}.` }
+        return { text: fillIn(tr('No note called {file}. Looked for: {names}.'), { file, names: [...new Set(spots.map(s => s.label))].join(', ') }) }
       }
       let index: ReturnType<typeof parseIndex> = []
       for (const s of spots) {
@@ -186,7 +191,7 @@ export function registerNotes(on: On): void {
       const files = (await instructionFiles($)).map(f => homeShown(f.path, home))
       return { text: memoryText(index, [], files, spots.map(s => s.label)) }
     } catch {
-      return { text: 'Vaken could not read the memory notes for this project.' } // en-only: plain answer of a slash command (text twin)
+      return { text: tr('Vaken could not read the memory notes for this project.') }
     }
   })
 }

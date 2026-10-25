@@ -1,5 +1,6 @@
 // Continuity (Settings > Prompts and memory): the verified handoff note, the session packet, resume by name, the timeline, search across sessions
 import { t, tr } from '../core/lang'
+import { sayIn } from './saylang'
 import { fillIn } from '../core/fillin'
 import { saidYes } from '../core/confirm'
 import type { EngineInterface, On } from 'claude-code'
@@ -9,7 +10,7 @@ import { APP_SESSIONS_KEY, SESSIONS_TOOL, matchSession, parseSessions, parseStor
 import type { AppSession, AppSessions } from '../core/appsessions'
 import { USAGE_SERVER } from '../core/appusage'
 import { ymd } from '../core/time'
-import { OFF_TEXT, PACKET_PATH, PACKET_WHAT, briefMarkLines, parseBranch, parseGitStatus, relativeTo, renderBrief, renderPacket, storyLines } from '../core/continuity'
+import { OFF_TEXT, PACKET_PATH, PACKET_WHAT, briefMarkLines, parseBranch, parseGitStatus, relativeTo, STATUS_ARGV, renderBrief, renderPacket, storyLines } from '../core/continuity'
 import type { BriefFacts, GitFile } from '../core/continuity'
 import { FIND_LIMIT, FIND_MIN, NOT_AVAILABLE, findText, jsonArrayIn, lastWork, matchWords, parseCount, parseHits, resumeText, standupLines, timelineText } from '../core/continuity2'
 import type { DaySession, TimelineFacts } from '../core/continuity2'
@@ -23,7 +24,8 @@ import { ANOMALY_WHAT, DRIFT_WHAT, readState2, state2Key } from '../core/proof2'
 import { DROP_MS, listRecords, readRecord } from '../core/record'
 import type { SessionRecord } from '../core/record'
 import { readSetting } from '../core/settings'
-import { didToday, startOfDay } from '../core/ledger'
+import { actedToday, startOfDay } from '../core/ledger'
+import { COUNTS_KEY, countsSince } from '../core/counts'
 import { LEDGER_KEY, pushLog, readLog, setAutoSaver, why } from './compaction'
 import { CHECKPOINT_NAME, briefName, briefPath, briefShown } from '../core/autosafe'
 import { makeCheckpoint } from '../core/undo'
@@ -60,9 +62,9 @@ const SEARCH_TOOL = 'search_session_transcripts'
 
 // The reply when the block is off, else undefined.
 const offText = async (i: Io): Promise<string | undefined> => {
-  return (await readSetting(i, 'brief.mode')) === 'off' ? OFF_TEXT : undefined
+  return (await readSetting(i, 'brief.mode')) === 'off' ? tr(OFF_TEXT) : undefined
 }
-const failText = (err: unknown): string => `That did not work: ${why(err)}`
+const failText = (err: unknown): string => fillIn(tr('That did not work: {why}'), { why: why(err) })
 
 type Called = { ok: true; text: string; blocks: number } | { ok: false; why: string }
 
@@ -73,11 +75,11 @@ async function callApp($: EngineInterface, tool: string, args: Record<string, un
     const r = await $.mcp.call(USAGE_SERVER, tool, args)
     const texts = r.content.filter(c => c.type === 'text').map(c => (c as { text?: string }).text ?? '')
     const text = texts.join('\n')
-    if (r.isError === true) return { ok: false, why: text.slice(0, 160) || 'the tool reported an error' } // en-only: plain answer of a slash command (text twin)
+    if (r.isError === true) return { ok: false, why: text.slice(0, 160) || tr('the tool reported an error') }
     return { ok: true, text, blocks: r.content.length }
   } catch {
     // The engine's own error ("no implementation for ...") means nothing to a person: the tool is not there in this kind of session.
-    return { ok: false, why: 'It is not offered in this kind of session.' } // en-only: plain answer of a slash command (text twin)
+    return { ok: false, why: tr('It is not offered in this kind of session.') }
   }
 }
 
@@ -113,7 +115,7 @@ async function briefFacts($: EngineInterface, i: Io): Promise<BriefFacts> {
 export async function briefFactsAt(i: Io, cwd: string): Promise<BriefFacts> {
   const sid = await i.sessionId()
   const now = await i.now()
-  const [branchOut, statusOut] = await Promise.all([gitRun(i, ['git', 'rev-parse', '--abbrev-ref', 'HEAD']), gitRun(i, ['git', '-c', 'core.quotepath=off', 'status', '--short'])])
+  const [branchOut, statusOut] = await Promise.all([gitRun(i, ['git', 'rev-parse', '--abbrev-ref', 'HEAD']), gitRun(i, [...STATUS_ARGV])])
   const gitBranch = branchOut === undefined ? undefined : parseBranch(branchOut)
   const gitFiles: GitFile[] | undefined = statusOut === undefined ? undefined : parseGitStatus(statusOut)
   const proof = readState(await readNote(i, stateKey(sid)))
@@ -163,6 +165,15 @@ export async function saveBeforeAuto(i: Io, sessionId: string, cwd: string, prob
   }
 }
 
+// The fresh-start nudge's press: the same brief as before Auto compacts, without a checkpoint. Returns the path as the person reads it.
+export async function writeFreshBrief(i: Io, cwd: string): Promise<string> {
+  const sessionId = await i.sessionId()
+  const facts = await briefFactsAt(i, cwd)
+  const home = await i.home()
+  await i.write(briefPath(home, sessionId), renderPacket(facts, folderName(facts.cwd)))
+  return briefShown(sessionId, home)
+}
+
 // The engine's file calls a safe write needs (core/safewrite.ts).
 function safeFs($: EngineInterface): SafeFs {
   return { stat: (path, options) => $.fs.stat(path, options), list: path => $.fs.list(path) }
@@ -185,16 +196,16 @@ async function packetText($: EngineInterface, i: Io): Promise<string> {
   try {
     answer = await i.ask(fillIn(tr(exists ? 'Write the session packet to {path}? It replaces the file that is there.' : 'Write the session packet to {path}?'), { path }), [buttons.yes, buttons.no])
   } catch {
-    return 'Nothing was written: the question was not answered.' // en-only: plain answer of a slash command (text twin)
+    return tr('Nothing was written: the question was not answered.')
   }
-  if (!saidYes(answer, buttons)) return 'Nothing was written.' // en-only: plain answer of a slash command (text twin)
+  if (!saidYes(answer, buttons)) return tr('Nothing was written.')
   const text = renderPacket(facts, folderName(facts.cwd))
   if (!(await safeWrite(fs, (p, x) => i.write(p, x), facts.cwd, path, text)).ok) return refusedWords(path, tr)
   const lines = text.split('\n').length
   await pushLog(i, LEDGER_KEY, { at: await i.now(), session: await i.sessionId(), what: PACKET_WHAT, detail: `${PACKET_PATH}, ${lines} lines`, how: 'typed', did: true })
   i.toast(tr('Session packet written.'))
   i.invalidate()
-  return [`Wrote ${path} (${lines} lines).`, 'The next session can read it first. It holds counts, names, paths and your goal (key words of your first message, or the sentence you set; secrets hidden), and no other conversation text.', `Git will show it as a new file. Add ${PACKET_PATH} to .gitignore if you do not want to commit it.`].join('\n') // en-only: plain answer of a slash command (text twin)
+  return [fillIn(tr('Wrote {path} ({count}).'), { path, count: t('words.line', { n: lines }) }), tr('The next session can read it first. It holds counts, names, paths and your goal (key words of your first message, or the sentence you set; secrets hidden), and no other conversation text.'), fillIn(tr('Git will show it as a new file. Add {packet} to .gitignore if you do not want to commit it.'), { packet: PACKET_PATH })].join('\n')
 }
 
 async function timelineFacts(i: Io): Promise<TimelineFacts> {
@@ -252,24 +263,24 @@ async function standupText($: EngineInterface, i: Io): Promise<string> {
       costSessions += 1
     }
   }
-  const actions = didToday(await readLog(i, LEDGER_KEY), now).reduce((n, d) => n + d.n, 0)
-  if (sessions.length === 0) return `Nothing to report yet today: no session has changed a file or run a check. Vaken acted ${actions} times.`
-  return [...standupLines({ now, sessions, cockpitActions: actions, ...(costSessions === 0 ? {} : { costUsd: usd }), costSessions }), ...(app === undefined || app.fresh ? [] : ['(Session names may be old: the app did not answer.)'])].join('\n')
+  const actions = actedToday(await readLog(i, LEDGER_KEY), now, countsSince(await i.get(COUNTS_KEY), now))
+  if (sessions.length === 0) return fillIn(tr('Nothing to report yet today: no session has changed a file or run a check. Vaken acted {times}.'), { times: t('words.time', { n: actions }) })
+  return [...standupLines({ now, sessions, cockpitActions: actions, ...(costSessions === 0 ? {} : { costUsd: usd }), costSessions }), ...(app === undefined || app.fresh ? [] : [tr('(Session names may be old: the app did not answer.)')])].join('\n')
 }
 
 async function resumeText_($: EngineInterface, i: Io, words: string): Promise<string> {
   const got = await sessionList($, i, false)
-  if (got === undefined) return NOT_AVAILABLE('session list', 'Open the sidebar and look for the session by hand.') // en-only: plain answer of a slash command (text twin)
+  if (got === undefined) return NOT_AVAILABLE('session list', tr('Open the sidebar and look for the session by hand.'))
   const rows = words === '' ? [...got.list.sessions].sort((a, b) => (Date.parse(b.lastActivityAt ?? '') || 0) - (Date.parse(a.lastActivityAt ?? '') || 0)) : matchWords(got.list.sessions, words)
-  return resumeText(words, rows, await i.now(), got.fresh ? "the app's session list" : 'the last list vaken kept (the app did not answer)') // en-only: plain answer of a slash command (text twin)
+  return resumeText(words, rows, await i.now(), got.fresh ? "the app's session list" : 'the last list vaken kept (the app did not answer)')
 }
 
 async function findAnswer($: EngineInterface, i: Io, query: string): Promise<string> {
-  if (query.length < FIND_MIN) return `Type at least ${FIND_MIN} characters: /vaken-resume find <words>. It searches what was said in your other sessions.`
+  if (query.length < FIND_MIN) return fillIn(tr('Type at least {n} characters: /vaken-resume find <words>. It searches what was said in your other sessions.'), { n: FIND_MIN })
   const r = await callApp($, SEARCH_TOOL, { query, limit: FIND_LIMIT })
-  if (!r.ok) return NOT_AVAILABLE('search tool', r.why) // en-only: plain answer of a slash command (text twin)
+  if (!r.ok) return NOT_AVAILABLE('search tool', r.why)
   const hits = parseHits(r.text)
-  if (hits === undefined) return NOT_AVAILABLE('search tool', 'It answered in a form vaken does not know.') // en-only: plain answer of a slash command (text twin)
+  if (hits === undefined) return NOT_AVAILABLE('search tool', tr('It answered in a form vaken does not know.'))
   const links = new Map<string, string>()
   if (hits.length > 0) {
     const got = await sessionList($, i, true)
@@ -331,7 +342,7 @@ async function timelineCommand(i: Io, args: string): Promise<string> {
     const off = await offText(i)
     if (off !== undefined) return off
     const n = parseCount(args)
-    if (n === undefined) return 'Type a number: /vaken-resume timeline 20 shows the last 20 events.' // en-only: plain answer of a slash command (text twin)
+    if (n === undefined) return tr('Type a number: /vaken-resume timeline 20 shows the last 20 events.')
     return timelineText(await timelineFacts(i), n, await i.now())
   } catch (err) {
     return failText(err)
@@ -357,30 +368,42 @@ export function registerContinuity(on: On): void {
   on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
     const rest0 = subArgs(e.args, 'run', 'packet')
     if (rest0 === undefined) return next(e)
-    return { text: await packetCommand($, io($)) }
+    const i = io($)
+    await sayIn(i)
+    return { text: await packetCommand($, i) }
   })
   on('command.run', { command: 'vaken-resume' }, async ($, e, next) => {
     if (isFolded(e.command, e.args)) return next(e)
-    return { text: await resumeCommand($, io($), e.args.trim()) }
+    const i = io($)
+    await sayIn(i)
+    return { text: await resumeCommand($, i, e.args.trim()) }
   })
   on('command.run', { command: 'vaken-resume' }, async ($, e, next) => {
     const rest0 = subArgs(e.args, 'find')
     if (rest0 === undefined) return next(e)
-    return { text: await findCommand($, io($), rest0.trim()) }
+    const i = io($)
+    await sayIn(i)
+    return { text: await findCommand($, i, rest0.trim()) }
   })
   on('command.run', { command: 'vaken-today' }, async ($, e, next) => {
     const rest0 = subArgs(e.args, 'standup')
     if (rest0 === undefined) return next(e)
-    return { text: await standupCommand($, io($)) }
+    const i = io($)
+    await sayIn(i)
+    return { text: await standupCommand($, i) }
   })
   on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
     const rest0 = subArgs(e.args, 'run', 'story')
     if (rest0 === undefined) return next(e)
-    return { text: await storyCommand(io($)) }
+    const i = io($)
+    await sayIn(i)
+    return { text: await storyCommand(i) }
   })
   on('command.run', { command: 'vaken-resume' }, async ($, e, next) => {
     const rest0 = subArgs(e.args, 'timeline')
     if (rest0 === undefined) return next(e)
-    return { text: await timelineCommand(io($), rest0.trim()) }
+    const i = io($)
+    await sayIn(i)
+    return { text: await timelineCommand(i, rest0.trim()) }
   })
 }

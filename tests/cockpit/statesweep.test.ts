@@ -7,7 +7,7 @@ import { looked as pressLooked, pressProblems } from './presssizes'
 
 import { BUNDLE_TTL_MS } from '../hooks/core/io'
 import { setSetupExists } from '../hooks/features/setupfiles'
-import { BORDER_X_PT, COL_PT, LIST_ROW_H, LIST_ROW_PAD_PT, ROW_PT, TEXT_CHAR_PT, VSTEP_PT, columnsFor } from '../hooks/ui/tokens'
+import { BORDER_X_PT, columnPt, LIST_ROW_H, LIST_ROW_PAD_PT, ROW_PT, TEXT_CHAR_PT, VSTEP_PT, columnsFor } from '../hooks/ui/tokens'
 import { byEnglish } from '../hooks/i18n/table'
 const SV = byEnglish('sv')
 
@@ -33,13 +33,13 @@ const DUMP = false
 function widthOf(n: Node): number {
   const p = n.props ?? {}
   if (n.type === 'Svg') return num(p.width)
-  if (n.type === 'Button') return (String(p.label ?? '').length + 2) * COL_PT
+  if (n.type === 'Button') return (String(p.label ?? '').length + 2) * columnPt()
   if (n.type === 'Text') return 0
-  if (n.type === 'Box' && typeof p.width === 'number' && String((n as { key?: unknown }).key ?? p.key ?? '').startsWith('fcw-')) return p.width * COL_PT
+  if (n.type === 'Box' && typeof p.width === 'number' && String((n as { key?: unknown }).key ?? p.key ?? '').startsWith('fcw-')) return p.width * columnPt()
   const parts = kids(n).filter(k => k.props?.position !== 'absolute').map(widthOf)
-  const gap = num(p.columnGap) * COL_PT
+  const gap = num(p.columnGap) * columnPt()
   const inner = parts.length === 0 ? 0 : p.flexDirection === 'row' && p.flexWrap !== 'wrap' ? parts.reduce((a, b) => a + b, 0) + gap * (parts.length - 1) : Math.max(...parts)
-  return Math.max(inner + (num(p.marginLeft) + num(p.marginRight)) * COL_PT, num(p.minWidth) * COL_PT)
+  return Math.max(inner + (num(p.marginLeft) + num(p.marginRight)) * columnPt(), num(p.minWidth) * columnPt())
 }
 
 const KNOWN_LINES = Object.keys(SV).filter(k => k.length > 12)
@@ -64,10 +64,10 @@ function check(root: Node, w: number, at: string, problems: string[], view: stri
   const columnsRow = nodes.find(x => nameOf(x) === 'columns')
   const columnList = columnsRow === undefined ? [] : kids(columnsRow)
   for (const c of columnList) if (c.props?.width !== columnList[0]?.props?.width) problems.push(`${at}: columns of unequal width (${columnList.map(k => String(k.props?.width)).join(', ')})`)
-  for (const c of columnList) if (widest(c) > num(c.props?.width) * COL_PT + CLOSE) problems.push(`${at}: a card ${widest(c)} pt in a column of ${num(c.props?.width) * COL_PT} pt`)
+  for (const c of columnList) if (widest(c) > num(c.props?.width) * columnPt() + CLOSE) problems.push(`${at}: a card ${widest(c)} pt in a column of ${num(c.props?.width) * columnPt()} pt`)
   // The pane's own width for a word: the column when the board is in columns, else the pane.
   const cap = nodes.find(x => nameOf(x).startsWith('cap-') && num(x.props?.width) > 0)
-  const roomPt = columnList.length > 0 ? num(columnList[0]?.props?.width) * COL_PT - 2 * BORDER_X_PT : cap !== undefined ? num(cap.props?.width) * COL_PT - 2 * BORDER_X_PT : w - 2 * BORDER_X_PT
+  const roomPt = columnList.length > 0 ? num(columnList[0]?.props?.width) * columnPt() - 2 * BORDER_X_PT : cap !== undefined ? num(cap.props?.width) * columnPt() - 2 * BORDER_X_PT : w - 2 * BORDER_X_PT
   for (const b of nodes.filter(x => x.type === 'Button')) {
     for (const s of [...(typeof b.props?.label === 'string' ? [b.props.label] : []), ...strings(b)]) if (s.includes('…')) problems.push(`${at}: a cut label "${s}"`)
   }
@@ -117,7 +117,7 @@ function check(root: Node, w: number, at: string, problems: string[], view: stri
   if (nodes.length > ceiling) problems.push(`${at}: ${nodes.length} elements, the ceiling is ${ceiling}`)
 }
 
-const bandProps = (wPt: number) => ({ hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: wPt / COL_PT, scroll: { bodyRows: 5, offset: 0, total: 5 }, view: {} })
+const bandProps = (wPt: number) => ({ hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: wPt / columnPt(), scroll: { bodyRows: 5, offset: 0, total: 5 }, view: {} })
 async function bandSweep(mountBand: (w: number) => Promise<Pane>, state: State, problems: string[], seen: string[]): Promise<void> {
   const ui = await mountBand(1130)
   for (const width of WIDTHS_PT) {
@@ -125,7 +125,7 @@ async function bandSweep(mountBand: (w: number) => Promise<Pane>, state: State, 
     const root = await ui.drawn()
     const at = `${state.name}, the line above the chat box at ${width} pt`
     const nodes = walk(root)
-    if (!textsOf(root).some(t => /94% used|risky step was stopped|Notices paused/.test(t))) problems.push(`${at}: the posted line is not on screen`)
+    if (!textsOf(root).some(t => /94% used|risky step was stopped|Quiet · /.test(t))) problems.push(`${at}: the posted line is not on screen`)
     if (widest(root) > width + CLOSE) problems.push(`${at}: something ${widest(root)} pt wide`)
     for (const b of nodes.filter(x => x.type === 'Button')) for (const t of [...(typeof b.props?.label === 'string' ? [b.props.label] : []), ...strings(b)]) if (t.includes('…')) problems.push(`${at}: a cut label "${t}"`)
     seen.push(at)
@@ -246,6 +246,7 @@ test('each state the busy store does not reach, at 400 to 5120 pt: the layout ru
       await state.leave(back)
       await back.unmount()
     }
+    await state.after?.($)
   }
   if (DUMP) console.log(out.join('\n'))
   if (DUMP) console.log(`CUT ${[...cutSeen].sort().join('\nCUT ')}`)

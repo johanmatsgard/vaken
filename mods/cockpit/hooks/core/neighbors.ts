@@ -1,5 +1,6 @@
 // Warns in the band when another live session works in the same folder (same cwd or git worktree root). Folder-level, so it warns before anyone edits; the file-level warning is in core/crew.ts.
 import { samePath } from './platform'
+import { t, tr } from '../i18n/t'
 import type { HelpEntry } from './registry'
 import type { Setting } from './settings'
 
@@ -65,24 +66,20 @@ export function verdict(mode: string, count: number, stamp: number | undefined, 
 }
 
 
-const STATE_WORD: Record<NeighborState, string> = {
-  working: 'is working',
-  waiting: 'finished its turn and waits for you',
-  needs: 'waits for an answer or an OK',
-  idle: 'is idle',
-}
+// The glossary's state words, as the pane says them
+const STATE_WORD: Record<NeighborState, string> = { working: 'Working', waiting: 'Your turn', needs: 'Needs you', idle: 'Idle' }
 
 export const ledgerDetail = (count: number): string => `${count === 1 ? '1 other session works' : `${count} other sessions work`} in this folder. Claude was not told.`
 
-export function neighborsText(mode: string, list: readonly Neighbor[], placeKnown: boolean): string {
-  const out = [`Same-folder awareness: ${mode === 'on' ? 'on' : 'off'}.`, 'It warns when another live session works in the same folder as this one, or in the same git worktree. File overlap (/vaken-help run claims) warns about one file; this warns about the folder.']
-  if (mode !== 'on') out.push('Turn it on: Settings > Agents.')
+// `explain`: the note on what it watches, said only the first time
+export function neighborsText(mode: string, list: readonly Neighbor[], placeKnown: boolean, explain = true): string {
+  const out = [t(mode === 'on' ? 'chat.neighbors_on' : 'chat.neighbors_off'), ...(explain ? ['', t('chat.neighbors_about')] : [])]
+  if (mode !== 'on') out.push('', t('chat.neighbors_turn_on'))
   out.push('')
-  if (!placeKnown) out.push('Vaken does not know the folder of this session, so it cannot look.')
-  else if (list.length === 0) out.push('No other live session works in this folder.')
+  if (!placeKnown) out.push(t('chat.neighbors_no_folder'))
+  else if (list.length === 0) out.push(t('chat.neighbors_none'))
   else {
-    out.push(`${list.length === 1 ? 'Another session works' : `${list.length} other sessions work`} in this folder:`)
-    for (const n of list) out.push(`  ${n.name}: ${STATE_WORD[n.state]}`)
+    out.push(t('chat.neighbors_head', { n: list.length }), ...list.map(n => `- ${n.name}: ${tr(STATE_WORD[n.state])}`))
   }
   return out.join('\n')
 }

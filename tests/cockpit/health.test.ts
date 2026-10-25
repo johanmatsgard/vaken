@@ -3,8 +3,9 @@ import { expect, mock } from 'claude-code/testing'
 import type { EngineInterface, On } from 'claude-code'
 
 import { readBand } from '../hooks/core/band'
-import { HEALTH_KEY, HEALTH_MODE_KEY, HEALTH_SETTINGS, KEEP_DAYS, SLOW_MS, WARN_AT, areaWords, dayOf, healthText, noteFailure, noteSlow, parseCounts, slowestArea, timed, withFailure, withSlow } from '../hooks/core/health'
+import { HEALTH_HELP, HEALTH_KEY, HEALTH_MODE_KEY, HEALTH_SETTINGS, KEEP_DAYS, SLOW_MS, WARN_AT, areaWords, dayOf, healthText, noteFailure, noteSlow, parseCounts, slowestArea, timed, withFailure, withSlow } from '../hooks/core/health'
 import type { Io } from '../hooks/core/io'
+import { byEnglish } from '../hooks/i18n/table'
 import { SLOW, test } from './slow'
 import { viaParent } from './viaparent'
 
@@ -186,4 +187,11 @@ test('/vaken-help run modhealth shows the counts the store holds', SLOW, async (
   expect(shown).toMatch(/undo: failed 2 times \(throw 1, timeout 1\)/)
   mem.set(HEALTH_MODE_KEY, 'off')
   expect(await text($, 'vaken-modhealth')).toMatch(/Vaken health: off/)
+})
+
+test('the help says vaken reads the public status.claude.com page, in at most 3 sentences, with a Swedish row', () => {
+  const text = HEALTH_HELP[0].text
+  expect(text).toContain('status.claude.com')
+  expect(text.split(/(?<=[.!?])\s+(?=[A-Z/])/).length).toBeLessThanOrEqual(3)
+  expect(byEnglish('sv')[text]).toContain('status.claude.com')
 })

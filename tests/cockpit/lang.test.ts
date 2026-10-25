@@ -3,6 +3,7 @@ import { test } from './slow'
 
 import { VIEW_STRINGS, langNow, setLang, tr, trMore } from '../hooks/core/lang'
 import { FEATURE_HELP } from '../hooks/core/registry'
+import { isTextOnly } from '../hooks/core/settingsmap'
 import { SETTINGS, startWindowsLanguage, systemLanguage, windowsLanguageRead, windowsUiLanguage } from '../hooks/core/settings'
 import { HELP } from '../hooks/features/home'
 import { AREAS, byEnglish } from '../hooks/i18n/table'
@@ -11,7 +12,7 @@ import { LANGS, langInfo } from '../hooks/i18n/langs'
 // The full languages other than English: each must give every line a person reads.
 const FULL = LANGS.filter(l => l !== 'en' && langInfo(l).status === 'full')
 
-const SAME_IN: Record<string, string[]> = { sv: ['Claude Code', 'Auto', 'Cache', 'Normal', 'Plan', 'Budget', 'Autopilot', 'English', 'Svenska', 'Haiku', 'Sonnet', 'Opus', 'Fable', 'Smart', 'iPad', 'Port {n}', 'Block {n} ({a}):', 'Session', 'Session: {session}', '1 agent', 'Extra', 'Lint', 'Pull requests', 'Plan: {name} {pct}%', '{name}: {state}', 'OK'] }
+const SAME_IN: Record<string, string[]> = { sv: ['Claude Code', 'Auto', 'Cache', 'Normal', 'Plan', 'Budget', 'Autopilot', 'English', 'Svenska', 'Haiku', 'Sonnet', 'Opus', 'Fable', 'Smart', 'iPad', 'Port {n}', 'Block {n} ({a}):', 'Session', 'Session: {session}', '1 agent', 'Extra', 'Lint', 'Pull requests', 'Plan: {name} {pct}%', '{name}: {state}', '{name}: {tasks}', 'OK', '{n} tokens', '50k tokens', '100k tokens', '200k tokens', 'Status', '5 h'] }
 const hasLetter = (s: string): boolean => /\p{L}/u.test(s)
 
 const RETIRED: string[] = []
@@ -23,7 +24,8 @@ function wanted(): string[] {
     if (s.note !== '') all.push(s.note)
     for (const o of s.options) all.push(o.label)
   }
-  for (const s of SETTINGS.filter(x => x.key === 'look.language')) {
+  // Rows off the pane are still read by the text twins.
+  for (const s of SETTINGS.filter(x => x.key === 'look.language' || isTextOnly(x))) {
     all.push(s.label, s.note)
     for (const o of s.options) all.push(o.label)
   }
@@ -83,14 +85,16 @@ test('tr finds the translation of every wanted string in every full language', (
   }
 })
 
-test('a backticked part and a /vaken- command stay exactly as they are', () => {
+test('a backticked part and a /vaken- command stay exactly as they are (a <placeholder> in it is translated)', () => {
   const lost: string[] = []
   for (const lang of FULL) {
     const own = byEnglish(lang)
     for (const en of wanted()) {
       const said = own[en] ?? ''
       const keep = [...(en.match(/`[^`]+`/g) ?? []), ...(en.match(/\/vaken-[a-z0-9-]+/g) ?? [])]
-      for (const part of keep) if (!said.includes(part)) lost.push(`${lang}: ${part} in: ${en}`)
+      // A placeholder in angle brackets (<name>) is words for the reader, so it is translated; the command around it stays exact
+      const bare = (x: string): string => x.replace(/<[^>]+>/g, '<>')
+      for (const part of keep) if (!bare(said).includes(bare(part))) lost.push(`${lang}: ${part} in: ${en}`)
     }
   }
   expect(lost).toEqual([])
@@ -105,8 +109,9 @@ test('a translated line is not much longer than the English one, so the menus fi
 
 test('the dictionary holds nothing that no view asks for', () => {
   const asked = new Set(wanted())
-  const allKeys = (area: string): boolean => (area.startsWith('card') && area !== 'cards' && area !== 'cardsettings') || area === 'engines' || area === 'fmt' || area === 'words'
-  const read = (area: string, key: string): boolean => allKeys(area) || key.startsWith('settings.preset_')
+  const allKeys = (area: string): boolean => (area.startsWith('card') && area !== 'cards' && area !== 'cardsettings') || area === 'engines' || area.startsWith('cmd') || area === 'firstsetup' || area === 'fmt' || area === 'words'
+  // Help's topic titles are asked by name, built from the topic id (views/help.tsx topicTitle: `common.help_topic_${topic}`)
+  const read = (area: string, key: string): boolean => allKeys(area) || key.startsWith('settings.preset_') || key.startsWith('common.help_topic_')
   const byBuilder = new Set(AREAS.flatMap(([area, rows]) => Object.entries(rows).filter(([key]) => read(area, key)).flatMap(([, r]) => (typeof r.en === 'string' ? [r.en] : [r.en.one, r.en.other]))))
   const spare = Object.keys(byEnglish(FULL[0])).filter(en => !asked.has(en) && !byBuilder.has(en) && !RETIRED.includes(en) && en !== 'Phone')
   expect(spare).toEqual([])

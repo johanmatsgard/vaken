@@ -181,8 +181,9 @@ test('the card rows: number and first line, a verdict word at the right, a press
   expect(rows[0]?.press).toEqual({ do: 'run', n: 1, script: 'cmd 1' })
   expect(rows[1]?.press).toEqual({ do: 'ask', n: 2 })
   expect(rows[2]?.press).toBeUndefined()
-  expect(rows.filter(r => r.key.startsWith('b'))).toHaveLength(DO_CARD_ROWS)
-  expect(rows[rows.length - 1]?.title).toBe('2 more: /vaken-help run do')
+  // Every block is a row; past the fourth they fold behind the kit's "Show 2 more"
+  expect(rows.filter(r => r.key.startsWith('b'))).toHaveLength(6)
+  expect(v.groups[0]?.fold).toEqual({ id: 'more', shown: DO_CARD_ROWS, more: 2 })
   expect(v.title).toBe('Run commands')
   expect(v.short).toBe('6 blocks of commands in the last answer')
 })
@@ -196,6 +197,8 @@ test('an open risky row shows the Yes, run it and Cancel pair; after a run the o
   expect(done.map(r => r.title)).toEqual(['1. cmd 1'])
   expect(done[0]?.what.facts).toEqual(['all good'])
   expect(done[0]?.what.means).toBe('Finished with exit 0')
+  expect(done[0]?.what.lead).toBe('Result:')
+  expect(done[0]?.what.next).toMatch(/run do 1 yes yes/)
 })
 
 test('the card shows only when the last answer has a block; Off shows nothing', () => {
@@ -425,12 +428,12 @@ test('yes tell: the result is put in the prompt box for the person to send, neve
   expect(w.submitted).toEqual([])
 })
 
-test('Halt is on: a block does not run, looking at it still works (L3-3)', async ($, on) => {
+test('Halt is on: a block does not run, looking at it still works', async ($, on) => {
   forgetDo()
   const w = world(on)
   await endTurn($, ANSWER)
   w.mem.set('cockpit:halt:me', { at: 1 })
-  expect(await cmd($, '2 yes')).toMatch(/^Pause is on\. Nothing ran\./)
+  expect(await cmd($, '2 yes')).toMatch(/^This session is paused\. Nothing ran\./)
   expect(w.ran).toEqual([])
   expect(await cmd($, '2')).not.toMatch(/Halt is on/)
 })
@@ -591,7 +594,7 @@ test('Pause all stops the card too: Run and Yes, run it run nothing and say the 
   await runDoRow(f.eng, { do: 'yes', n: 2, script: 'npm install x' })
   expect(f.ran).toEqual([])
   expect(doMem.shown).toBeUndefined()
-  expect(f.toasts).toEqual(['Pause is on. Nothing ran. Resume with /vaken-pause off first.', 'Pause is on. Nothing ran. Resume with /vaken-pause off first.'])
+  expect(f.toasts).toEqual(['This session is paused. Nothing ran. Resume with /vaken-pause off first.', 'This session is paused. Nothing ran. Resume with /vaken-pause off first.'])
   f.mem.delete('cockpit:halt:me')
   await runDoRow(f.eng, { do: 'run', n: 1, script: 'git log -1' })
   expect(f.ran).toEqual(['git log -1'])

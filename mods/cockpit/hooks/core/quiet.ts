@@ -1,4 +1,4 @@
-// Quiet timers: after QUIET_AFTER_MS without activity, repeating timers that ask here work at most once per QUIET_EVERY_MS; any activity restores them at once. Timers for an away person or that run only while helpers run do not ask.
+// Quiet timers: after QUIET_AFTER_MS without activity, repeating timers that ask here work at most once per QUIET_EVERY_MS; any activity restores them at once. Timers for an away person or that run only while agents run do not ask.
 
 export const QUIET_AFTER_MS = 5 * 60_000
 export const QUIET_EVERY_MS = 60_000

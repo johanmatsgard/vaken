@@ -1,5 +1,5 @@
 // The press-size rules, read from a drawn tree.
-import { BORDER_Y_PT, BUTTON_PAD, CARD_PAD_Y_PT, COL_PT, EDGE_WORD_OUT_PT, HIT_ICON_W, HIT_MIN_H, ROW_PT, SWITCH_HIT_W, VSTEP_PT, WORD_FOOT_W, vstep } from '../hooks/ui/tokens'
+import { BORDER_Y_PT, BUTTON_PAD, CARD_PAD_X_PT, CARD_PAD_Y_PT, columnPt, EDGE_WORD_OUT_PT, HIT_ICON_W, HIT_MIN_H, ROW_PT, switchHitW, VSTEP_PT, WORD_FOOT_W, cols, vstep } from '../hooks/ui/tokens'
 import { isPressRow } from '../hooks/ui/reach'
 
 export type PNode = { type?: string; key?: string; props?: Record<string, unknown>; children?: unknown[] }
@@ -66,16 +66,16 @@ function all(n: PNode, out: PNode[] = []): PNode[] {
   return out
 }
 
-const widthPt = (n: PNode): number => Math.max(num(n.props?.width), num(n.props?.minWidth)) * COL_PT
+const widthPt = (n: PNode): number => Math.max(num(n.props?.width), num(n.props?.minWidth)) * columnPt()
 const heightPt = (n: PNode): number => Math.max(num(n.props?.height), num(n.props?.minHeight)) * ROW_PT
-const marginPt = (n: PNode, side: 'Left' | 'Right' | 'Top' | 'Bottom'): number => num(n.props?.[`margin${side}`]) * (side === 'Left' || side === 'Right' ? COL_PT : VSTEP_PT)
+const marginPt = (n: PNode, side: 'Left' | 'Right' | 'Top' | 'Bottom'): number => num(n.props?.[`margin${side}`]) * (side === 'Left' || side === 'Right' ? columnPt() : VSTEP_PT)
 
 function naturalPt(w: PNode): number {
   const inside = all(w).slice(1)
   const svg = inside.find(x => x.type === 'Svg')
   if (svg !== undefined) return num(svg.props?.width)
   const b = inside.find(x => x.type === 'Button')
-  return b === undefined ? 0 : String(b.props?.label ?? '').length * COL_PT + 2 * BUTTON_PAD
+  return b === undefined ? 0 : String(b.props?.label ?? '').length * columnPt() + 2 * BUTTON_PAD
 }
 
 function regionsOf(root: PNode, up: Map<PNode, PNode>): Region[] {
@@ -103,7 +103,7 @@ function gapOf(w: PNode, up: Map<PNode, PNode>, isPress: (n: PNode) => boolean, 
   const i = flow.indexOf(w)
   const near = [flow[i - 1], flow[i + 1]].filter((c): c is PNode => c !== undefined && isPress(c))
   if (near.length === 0) return Infinity
-  const gap = (axis === 'x' ? num(parent.props?.columnGap) * COL_PT : num(parent.props?.rowGap) * VSTEP_PT) || 0
+  const gap = (axis === 'x' ? num(parent.props?.columnGap) * columnPt() : num(parent.props?.rowGap) * VSTEP_PT) || 0
   return gap
 }
 
@@ -135,7 +135,7 @@ export function pressProblems(root: PNode, at: string, problems: string[]): void
       for (const side of ['Top', 'Bottom', 'Left', 'Right'] as const) if (marginPt(w, side) < -EPS) problems.push(`${at}: the press ${name} reaches ${Math.round(-marginPt(w, side) * 10) / 10} pt past its slot (margin${side})`)
     } else if (r.kind === 'switch') {
       looked.switches += 1
-      if (widthPt(w) + EPS < SWITCH_HIT_W) problems.push(`${at}: the switch press ${name} is ${Math.round(widthPt(w) * 10) / 10} pt wide, the floor is ${SWITCH_HIT_W}`)
+      if (widthPt(w) + EPS < switchHitW()) problems.push(`${at}: the switch press ${name} is ${Math.round(widthPt(w) * 10) / 10} pt wide, the floor is ${switchHitW()}`)
       if (heightPt(w) + EPS < HIT_MIN_H) problems.push(`${at}: the switch press ${name} is ${Math.round(heightPt(w) * 10) / 10} pt high, the floor is ${HIT_MIN_H}`)
     } else {
       looked.rows += 1
@@ -151,7 +151,7 @@ export function pressProblems(root: PNode, at: string, problems: string[]): void
       const b = flow[i + 1]
       if (a === undefined || b === undefined || !isPress(a) || !isPress(b)) continue
       looked.pairs += 1
-      const gap = row ? num(parent.props?.columnGap) * COL_PT : num(parent.props?.rowGap) * VSTEP_PT
+      const gap = row ? num(parent.props?.columnGap) * columnPt() : num(parent.props?.rowGap) * VSTEP_PT
       const between = gap + (row ? marginPt(a, 'Right') + marginPt(b, 'Left') : marginPt(a, 'Bottom') + marginPt(b, 'Top'))
       if (between < -EPS) problems.push(`${at}: the presses ${nameOf(a)} and ${nameOf(b)} overlap by ${Math.round(-between * 10) / 10} pt${row ? '' : ' (stacked)'}`)
     }
@@ -169,7 +169,9 @@ export function cardStyleProblems(root: PNode, at: string, problems: string[]): 
     const p = n.props ?? {}
     const top = num(p.paddingTop)
     const bottom = num(p.paddingBottom)
-    const sides = ['padding', 'paddingX', 'paddingY', 'paddingLeft', 'paddingRight'].filter(k => p[k] !== undefined && p[k] !== 0)
+    const side = cols(CARD_PAD_X_PT)
+    const sides = ['padding', 'paddingX', 'paddingY', 'paddingLeft', 'paddingRight'].filter(k => p[k] !== undefined && p[k] !== 0 && !((k === 'paddingLeft' || k === 'paddingRight') && Math.abs(num(p[k]) - side) <= 0.001))
+    if (num(p.paddingLeft) !== side || num(p.paddingRight) !== side) sides.push('side padding')
     if (p.borderStyle !== 'round' || Math.abs(top - vstep(CARD_PAD_Y_PT)) > 0.001 || Math.abs(bottom - vstep(CARD_PAD_Y_PT)) > 0.001 || sides.length > 0)
       problems.push(`${at}: ${nameOf(n) || 'a bordered box'} is a card built outside the shared card style (ROUNDED in ui/kit.tsx): border ${String(p.borderStyle)}, padding ${top}/${bottom}${sides.length > 0 ? `, ${sides.join(', ')}` : ''}`)
   }

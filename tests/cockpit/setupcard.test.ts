@@ -169,7 +169,7 @@ test('conflicts: the cap in the owner CLAUDE.md (not the vaken block), a kept nu
   expect(conflictsOf(auto)).toEqual([])
   expect(capNoteOf(auto)).toEqual({ n: 3, from: 'CLAUDE.md' })
   expect(capNoteOf(facts({ [PMD]: 'at most 3 agents' }, { 'cap.max': 'n3' }))).toBeUndefined()
-  const rows = setupView(auto, id).groups.flatMap(g => g.rows)
+  const rows = setupView({ ...auto, values: { ...auto.values, 'setup.apply': 'on' } }, id).groups.flatMap(g => g.rows)
   expect(rows.find(r => r.key === 'cap-info')).toMatchObject({ title: 'Your instructions say at most 3 agents; vaken follows the computer' })
   expect(rows.find(r => r.key === 'cap-info')?.press).toBeUndefined()
   expect(setupShort(auto, id)).not.toMatch(/to decide/)
@@ -183,26 +183,26 @@ test('conflicts: the cap in the owner CLAUDE.md (not the vaken block), a kept nu
 const synced = (): Record<string, string> => Object.fromEntries(desired(vals(), HOME, ROOT, 'project').map(d => [d.path, d.text]))
 
 test('the short line: how many are in sync, a conflict, this session, no project, not read', () => {
-  expect(setupShort(facts(synced()), id)).toBe('Agent setup: 5 of 5 in sync')
-  expect(setupShort(facts({ ...synced(), [PRES]: null }), id)).toBe('Agent setup: 4 of 5 in sync')
-  expect(setupShort(facts({ ...synced(), [PMD]: 'at most 2 agents' }, { 'cap.max': 'n3' }), id)).toBe('Agent setup: 1 to decide · 4 of 5 in sync')
-  expect(setupShort(facts({}, {}, 'session'), id)).toBe('Agent setup: this session only, nothing is written')
-  expect(setupShort({ values: vals() }, id)).toBe('Agent setup: not read yet')
-  expect(setupShort({ values: vals(), read: { home: HOME, scope: 'project', disk: {} } }, id)).toBe('Agent setup: no project folder')
-  expect(setupShort({ values: vals({ 'setup.scope': 'all' }), read: { home: HOME, root: ROOT, scope: 'project', disk: {} } }, id)).toBe('Agent setup: not read yet')
+  expect(setupShort(facts(synced()), id)).toBe('5 of 5 in sync')
+  expect(setupShort(facts({ ...synced(), [PRES]: null }), id)).toBe('4 of 5 in sync')
+  expect(setupShort(facts({ ...synced(), [PMD]: 'at most 2 agents' }, { 'cap.max': 'n3' }), id)).toBe('1 to decide · 4 of 5 in sync')
+  expect(setupShort(facts({}, {}, 'session'), id)).toBe('This session only, nothing is written')
+  expect(setupShort({ values: vals() }, id)).toBe('Not read yet')
+  expect(setupShort({ values: vals(), read: { home: HOME, scope: 'project', disk: {} } }, id)).toBe('No project folder')
+  expect(setupShort({ values: vals({ 'setup.scope': 'all' }), read: { home: HOME, root: ROOT, scope: 'project', disk: {} } }, id)).toBe('Not read yet')
 })
 
-test('off by default: the rows only show what would be done, with no write press', () => {
+test('off by default: the card says only Off, with no row, no count and no fault; an opened row shows its diff once on', () => {
   expect(defaults()['setup.apply']).toBe('off')
   const v = setupView(facts({ [PRES]: null, [PMD]: 'My own rules' }), id)
-  const rows = v.groups.flatMap(g => g.rows)
-  expect(rows.every(r => r.press === undefined || r.press.do === 'open')).toBe(true)
-  expect(rows.find(r => r.key === 'vaken-researcher')?.right).toBe('missing')
-  expect(rows.find(r => r.key === 'claude')?.right).toBe('yours')
-  const open = setupView(facts({ [PRES]: null }, {}, 'project', 'setup:vaken-researcher'), id)
+  expect(v.short).toBe('Off')
+  expect(v.groups).toEqual([])
+  expect(setupLoud(facts({ [PRES]: null, [PMD]: 'at most 2 agents' }, { 'cap.max': 'n3' }))).toBe('none')
+  const differs = synced()[PRES]!.replace('haiku', 'opus')
+  const open = setupView(facts({ ...synced(), [PRES]: differs }, { 'setup.apply': 'on' }, 'project', 'setup:vaken-researcher'), id)
   const what = open.groups.flatMap(g => g.rows).find(r => r.key === 'vaken-researcher')?.what
   expect(what?.facts?.[0]).toBe(PRES)
-  expect(what?.facts?.some(l => l.startsWith('+ name: vaken-researcher'))).toBe(true)
+  expect(what?.facts?.some(l => l.startsWith('+ model:'))).toBe(true)
 })
 
 test('on: a missing item has one press (Create); a differing or own item opens first (Update…, Replace…, Add…), then a confirm row and a Keep mine row', () => {
@@ -231,13 +231,14 @@ test('This session: the four roles with their models, no file row, nothing to wr
 })
 
 test('conflict rows: Use sets the cap, Keep remembers, a model conflict follows the owner file; the loudness says conflict, drift or none', () => {
-  const f = facts({ ...synced(), [PMD]: 'at most 2 agents' }, { 'cap.max': 'n3' })
+  const f = facts({ ...synced(), [PMD]: 'at most 2 agents' }, { 'cap.max': 'n3', 'setup.apply': 'on' })
   const rows = setupView(f, id).groups.flatMap(g => g.rows)
   expect(rows.find(r => r.key === 'cap-use')).toMatchObject({ title: 'Your instructions say at most 2 agents', right: 'Use 2', press: { do: 'cap', n: 2 } })
   expect(rows.find(r => r.key === 'cap-keep')).toMatchObject({ right: 'Keep', press: { do: 'keepCap', n: 2 } })
   expect(setupLoud(f)).toBe('conflict')
-  expect(setupLoud(facts({ ...synced(), [PRES]: synced()[PRES]!.replace('haiku', 'opus') }))).toBe('drift')
-  expect(setupLoud(facts(synced()))).toBe('none')
+  expect(setupLoud(facts({ ...synced(), [PRES]: synced()[PRES]!.replace('haiku', 'opus') }, { 'setup.apply': 'on' }))).toBe('drift')
+  expect(setupLoud(facts({ ...synced(), [PRES]: null }, { 'setup.apply': 'on' }))).toBe('drift')
+  expect(setupLoud(facts(synced(), { 'setup.apply': 'on' }))).toBe('none')
   expect(setupLoud(undefined)).toBe('none')
   const base: LoudFacts = { limits: [], here: false, others: 0, didToday: 0, proof: 'none', agents: { any: false, stuck: false }, computer: { gaugeOn: false, full: false }, skillsUsed: false }
   expect([cardLoudness({ ...base, setup: 'conflict' }, NOW).setup, cardLoudness({ ...base, setup: 'drift' }, NOW).setup, cardLoudness(base, NOW).setup]).toEqual(['warn', 'normal', 'calm'])
@@ -416,7 +417,7 @@ test('the card is a line card with its own Show or Hide; the settings are hidden
     expect(VIEW_STRINGS).toContain(k)
     expect(SV[k]).toBe(byEnglish('sv', 'setup')[k])
   }
-  expect(byEnglish('sv', 'setup')['Vaken can write agent files that follow your choices. It asks before it replaces a file. Where: All is every project (your home folder), Project is this project, Session is this session.']).toBeDefined()
+  expect(byEnglish('sv', 'setup')['Vaken can write agent files that follow your choices. It asks before it replaces a file.']).toBeDefined()
 })
 
 const paneProps = { title: 'Vaken', isFocused: false, bodyColumns: 120, placement: 'inline' as const, scroll: { bodyRows: 80, offset: 0, total: 80 }, view: {} }
@@ -459,7 +460,7 @@ function harness(o: On, seed: Record<string, unknown>) {
 }
 const textOf = async (ui: { find: (q: unknown) => Promise<unknown> }, text: RegExp): Promise<boolean> => (await ui.find({ type: 'Text', text })) !== undefined
 
-test('the pane shows the card with the opt-in line and, off, the files as missing; nothing is written', { timeoutMs: 15_000 }, async ($, o) => {
+test('the pane shows the card off as one calm row, Off with Turn on; the press turns it on and the rows show; nothing is written', { timeoutMs: 15_000 }, async ($, o) => {
   const clock = mock.clock(o, { now: NOW })
   mock.env(o, { HOME })
   const w = harness(o, {
@@ -470,41 +471,27 @@ test('the pane shows the card with the opt-in line and, off, the files as missin
   })
   const ui = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
   expect(await textOf(ui, /^Agent setup$/)).toBe(true)
-  expect(await textOf(ui, /^Set up agents for me$/)).toBe(true)
-  expect(await textOf(ui, /Vaken can write agent files that follow your choices/)).toBe(true)
-  expect(await textOf(ui, /^4 agent files missing · instructions missing$/)).toBe(true)
+  expect(await textOf(ui, /^Turn on$/)).toBe(true)
+  expect(await textOf(ui, /^Set up agents for me$/)).toBe(false)
+  expect(await textOf(ui, /in sync/)).toBe(false)
   expect(await textOf(ui, /^vaken-researcher · haiku$/)).toBe(false)
-  expect(await ui.find({ key: 'morel-setup-setup-details' })).toBeDefined()
-  await ui.press({ key: 'morel-setup-setup-details' })
+  await ui.press({ key: 'press-ol-setup:off-0' })
   await clock.settle()
   await ui.redraw()
+  expect(w.mem.get('cockpit:setting:setup.apply')).toBe('on')
   expect(await textOf(ui, /^vaken-researcher · haiku$/)).toBe(true)
-  expect(await textOf(ui, /missing/)).toBe(true)
-  await ui.press({ key: 'morel-setup-setup-details' })
-  await clock.settle()
-  await ui.redraw()
-  expect(await textOf(ui, /^vaken-researcher · haiku$/)).toBe(false)
+  // The switch lives on the settings side only; the face keeps the place picker
+  expect(await textOf(ui, /^Set up agents for me$/)).toBe(false)
   expect(w.files.size).toBe(0)
   await ui.unmount()
 })
 
-test('off: one summary row, the conflicts stay visible, the file rows wait behind Details; on: every row shows', () => {
-  const card = lineCard('setup', { now: NOW, ledger: [], halted: false, modes: {}, t: id, setup: facts({ [PRES]: null }) })
-  const groups = card.groups ?? []
-  expect(groups[0]).toMatchObject({ head: '', toggle: 'setup-details', rows: [{ key: 'summary', title: '4 agent files missing · instructions missing' }] })
-  expect(groups.filter(g => g.behind === 'setup-details').map(g => g.head)).toEqual(['Agent files', 'Project instructions'])
-  expect(groups.filter(g => g.toggle === 'setup-details')).toHaveLength(1)
-  expect(groups.filter(g => g.behind === undefined).flatMap(g => g.rows)).toHaveLength(1)
-  const onCard = lineCard('setup', { now: NOW, ledger: [], halted: false, modes: {}, t: id, setup: facts({ [PRES]: null }, { 'setup.apply': 'on' }) })
-  expect((onCard.groups ?? []).every(g => g.behind === undefined && g.toggle === undefined)).toBe(true)
-})
-
-test('a conflict stays visible while the file rows are folded (the summary does not repeat it)', () => {
-  const f = facts({ ...synced(), [PMD]: '# Rules\nNever more than two agents at once.\n' }, { 'cap.max': 'n3' })
+test('on: every row shows, the conflicts first', () => {
+  const f = facts({ ...synced(), [PMD]: '# Rules\nNever more than two agents at once.\n' }, { 'cap.max': 'n3', 'setup.apply': 'on' })
   const groups = lineCard('setup', { now: NOW, ledger: [], halted: false, modes: {}, t: id, setup: f }).groups ?? []
   expect(groups[0]?.head).toBe('To decide')
-  expect(groups.filter(g => g.behind === undefined).flatMap(g => g.rows).map(r => r.key)).toEqual(['cap-use', 'cap-keep', 'summary'])
-  expect(groups.find(g => g.toggle !== undefined)?.rows[0]?.title).toBe('instructions not added')
+  expect(groups.every(g => g.behind === undefined && g.toggle === undefined)).toBe(true)
+  expect(lineCard('setup', { now: NOW, ledger: [], halted: false, modes: {}, t: id, setup: facts({ [PRES]: null }) }).groups).toEqual([])
 })
 
 test('the summary says what is wrong in few words, and everything is in sync when nothing is', () => {

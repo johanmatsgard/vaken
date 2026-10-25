@@ -1,0 +1,30 @@
+// Area "night": the words of core/night.ts, the night run and the promise ledger
+import type { Rows } from '../types'
+
+export const ROWS: Rows = {
+  "night.claude_said_it_would": {"en":"Claude said it would: {what}","sv":"Claude sa att den skulle: {what}"},
+  "night.ended_a_night_run": {"en":"Ended a night run","sv":"Avslutade en nattkörning"},
+  "night.fix_the_failed_night_tasks": {"en":"Fix the failed night tasks","sv":"Laga nattens misslyckade uppgifter"},
+  "night.goes_on_power_back": {"en":"Night run goes on: the Mac is on power again","sv":"Nattkörningen fortsätter: Macen har ström igen"},
+  "night.head_done_failed": {"en":"Night run: {done} done, {failed} failed","sv":"Nattkörning: {done} klara, {failed} misslyckades"},
+  "night.help_text": {"en":"Turn it on with /vaken-settings night.mode on, then type /vaken-tasks night. The run goes only on mains power, inside the plan limit and its cost limit, with away mode's strict checks on and the Mac kept awake if keep-awake is on. In the morning, Where was I shows what is done.","sv":"Slå på det med /vaken-settings night.mode on och skriv sedan /vaken-tasks night. Körningen går bara på nätström, inom plangränsen och sin kostnadsgräns, med bortalägets strikta kontroller på och Macen vaken om håll vaken är på. På morgonen visar Var var jag vad som är klart."},
+  "night.lets_vaken_tasks_night_run": {"en":"/vaken-tasks night runs your list on mains power, inside the plan and a cost limit.","sv":"/vaken-tasks night kör din lista på nätström, inom planen och en kostnadsgräns."},
+  "night.means_night": {"en":"Your night run ended while you were away. Show me opens the task runner with each task and what it cost.","sv":"Din nattkörning blev klar medan du var borta. Visa mig öppnar uppgiftsköraren med varje uppgift och vad den kostade."},
+  "night.means_night_fix": {"en":"Some tasks of the night run failed. Fix it asks Claude to fix them, naming each one.","sv":"Några uppgifter i nattkörningen misslyckades. Laga det ber Claude laga dem och nämner var och en."},
+  "night.means_promise": {"en":"Claude said in an answer that it would do this later. Continue asks Claude to do it now. Type done (or done 2) when it is done.","sv":"Claude sa i ett svar att den skulle göra detta senare. Fortsätt ber Claude göra det nu. Skriv done (eller done 2) när det är klart."},
+  "night.most_cost_for_a_night_run": {"en":"Most cost for a night run","sv":"Högsta kostnad för en nattkörning"},
+  "night.night_run": {"en":"Night run","sv":"Nattkörning"},
+  "night.night_run_lead": {"en":"Night run:","sv":"Nattkörning:"},
+  "night.night_run_started_n_tasks": {"en":"Night run started: {n} tasks. It runs only on mains power, inside the plan limit and up to {usd}. Away mode's strict checks are on until it ends.","sv":"Nattkörningen startade: {n} uppgifter. Den kör bara på nätström, inom plangränsen och upp till {usd}. Bortalägets strikta kontroller är på tills den är slut."},
+  "night.night_runs_are_off": {"en":"Night runs are off. Turn them on with /vaken-settings night.mode on.","sv":"Nattkörningar är av. Slå på dem med /vaken-settings night.mode on."},
+  "night.past_that_night_pauses": {"en":"Past that, a night run pauses until you are back.","sv":"Över det pausar en nattkörning tills du är tillbaka."},
+  "night.paused_cost_limit": {"en":"Night run paused: it reached its cost limit of {usd}","sv":"Nattkörningen pausad: den nådde sin kostnadsgräns på {usd}"},
+  "night.paused_on_battery": {"en":"Night run paused: the Mac is on battery","sv":"Nattkörningen pausad: Macen går på batteri"},
+  "night.pauses_at_run_limit": {"en":"A night run pauses at the run limit.","sv":"En nattkörning pausar vid körningens gräns."},
+  "night.pauses_past_usd": {"en":"A night run pauses past {usd}.","sv":"En nattkörning pausar över {usd}."},
+  "night.run_limit": {"en":"Run limit","sv":"Körningens gräns"},
+  "night.start_as_night_run": {"en":"Start as night run","sv":"Starta som nattkörning"},
+  "night.started_a_night_run": {"en":"Started a night run","sv":"Startade en nattkörning"},
+  "night.waits_for_mains_power": {"en":"Night run waits for mains power:","sv":"Nattkörningen väntar på nätström:"},
+  "night.what_a_night_run_does": {"en":"What a night run does","sv":"Vad en nattkörning gör"},
+}

@@ -1,6 +1,6 @@
 // What the pane's presses do (core/talk.ts holds the rules and words): send an answer or a reply to another session, nudge a session that may be stuck
 import { tr } from '../../core/lang'
-import { BETTER_SAID, NOT_SENT, NOT_SENT_HERE, NUDGE_SAID, NUDGE_SAID_HERE, NUDGE_TEXT, NUDGE_WAIT, OWN_SAID, SENT_TO, answerText, betterPrompt, canNudge, factsOf, talkMem } from '../../core/talk'
+import { AGENT_NUDGE_SAID, agentNudgeText, BETTER_SAID, NOT_SENT_HERE, NUDGE_SAID, NUDGE_SAID_HERE, NUDGE_TEXT, NUDGE_WAIT, OWN_SAID, SENT_TO, answerText, betterPrompt, canNudge, factsOf, notSentLine, talkMem } from '../../core/talk'
 import type { ProofState } from '../../core/proof'
 import { PROMPT_FAILED } from './rowact'
 import type { HomeEngine } from './engine'
@@ -10,6 +10,7 @@ export type TalkActs = {
   draft: (sid: string, text: string) => void
   answer: (sid: string, name: string, text: string) => void
   nudge: (sid: string, name: string, here: boolean) => void
+  nudgeAgent: (id: string, name: string, min: number) => void
   sendBetter: (proof: ProofState | undefined) => void
   dropBetter: () => void
   ownCommand: (name: string) => void
@@ -37,7 +38,7 @@ export async function sendAnswer(eng: HomeEngine, sid: string, name: string, typ
     try {
       const r = await eng.send(sid, text)
       if (!r.isDelivered) {
-        i.toast(tr(NOT_SENT).replace('{why}', r.reason), true)
+        i.toast(tr(notSentLine(r.reason)), true)
         return
       }
       talkMem.drafts.delete(sid)
@@ -73,13 +74,34 @@ export async function nudge(eng: HomeEngine, sid: string, name: string, here: bo
       if (r.isDelivered) i.toast(tr(NUDGE_SAID), true)
       else {
         talkMem.nudged.delete(sid)
-        i.toast(tr(NOT_SENT).replace('{why}', r.reason), true)
+        i.toast(tr(notSentLine(r.reason)), true)
       }
     } catch {
       talkMem.nudged.delete(sid)
       i.toast(tr(NOT_SENT_HERE), true)
     }
     i.invalidate()
+  })
+}
+
+// A teammate that waits for a message: one press asks Claude, in this session, to give it its next step or end it
+export async function nudgeAgent(eng: HomeEngine, id: string, name: string, min: number): Promise<void> {
+  const i = eng.io()
+  const now = await eng.now()
+  const key = `agent:${id}`
+  if (!canNudge(key, now)) {
+    i.toast(tr(NUDGE_WAIT), true)
+    return
+  }
+  await once(`nudge:${key}`, async () => {
+    talkMem.nudged.set(key, now)
+    i.invalidate()
+    i.toast(tr(AGENT_NUDGE_SAID), true)
+    await eng.submit(agentNudgeText(name, min)).catch(() => {
+      talkMem.nudged.delete(key)
+      i.toast(tr(PROMPT_FAILED), true)
+      i.invalidate()
+    })
   })
 }
 
@@ -108,6 +130,7 @@ export function talkActsOf(eng: HomeEngine): TalkActs {
     },
     answer: (sid, name, text) => void sendAnswer(eng, sid, name, text),
     nudge: (sid, name, here) => void nudge(eng, sid, name, here),
+    nudgeAgent: (id, name, min) => void nudgeAgent(eng, id, name, min),
     sendBetter: proof => void sendBetter(eng, proof),
     dropBetter: () => {
       talkMem.vague = undefined

@@ -6,7 +6,7 @@ import { forgetProjectSet } from '../hooks/core/io'
 import { forgetStartCheck } from '../hooks/features/home/starttask'
 import { checkShown } from '../hooks/features/orchestra'
 import { FIRST_CLICK_REPEAT_MS, hoverScope, isInside, clientKey as fcKey } from '../hooks/ui/firstclick'
-import { CARD_HOVER_FILL, HOVER_FILL, PRESS_FRAME_H, ROW_PT, SWITCH_HIT_W } from '../hooks/ui/tokens'
+import { CARD_HOVER_FILL, columnPt, HOVER_FILL, PRESS_FRAME_H, ROW_PT, switchHitW, VSTEP_PT } from '../hooks/ui/tokens'
 import { wantRows } from './presssizes'
 import { test } from './slow'
 
@@ -121,7 +121,7 @@ async function mountHome($: unknown, on: On, mem: Map<string, unknown>) {
   return (await ($ as { ui: { mount: (a: unknown) => Promise<unknown> } }).ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props })) as Ui
 }
 
-test('R1, R3: a Glance row and an OpenLine row are ONE box with their wash and their Client (inset 0), the box reaching the card\'s text edges', async ($, on) => {
+test('a Glance row and an OpenLine row are ONE box with their wash and their Client (inset 0), the box reaching the card\'s text edges', async ($, on) => {
   const ui = await mountHome($, on, world())
   // closed, the card presses as a whole: its Client is in the card's own Box, inset 0.
   const card = await ui.find({ key: 'agents' })
@@ -133,7 +133,7 @@ test('R1, R3: a Glance row and an OpenLine row are ONE box with their wash and t
   const glance = await ui.find({ key: 'glance-agents' })
   await washedRow(ui, glance, 'glance-agents')
   anchored(glance, fcKey('glance-agents'))
-  near(-num(glance?.props?.marginTop) * 9.5, 0, 0.1)
+  near(-num(glance?.props?.marginTop) * VSTEP_PT, 0, 0.1)
   const line = await ui.find({ key: 'ol-task:2' })
   await washedRow(ui, line, 'ol-task:2')
   anchored(line, fcKey('ol-task:2'))
@@ -152,19 +152,19 @@ test('R1, R3: a Glance row and an OpenLine row are ONE box with their wash and t
   await ui.unmount()
 })
 
-test('R1, R2: an icon is ONE box 44 pt wide and a list row high, placed by the layout (no column rounding); its Client is inset 0 in it', async ($, on) => {
+test('an icon is ONE box 44 pt wide and a list row high, placed by the layout (no column rounding); its Client is inset 0 in it', async ($, on) => {
   const ui = await mountHome($, on, world())
   await ui.press({ key: 'press-glance-agents-0' })
   await ui.redraw()
   const gear = await ui.find({ key: 'slot-icon-agents-gear' })
-  near(gear?.props?.width, 44 / 7.9)
+  near(gear?.props?.width, 44 / columnPt())
   near(gear?.props?.height, ROW)
   anchored(gear, fcKey('btn-icon-agents-gear'))
   for (const a of kids(gear as Node).filter(c => c.props?.position === 'absolute')) expect(a.props?.left).toBe(0)
   await ui.unmount()
 })
 
-test('R2: a Pick segment, a jump word and Back are a framed press high (item 137), and their Client is inset 0 in the part box', async ($, on) => {
+test('a Pick segment, a jump word and Back are a framed press high, and their Client is inset 0 in the part box', async ($, on) => {
   const ui = await mountHome($, on, world())
   await ui.press({ key: 'settings' })
   await ui.redraw()
@@ -183,7 +183,7 @@ test('R2: a Pick segment, a jump word and Back are a framed press high (item 137
   await ui.unmount()
 })
 
-test('R5: the switch row has the row Client AND a Client of its own over the switch (its 41.9 pt footprint, one press row), laid after the row\'s; together they flip once', async ($, on) => {
+test('the switch row has the row Client AND a Client of its own over the switch (its 41.9 pt footprint, one press row), laid after the row\'s; together they flip once', async ($, on) => {
   const mem = world()
   const clock = engine(on, mem)
   forgetProjectSet()
@@ -198,7 +198,7 @@ test('R5: the switch row has the row Client AND a Client of its own over the swi
   await washedRow(ui, row, 'sw-undo.mode')
   anchored(row, fcKey('sw-undo.mode'))
   const hit = await ui.find({ key: 'swhit-undo.mode' })
-  near(hit?.props?.width, SWITCH_HIT_W / 7.9)
+  near(hit?.props?.width, switchHitW() / columnPt())
   near(hit?.props?.height, ROW)
   anchored(hit, fcKey('swk-undo.mode'))
   const order = kids(row as Node).map(c => keyOf(c))
@@ -224,7 +224,7 @@ test('R5: the switch row has the row Client AND a Client of its own over the swi
   await ui.unmount()
 })
 
-test('P2: the Agents run controls and a task\'s actions press on the first click, each in a lone-word sized wrapper with an fc- Client', async ($, on) => {
+test('the Agents run controls and a task\'s actions press on the first click, each in a lone-word sized wrapper with an fc- Client', async ($, on) => {
   const ui = await mountHome($, on, world())
   await ui.press({ key: 'press-glance-agents-0' })
   await ui.redraw()
@@ -239,7 +239,7 @@ test('P2: the Agents run controls and a task\'s actions press on the first click
   await ui.unmount()
 })
 
-test('R4, R6: a click paints nothing (no press Client paints, tests/pressflood.test.ts); the inside test is inclusive at the far edge', () => {
+test('a click paints nothing (no press Client paints, tests/pressflood.test.ts); the inside test is inclusive at the far edge', () => {
   expect(isInside(0, 0, 10, 3)).toBe(true)
   expect(isInside(10, 3, 10, 3), 'the last column and the last row are inside').toBe(true)
   expect(isInside(11, 0, 10, 3)).toBe(false)
@@ -248,7 +248,7 @@ test('R4, R6: a click paints nothing (no press Client paints, tests/pressflood.t
   expect(isInside(5, 5, 0, 0), 'not laid out yet: unbounded').toBe(true)
 })
 
-test('R10: a shut Settings section presses as a whole, its about line lights the card, and the open one gives the press back to its header', async ($, on) => {
+test('a shut Settings section presses as a whole, its about line lights the card, and the open one gives the press back to its header', async ($, on) => {
   const ui = await mountHome($, on, world())
   await ui.press({ key: 'settings' })
   await ui.redraw()
@@ -266,7 +266,7 @@ test('R10: a shut Settings section presses as a whole, its about line lights the
   await ui.unmount()
 })
 
-test('Item 138: a card with two presses lights each on its own: the title and about line as one row group, the jump row alone; the card never as a whole', async ($, on) => {
+test('a card with two presses lights each on its own: the title and about line as one row group, the jump row alone; the card never as a whole', async ($, on) => {
   const ui = await mountHome($, on, world())
   await ui.press({ key: 'settings' })
   await ui.redraw()

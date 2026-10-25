@@ -4,6 +4,7 @@ import { listedCardOf, zoneOfCard } from './cardhome'
 import type { Zone } from './cardhome'
 import { TABLE } from '../i18n/table'
 import { tIn } from '../i18n/t'
+import { fmt } from './fmt'
 import type { Lang } from '../i18n/types'
 import { PRESETS } from './presets'
 
@@ -27,11 +28,15 @@ export const ADVANCED_SECTION: Section = { name: 'Advanced', title: 'Advanced', 
 
 export const ADVANCED_KEYS: readonly string[] = [
   'guard.env', 'guard.commands', 'guard.fence', 'guard.outbox', 'proof.confidence', 'proof.receipts', 'proof.anomaly', 'proof.drift',
-  'crew.ports', 'crew.worktrees', 'phone.hello', 'steer.mode', 'agents.board', 'cost.why', 'brief.mode', 'stability.check',
+  'crew.ports', 'crew.worktrees', 'steer.mode', 'agents.board', 'brief.mode', 'stability.check',
   'away.digest', 'recap.mode', 'heartbeat.mode', 'look.columns', 'claude.notes',
 ]
 const ADVANCED = new Set(ADVANCED_KEYS)
 export const isAdvanced = (s: Setting): boolean => ADVANCED.has(s.key)
+// Expert rows kept off the pane so Settings stays light: /vaken-settings all lists them and /vaken-settings <key> <value> sets them.
+export const TEXT_ONLY_KEYS: readonly string[] = ['phone.hello', 'cost.why', 'allow.rules', 'teach.mode', 'night.mode', 'notify.how', 'status.line', 'cap.spend']
+const TEXT_ONLY = new Set(TEXT_ONLY_KEYS)
+export const isTextOnly = (s: Pick<Setting, 'key'>): boolean => TEXT_ONLY.has(s.key)
 
 const SECTION_OF_GROUP = new Map<string, Section>(SECTION_TABLE.flatMap(sec => sec.groups.map((g): [string, Section] => [g, sec])))
 const SECTION_BY_NAME = new Map<string, Section>(SECTION_TABLE.map(sec => [sec.name, sec]))
@@ -54,7 +59,8 @@ export function sectionOfSetting(s: Pick<Setting, 'key' | 'group'>): Section {
 }
 
 const OFF_WORDS = ['off', 'hide']
-const SUGGEST_WORDS = ['suggest', 'tip', 'ask', 'remind', 'count', 'watch']
+// Ask is not here: an Ask row acts (it sends Claude a request or asks you), so it counts as on
+const SUGGEST_WORDS = ['suggest', 'tip', 'remind', 'count', 'watch']
 export type Tone = 'on' | 'suggest' | 'off' | 'plain'
 export const hasOff = (s: Setting): boolean => s.options.some(o => OFF_WORDS.includes(o.value))
 export function toneOf(s: Setting, value: string): Tone {
@@ -66,7 +72,7 @@ export function chipWord(s: Setting, value: string, isSwitch: boolean): string {
   const tone = toneOf(s, value)
   if (isSwitch) return tone === 'off' ? 'Off' : 'On'
   if (value === 'watch') return 'Watch'
-  return s.options.find(o => o.value === value)?.label ?? value
+  return fmt.choiceWord(s.options.find(o => o.value === value)?.label ?? value)
 }
 
 export type Tally = { on: number; suggest: number; off: number; bySection: Map<string, { on: number; total: number }> }
@@ -91,10 +97,13 @@ const NOTES: Record<string, string> = {
   'view.problems': 'settings.when_a_card_has_a_problem',
   'compact.mode': 'settings.when_the_chat_grows_it_suggests',
   'compact.from': 'settings.the_cockpit_considers_shortening_once_the',
+  'compact.min': 'settings.compact_min_note',
+  'compact.lead': 'settings.compact_lead_note',
   'compact.card': 'settings.when_the_chat_is_shortened_goal',
   'cache.keeper': 'settings.while_you_are_away_it_messages_claude',
   'loop.breaker': 'settings.when_claude_retries_a_failing_step',
   'agents.board': 'settings.when_helpers_run_it_lists_them',
+  'agents.offer': 'settings.offer_helper_types_note',
   'neighbors.warn': 'settings.when_another_session_works_in_this',
   'fresh.nudge': 'settings.when_a_new_topic_would_cost',
   'plan.first': 'settings.before_a_big_task_it_suggests',
@@ -102,6 +111,10 @@ const NOTES: Record<string, string> = {
   'today.brief': 'settings.on_your_first_prompt_of_a',
   'prompt.check': 'settings.when_a_prompt_is_vague_tip',
   'assume.check': 'settings.before_big_changes_claude_lists_its',
+  'tasks.visible': 'settings.for_bigger_jobs_claude_keeps_a_task',
+  'habit.summary': 'settings.after_a_bigger_job_claude_ends',
+  'habit.ask': 'settings.when_you_must_choose_claude_asks',
+  'habit.chapters': 'settings.in_a_long_chat_claude_marks',
   'stability.check': 'settings.after_an_update_the_cockpit_checks',
   'notify.mode': 'settings.when_another_session_needs_you_or',
   'notify.quiet': 'settings.during_these_hours_no_notices_come',
@@ -169,7 +182,8 @@ export const decorate = (s: Setting): Setting => {
   const named = NOTES[s.key]
   const note = named === undefined ? undefined : enOf(named)
   const advanced = ADVANCED.has(s.key)
-  return note === undefined && !advanced ? s : { ...s, ...(note === undefined ? {} : { note }), ...(advanced ? { advanced: true } : {}) }
+  const textOnly = TEXT_ONLY.has(s.key)
+  return note === undefined && !advanced && !textOnly ? s : { ...s, ...(note === undefined ? {} : { note }), ...(advanced ? { advanced: true } : {}), ...(textOnly ? { hidden: true } : {}) }
 }
 
 export const MODE_TITLE = 'How much should it tell you?'
@@ -190,8 +204,8 @@ export const MODE_PICK_NOTE = 'settings.mode_pick_note'
 export const COUNT_CHIP_SHORT = 'settings.on_of_total_on'
 export const COUNTS_LINE = '{on} of {total} on, {off} off. {suggest} only suggest.'
 export const COUNT_CHIP = '{on} of {total} settings on'
-export const CHANGED_CHIP = '{n} changed'
-export const CHANGED_DOT = '\u2022'
+export const CHANGED_CHIP = 'settings.n_changed'
+export const CHANGED_WORD = 'settings.changed_chip'
 export const RESET_ASK = 'Clear every setting, the card order and your pins?'
 export const RESET_ASK_PROJECT = 'Make this project follow all projects again?'
 export const RESET_CLEAR = 'Clear'
@@ -199,7 +213,7 @@ export const RESET_KEEP = 'Keep'
 export const RESET_DONE = 'Everything is back to the usual choice.'
 export const RESET_DONE_PROJECT = 'This project follows all projects again.'
 export const RESET_NOTE = 'Your choices go back to the defaults. Notes and history stay. There is no undo.'
-export const ERASE_NOTE = 'Removes everything vaken stored on this computer, except a pause that is on. Project files stay. It cannot be undone.'
+export const ERASE_NOTE = 'Removes everything vaken stored on this computer, except a paused session. Project files stay. It cannot be undone.'
 export const SESSIONS_NOTE = 'Pin puts a session first in Other sessions. Hide takes it off the list, except while it needs you.'
 export const VIEW_LOCK_NOTE = 'Your view decides which cards show. Pick Custom to choose.'
 export const viewLocksRow = (key: string, view: string | undefined): boolean => (view ?? 'standard') !== 'custom' && (key === 'view.problems' || key.startsWith('cards.'))
@@ -213,4 +227,4 @@ const formsOf = (name: string): string[] => {
   const en = TABLE[name]?.en
   return en === undefined ? [] : typeof en === 'string' ? [en] : [en.one, en.other]
 }
-export const SETTINGS_VIEW_STRINGS: string[] = [...formsOf(MODE_NOW), ...formsOf(MODE_CHANGES), ...formsOf(MODE_CHIP_PROJECT), ...formsOf(MODE_THIS_PROJECT), MODE_TITLE, COUNTS_LINE, COUNT_CHIP, CHANGED_CHIP, RESET_ASK, RESET_ASK_PROJECT, RESET_CLEAR, RESET_KEEP, RESET_DONE, RESET_DONE_PROJECT, RESET_NOTE, ERASE_NOTE, SESSIONS_NOTE, CARDS_NOTE, VIEW_LOCK_NOTE, 'Mode', 'Cards and look', 'Money and plan', 'Agents', 'Advanced', ADVANCED_SECTION.about, 'Arrange cards ›', 'Open the Safety card ›', 'Manage agents ›', 'On', 'Off', 'Suggest', 'Watch', ...Object.values(MODE_ABOUT).map(enOf), ...Object.values(MODE_WORDS).map(enOf), ...Object.values(MODE_SHORT).map(enOf), ...Object.values(MODE_TAG).map(enOf), enOf(MODE_PICK_NOTE), enOf(COUNT_CHIP_SHORT), ...Object.values(BACK_WORDS).map(enOf), enOf('settings.privacy_note'), ...RUNNER_ROLE_STRINGS, 'Default', 'This part could not be shown: {error}']
+export const SETTINGS_VIEW_STRINGS: string[] = [...formsOf(MODE_NOW), ...formsOf(MODE_CHANGES), ...formsOf(MODE_CHIP_PROJECT), ...formsOf(MODE_THIS_PROJECT), MODE_TITLE, COUNTS_LINE, COUNT_CHIP, ...formsOf(CHANGED_CHIP), enOf(CHANGED_WORD), RESET_ASK, RESET_ASK_PROJECT, RESET_CLEAR, RESET_KEEP, RESET_DONE, RESET_DONE_PROJECT, RESET_NOTE, ERASE_NOTE, SESSIONS_NOTE, CARDS_NOTE, VIEW_LOCK_NOTE, 'Mode', 'Cards and look', 'Money and plan', 'Agents', 'Advanced', ADVANCED_SECTION.about, 'Arrange cards ›', 'Open the Safety card ›', 'Manage agents ›', 'On', 'Off', 'Suggest', 'Watch', ...Object.values(MODE_ABOUT).map(enOf), ...Object.values(MODE_WORDS).map(enOf), ...Object.values(MODE_SHORT).map(enOf), ...Object.values(MODE_TAG).map(enOf), enOf(MODE_PICK_NOTE), enOf(COUNT_CHIP_SHORT), ...Object.values(BACK_WORDS).map(enOf), enOf('settings.privacy_note'), ...RUNNER_ROLE_STRINGS, 'Default', 'This part could not be shown: {error}', ...['settings.card_reset', 'settings.card_your_data', 'settings.changed_by_you', 'settings.changed_undone', 'settings.undo_mode', 'settings.undo_nothing', 'settings.undo_setup'].map(enOf), ...formsOf('settings.undo_done'), ...formsOf('settings.undo_mode_toast')]

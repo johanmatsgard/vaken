@@ -1,6 +1,7 @@
 // Routing: sends a lookup helper to a cheaper model at spawn, in Auto. A mod cannot switch the main thread's model, so it is only watched for a switch that would throw away a warm cache. The store holds counts and averages, never a prompt.
 import { tr } from './lang'
 import { langNow } from '../i18n/t'
+import { fillIn } from './fillin'
 import { under } from './platform'
 import { tokenWord } from './appcontext'
 import { rankOf } from './models'
@@ -9,13 +10,16 @@ import type { Family } from './models'
 import type { HelpEntry } from './registry'
 import type { Setting } from './settings'
 import { fmt } from './fmt'
+import { tLine } from '../i18n/t'
+import { runPercent } from './costhint'
+import type { HintSample } from './costhint'
 
 export const ROUTE_SETTINGS: Setting[] = [
   {
     key: 'route.mode',
     group: 'Model choice',
     label: 'Agent models',
-    note: 'Off, tell you, or send lookup agents to the Researcher’s model.',
+    note: 'Off, tell you, or send lookup agents to the Researcher’s model.', // en-only: a setting note; /vaken-settings text stays English
     options: [
       { value: 'off', label: 'Off' },
       { value: 'suggest', label: 'Suggest' },
@@ -139,6 +143,15 @@ type SwitchFacts = { cacheWarm: boolean; contextTokens: number; from: string; to
 export const shouldWarnSwitch = (f: SwitchFacts): boolean => f.cacheWarm && f.contextTokens >= SWITCH_MIN_TOKENS && f.from !== f.to
 
 export const switchWarning = (contextTokens: number, usd: number): string => tr('A model switch writes the saved session again ({tokens} tokens) and costs {usd}.').replace('{tokens}', tokenWord(contextTokens)).replace('{usd}', fmt.moneyAbout(usd, langNow()))
+// The calm band line for the switch. N is vaken's own estimate (the cost hint's points per dollar over the session's past turns, times the engine's
+// cache write price); without enough past turns there is no honest percent, so the toast above says the dollars instead. Only warns, never blocks.
+export const SWITCH_BAND_ID = 'switch-cache'
+export const SWITCH_BAND_MS = 3 * 60_000
+export function switchPercent(samples: readonly HintSample[], usd: number): number | undefined {
+  const pct = runPercent(samples, usd)
+  return pct === undefined || !(pct >= 1) ? undefined : Math.min(100, Math.round(pct))
+}
+export const switchBandLine = (pct: number): string => tLine('band.switch_drops_cache_pct', { n: pct })
 // A stored fact, so English.
 export const switchDetail = (from: string, to: string, usd: number): string => `${familyOf(from)} to ${familyOf(to)}, ${fmt.moneyAbout(usd)}.`
 
@@ -182,9 +195,9 @@ export function addRun(stats: Stats, job: JobType, model: string, outputTokens: 
 }
 
 const seconds = (ms: number): string => (ms >= 90_000 ? `${Math.round(ms / 60_000)} min` : `${Math.max(1, Math.round(ms / 1000))} s`)
-const jobWord: Record<JobType, string> = { lookup: 'lookup', deep: 'deep', normal: 'normal' }
+const jobWord: Record<JobType, string> = { lookup: 'lookup agent', deep: 'deep agent', normal: 'normal agent' }
 
-export const quoteWords = (job: JobType, model: string, c: Cell): string => `A ${jobWord[job]} agent on ${model} took about ${seconds(c.ms / c.n)} and ${tokenWord(c.out / c.n)} tokens on average over ${c.n} runs.`
+export const quoteWords = (job: JobType, model: string, c: Cell): string => fillIn(tr('A {job} on {model} took about {time} and {tokens} tokens on average over {n} runs.'), { job: tr(jobWord[job]), model, time: seconds(c.ms / c.n), tokens: tokenWord(c.out / c.n), n: c.n })
 
 export function quotes(stats: Stats): string[] {
   const out: string[] = []
@@ -206,11 +219,11 @@ const modeWords: Record<RouteMode, string> = {
 export function routeText(mode: RouteMode, cheap: string, last: string[], stats: Stats, mine: boolean = false): string {
   const q = quotes(stats)
   return [
-    `Agent models: ${modeWords[mode]}`,
-    `Lookup model: ${cheap}${mine ? ' (this session only)' : ''}, the Researcher’s model in Settings > Agents. A lookup agent is one that searches, finds, explores, reads, lists or summarizes. Routing only sends an agent down, never above the main model or the model its own agent file names: plan, review and design agents are never changed, and neither is a model Claude chose or an agent your own agent files define. A built-in agent’s own model is not visible to vaken, so for those only the main model sets the limit.`,
-    ...(mode === 'off' ? ['Turn it on: Settings > Agents.'] : []),
+    fillIn(tr('Agent models: {mode}'), { mode: tr(modeWords[mode]) }),
+    fillIn(tr('Lookup model: {model}{mine}, the Researcher’s model in Settings > Agents. A lookup agent is one that searches, finds, explores, reads, lists or summarizes. Routing only sends an agent down, never above the main model or the model its own agent file names: plan, review and design agents are never changed, and neither is a model Claude chose or an agent your own agent files define. A built-in agent’s own model is not visible to vaken, so for those only the main model sets the limit.'), { model: cheap, mine: mine ? ` ${tr('(this session only)')}` : '' }),
+    ...(mode === 'off' ? [tr('Turn it on: Settings > Agents.')] : []),
     '',
-    ...(q.length === 0 ? [NO_DATA] : ['From past runs:', ...q]),
-    ...(last.length === 0 ? [] : ['', 'Last:', ...last]),
+    ...(q.length === 0 ? [tr(NO_DATA)] : [tr('From past runs:'), ...q]),
+    ...(last.length === 0 ? [] : ['', tr('Last:'), ...last]),
   ].join('\n')
 }

@@ -30,8 +30,8 @@ test('a line card nothing reads is not built', () => {
   const start = lineViewBuilds()
   const m = linesModel(view, prefs)
   expect(lineViewBuilds() - start).toBe(0)
-  void m.views.skills.title
-  void m.views.skills.title
+  void m.card('skills').title
+  void m.card('skills').title
   expect(lineViewBuilds() - start).toBe(1)
   const louds = lineViewBuilds()
   cardLouds(view, prefs, m)

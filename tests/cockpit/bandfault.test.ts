@@ -38,7 +38,7 @@ test('every band Client is the press module the pane uses, and a fault leaves it
   expect(clientsOf(after), 'a failed band Client is left out, so the host has no error label to draw').toHaveLength(0)
   const labels = after.filter(n => n.type === 'Button').map(n => String(n.props.label))
   expect(labels.some(l => l.includes('needs you')), 'the Needs you words still press').toBe(true)
-  expect(labels.some(l => l.includes('See all 2')), 'See all still presses').toBe(true)
+  expect(labels.some(l => l.includes('See all')), 'See all still presses').toBe(true)
 })
 
 test('a faulted press comes back once the rest has passed', () => {

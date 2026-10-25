@@ -6,7 +6,7 @@ import type { On } from 'claude-code'
 
 import { APPEARS } from '../hooks/core/cardrules'
 import { BUNDLE_TTL_MS } from '../hooks/core/io'
-import { AMBER, ARRANGE_LIFT_FILL, ARRANGE_LIFT_TEXT, BLUE, BOLD_CHAR_PT, BORDER_X_PT, CHEVRON_GAP, CHEVRON_SLOT, COL_PT, COLUMNS_2_FROM_PT, COLUMNS_3_FROM_PT, DOT, GLANCE_DOT_GAP, GLANCE_VALUE_GAP, GREY, ICON_GAP, PRESS_WASH_GREY, RED, ROW_PT, SWITCH_KNOB_FILL, TEXT_CHAR_PT, columnsFor } from '../hooks/ui/tokens'
+import { AMBER, ARRANGE_LIFT_FILL, ARRANGE_LIFT_TEXT, BLUE, BOLD_CHAR_PT, BORDER_X_PT, CHEVRON_GAP, CHEVRON_SLOT, columnPt, COLUMNS_2_FROM_PT, COLUMNS_3_FROM_PT, DOT, GLANCE_DOT_GAP, GLANCE_VALUE_GAP, GREY, ICON_GAP, PRESS_WASH_GREY, RED, ROW_PT, SWITCH_KNOB_FILL, TEXT_CHAR_PT, columnsFor } from '../hooks/ui/tokens'
 import { paneGrid } from '../hooks/features/home/grid'
 import { CARD_IDS } from '../hooks/features/home/logic'
 import { viaParent } from './viaparent'
@@ -64,7 +64,7 @@ function engine(on: On, mem: Map<string, unknown>) {
   on('session.measure', (_$, e) => ({ changed: e.changed }))
   on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
 }
-const propsAt = (wPt: number) => ({ title: 'Vaken', isFocused: false, bodyColumns: wPt / COL_PT, placement: 'dock' as const, scroll: { bodyRows: Math.round(HEIGHT_PT / ROW_PT), offset: 0, total: 200 }, view: {} })
+const propsAt = (wPt: number) => ({ title: 'Vaken', isFocused: false, bodyColumns: wPt / columnPt(), placement: 'dock' as const, scroll: { bodyRows: Math.round(HEIGHT_PT / ROW_PT), offset: 0, total: 200 }, view: {} })
 
 type Node = { type?: string; key?: string; text?: string; props?: Record<string, unknown>; children?: unknown[] }
 type Pane = { drawn: () => Promise<Node>; redraw: (p?: unknown) => Promise<void>; press: (q: unknown) => Promise<void>; unmount: () => Promise<void> }
@@ -76,7 +76,7 @@ const walk = (n: Node, out: Node[] = []): Node[] => {
 }
 const strings = (n: Node): string[] => (n.children ?? []).filter((c): c is string => typeof c === 'string')
 // The widest thing inside a part, in points: a Box or Client with a width in cells, or a picture's width.
-const widest = (n: Node): number => Math.max(0, ...walk(n).slice(1).map(x => (x.type === 'Svg' ? Number(x.props?.width ?? 0) : typeof x.props?.width === 'number' ? (x.props.width as number) * COL_PT : 0)))
+const widest = (n: Node): number => Math.max(0, ...walk(n).slice(1).map(x => (x.type === 'Svg' ? Number(x.props?.width ?? 0) : typeof x.props?.width === 'number' ? (x.props.width as number) * columnPt() : 0)))
 
 const cutLabels = (root: Node): string[] =>
   walk(root)
@@ -181,7 +181,7 @@ test('the home pane at 700 to 5120 pt: no cut label, the tokens\' columns, nothi
         for (const c of columns) if (c.props?.width !== columns[0]?.props?.width) problems.push(`${at}: columns of unequal width (${columns.map(k => String(k.props?.width)).join(', ')})`)
         for (const c of columns) {
           const cells = c.props?.width as number
-          if (widest(c) > cells * COL_PT + CLOSE) problems.push(`${at}: a card ${widest(c)} pt in a column of ${cells * COL_PT} pt`)
+          if (widest(c) > cells * columnPt() + CLOSE) problems.push(`${at}: a card ${widest(c)} pt in a column of ${cells * columnPt()} pt`)
         }
       }
       pressProblems(root, at, problems)
@@ -223,7 +223,8 @@ test('400, 700, 1100 and 2400 pt: views capped at one column, no stub header not
   helpCommand = () => $.command.run(viaParent('vaken-help', ''))
   const problems: string[] = []
   const nameOf = (x: Node): unknown => x.key ?? x.props?.key
-  for (const [name, key, wrap] of [['Help', 'help-done', 'cap-help'], ['Settings', 'settings-done', 'settings-col-0'], ['Agents', 'runner-done', 'cap-runner']] as const) {
+  // Help lays its topic cards in the pane's columns; its title and find line ('help-top') are one column wide
+  for (const [name, key, wrap] of [['Help', 'help-done', 'help-top'], ['Settings', 'settings-done', 'settings-col-0'], ['Agents', 'runner-done', 'cap-runner']] as const) {
     fill(mem)
     const first = await mount(1100)
     if (name === 'Help') await helpCommand()
@@ -242,10 +243,10 @@ test('400, 700, 1100 and 2400 pt: views capped at one column, no stub header not
       const root = await ui.drawn()
       const at = `${name} at ${w} pt`
       const capped = columnsFor(w) > 1
-      const column = Math.floor((Math.floor(w / COL_PT + 0.01) - (columnsFor(w) - 1)) / columnsFor(w)) * COL_PT
-      const box = walk(root).find(x => nameOf(x) === wrap)
+      const column = Math.floor((Math.floor(w / columnPt() + 0.01) - (columnsFor(w) - 1)) / columnsFor(w)) * columnPt()
+      const box = walk(root).find(x => nameOf(x) === wrap && x.props?.width !== undefined)
       if (capped !== (box !== undefined)) problems.push(`${at}: ${capped ? 'no' : 'a'} cap box`)
-      if (box !== undefined && Math.abs((box.props?.width as number) * COL_PT - column) > 1) problems.push(`${at}: the cap is ${(box.props?.width as number) * COL_PT} pt, one column is ${column} pt`)
+      if (box !== undefined && Math.abs((box.props?.width as number) * columnPt() - column) > 1) problems.push(`${at}: the cap is ${(box.props?.width as number) * columnPt()} pt, one column is ${column} pt`)
     }
     await ui.unmount()
     const out = await mount(1100)
@@ -271,16 +272,16 @@ test('400, 700, 1100 and 2400 pt: views capped at one column, no stub header not
 // The host does not wrap a Pick that has no width of its own.
 const hostWidth = (n: Node): number => {
   const p = n.props ?? {}
-  if (n.type === 'Button') return String(p.label ?? '').length * COL_PT
+  if (n.type === 'Button') return String(p.label ?? '').length * columnPt()
   if (n.type === 'Svg') return Number(p.width ?? 0)
   if (n.type === 'Text' || p.position === 'absolute') return 0
   const parts = kids(n).map(hostWidth)
-  const gap = (typeof p.columnGap === 'number' ? p.columnGap : 0) * COL_PT
-  const margins = ((typeof p.marginLeft === 'number' ? p.marginLeft : 0) + (typeof p.marginRight === 'number' ? p.marginRight : 0)) * COL_PT
+  const gap = (typeof p.columnGap === 'number' ? p.columnGap : 0) * columnPt()
+  const margins = ((typeof p.marginLeft === 'number' ? p.marginLeft : 0) + (typeof p.marginRight === 'number' ? p.marginRight : 0)) * columnPt()
   const inner = parts.length === 0 ? 0 : p.flexDirection === 'row' ? parts.reduce((a, b) => a + b, 0) + gap * (parts.length - 1) : Math.max(...parts)
   return inner + margins
 }
-test('Start here: every row fits the card at 1, 2 and 3 columns, the narrowest and widest pane, and after resizes', { timeoutMs: 60_000 }, async ($, on) => {
+test('Start here: every row of every setup step fits the card at 1, 2 and 3 columns, the narrowest and widest pane, and after resizes', { timeoutMs: 120_000 }, async ($, on) => {
   const mem = new Map<string, unknown>()
   mock.clock(on, { now: NOW })
   mock.env(on, { HOME: '/home/test' })
@@ -294,24 +295,37 @@ test('Start here: every row fits the card at 1, 2 and 3 columns, the narrowest a
   const problems: string[] = []
   const nameOf = (x: Node): string => String(x.key ?? x.props?.key ?? '')
   let rowsSeen = 0
-  for (const w of trip) {
+  const look = async (w: number, step: number, wanted: string[]): Promise<void> => {
     await ui.redraw(propsAt(w))
     const root = await ui.drawn()
     const card = walk(root).find(x => nameOf(x) === 'start')
     if (card === undefined) {
-      problems.push(`${w} pt: no Start here card`)
-      continue
+      problems.push(`${w} pt, step ${step}: no Start here card`)
+      return
     }
     const top = walk(root).find(x => nameOf(x) === 'cap-top')
     if ((columnsFor(w) > 1) !== (top !== undefined)) problems.push(`${w} pt: the top cap box is ${top === undefined ? 'missing' : 'there on one column'}`)
-    const room = (top === undefined ? w : (top.props?.width as number) * COL_PT) - 2 * BORDER_X_PT
+    const room = (top === undefined ? w : (top.props?.width as number) * columnPt()) - 2 * BORDER_X_PT
     for (const row of walk(card).slice(1).filter(x => x.props?.flexDirection === 'row')) {
       rowsSeen += 1
       const wide = hostWidth(row)
-      if (wide > room + CLOSE) problems.push(`${w} pt: the row "${nameOf(row) || 'unnamed'}" is ${Math.round(wide)} pt in a card of ${Math.round(room)} pt`)
+      if (wide > room + CLOSE) problems.push(`${w} pt, step ${step}: the row "${nameOf(row) || 'unnamed'}" is ${Math.round(wide)} pt in a card of ${Math.round(room)} pt`)
     }
     const keys = new Set(walk(card).map(nameOf))
-    for (const k of ['start-mode-quiet', 'start-mode-balanced', 'start-mode-full', 'start-skip', 'start-view-standard', 'start-view-all', 'start-view-custom']) if (!keys.has(k)) problems.push(`${w} pt: no "${k}"`)
+    for (const k of wanted) if (!keys.has(k)) problems.push(`${w} pt, step ${step}: no "${k}"`)
+  }
+  for (const w of trip) await look(w, 1, ['start-mode-quiet', 'start-mode-balanced', 'start-mode-full', 'start-skip', 'start-next'])
+  // The other steps (the switches of the habits question, the summary with the view choice), each at the narrowest, a middle and the widest pane
+  const later: Record<number, string[]> = {
+    2: ['start-risky-tell', 'start-risky-ask', 'start-risky-off', 'start-back', 'start-next', 'start-skip'],
+    3: ['start-spend-off', 'start-spend-warn', 'start-spend-stop'],
+    4: ['start-habits-switch', 'start-plain-switch'],
+    5: ['start-long-auto', 'start-long-watch', 'start-long-off'],
+    6: ['start-view-standard', 'start-view-all', 'start-view-custom', 'start-back', 'start-finish'],
+  }
+  for (let step = 2; step <= 6; step += 1) {
+    await ui.press({ key: 'start-next' })
+    for (const w of [294, COLUMNS_2_FROM_PT, 5120, 294]) await look(w, step, later[step] ?? [])
   }
   await ui.unmount()
   expect(rowsSeen).toBeGreaterThan(trip.length * 3)
@@ -355,7 +369,7 @@ test('1 to 6 columns: every open card header is one row, its Fold on it, its not
       const fresh = walk(row).some(x => x.type === 'Svg' && /new/i.test(String(x.props?.alt ?? '')))
       const label = String(fold.props?.label ?? walk(fold).flatMap(strings).join(''))
       if (title !== undefined && value !== undefined && !fresh) {
-        const used = strings(title).join('').length * BOLD_CHAR_PT + GLANCE_VALUE_GAP + strings(value).join('').length * TEXT_CHAR_PT + GLANCE_DOT_GAP + DOT + CHEVRON_GAP + CHEVRON_SLOT + ICON_GAP + label.length * COL_PT
+        const used = strings(title).join('').length * BOLD_CHAR_PT + GLANCE_VALUE_GAP + strings(value).join('').length * TEXT_CHAR_PT + GLANCE_DOT_GAP + DOT + CHEVRON_GAP + CHEVRON_SLOT + ICON_GAP + label.length * columnPt()
         if (used > inner + CLOSE) problems.push(`${at}: ${id}'s header "${strings(title).join('')} ${strings(value).join('')} ${label.trim()}" needs ${Math.round(used)} pt of ${inner}`)
       }
       for (const line of kids(card).filter(x => x !== row && x.props?.flexDirection === 'row' && x.props?.justifyContent === 'flex-end')) {

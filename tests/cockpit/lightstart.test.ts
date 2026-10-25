@@ -36,7 +36,9 @@ test('a fresh store reads as Recommended: every free helper is on, and nothing t
   const values = await readSettings(memIo())
   expect(values).toEqual(defaults())
   expect(modeNow(values)).toBe('balanced')
-  for (const k of ['value.weekly', 'today.brief', 'neighbors.warn', 'heartbeat.mode', 'recap.mode', 'happened.mode', 'proof.claims', 'proof.done', 'proof.drift', 'proof.anomaly', 'coach.mode', 'decisions.mode', 'diet.mode', 'preview.auto', 'cost.budget', 'resume.mode', 'fresh.nudge', 'plan.first', 'prompt.check']) expect(values[k], k).not.toBe('off')
+  for (const k of ['value.weekly', 'today.brief', 'neighbors.warn', 'heartbeat.mode', 'recap.mode', 'happened.mode', 'proof.claims', 'proof.done', 'proof.drift', 'proof.anomaly', 'coach.mode', 'decisions.mode', 'diet.mode', 'preview.auto', 'resume.mode', 'fresh.nudge', 'plan.first', 'prompt.check']) expect(values[k], k).not.toBe('off')
+  // The budget is Off until the person picks one (the start's Spending question or Settings): the cost is always on the card
+  expect(values['cost.budget']).toBe('off')
   expect([values['prompt.check'], values['plan.first'], values['resume.mode'], values['route.mode'], values['assume.check']]).toEqual(['tip', 'suggest', 'remind', 'suggest', 'off'])
   expect([values['look.view'], values['compact.mode'], values['compact.card'], values['guard.destructive'], values['guard.secrets'], values['claude.notes'], values['undo.mode']]).toEqual(['standard', 'watch', 'on', 'warn', 'warn', 'safety', 'on'])
 })
@@ -47,6 +49,7 @@ test('a store with values of its own keeps them: only the defaults moved', async
   expect([values['value.weekly'], values['proof.claims'], values['cost.budget'], values['plan.first'], values['compact.mode']]).toEqual(['on', 'warn', 'warn', 'suggest', 'suggest'])
   expect(await tellsCompact(memIo(seed))).toBe(true)
   expect(await tellsCompact(memIo({ 'cockpit:setting:compact.mode': 'auto' }))).toBe(true)
+  // Watch only is the default, so a fresh store sends Claude nothing; Auto tells Claude when the window fills (once, at the crossing)
   expect(await tellsCompact(memIo())).toBe(false)
   expect(await tellsCompact(memIo({ 'cockpit:setting:compact.mode': 'watch' }))).toBe(false)
   expect(await tellsCompact(memIo({ 'cockpit:setting:compact.mode': 'watch', 'cockpit:setting:claude.notes': 'all' }))).toBe(false)
@@ -92,15 +95,18 @@ function engine(on: On, seed: Record<string, unknown>, host: { decision: string;
 const READ = { tool: 'Read', file_path: '/home/user/app/a.ts' } as const
 const noted = (r: unknown): boolean => /Context is \d+% full/.test(JSON.stringify(r))
 
-test('past the Compact from line (30%), a fresh store sends Claude no note; a store that chose Compact by itself still gets it', SLOW, async ($, on) => {
-  const mem = engine(on, { [`cockpit:session:${SID}`]: rec() })
-  expect(noted(await $.tool.call(READ))).toBe(false)
-  expect(noted(await $.tool.call(READ))).toBe(false)
-  expect(mem.get(`cockpit:compact:nudge:${SID}`)).not.toBe(true)
+test('past the Compact from line (60%) of a big session, a store on Auto sends Claude one note; Watch only (the default) and Off send none', SLOW, async ($, on) => {
+  const mem = engine(on, { [`cockpit:session:${SID}`]: rec({ contextPercent: 62, ctx: { tokens: 620_000 } }) })
   mem.set('cockpit:setting:compact.mode', 'watch')
   expect(noted(await $.tool.call(READ))).toBe(false)
-  mem.set('cockpit:setting:compact.mode', 'suggest')
+  mem.set('cockpit:setting:compact.mode', 'off')
+  expect(noted(await $.tool.call(READ))).toBe(false)
+  expect(mem.get(`cockpit:compact:nudge:${SID}`)).not.toBe(true)
+  mem.delete('cockpit:setting:compact.mode')
+  expect(noted(await $.tool.call(READ))).toBe(false)
+  mem.set('cockpit:setting:compact.mode', 'auto')
   expect(noted(await $.tool.call(READ))).toBe(true)
+  expect(noted(await $.tool.call(READ))).toBe(false)
 })
 
 const PUSH = { tool: 'Bash', command: 'git push --force origin main' } as const

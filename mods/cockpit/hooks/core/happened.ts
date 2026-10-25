@@ -1,5 +1,6 @@
 // Counts a turn's tool calls by kind and says them in one plain sentence, with risk labels.
-import { sayStored, trFill } from '../i18n/t'
+import { sayStored, t as tHere, tEn, tr, trFill } from '../i18n/t'
+import { fillIn } from './fillin'
 import type { HelpEntry } from './registry'
 import type { Setting } from './settings'
 import { isEditTool, isShellTool } from './tools'
@@ -70,19 +71,25 @@ export function countCall(t: Turn, tool: string, args: Record<string, unknown>):
   return next
 }
 
-const n = (count: number, one: string, many = `${one}s`): string => `${count} ${count === 1 ? one : many}`
 const base = (p: string): string => lastName(p)
 
-export function happenedWords(t: Turn | undefined): string {
-  if (t === undefined) return 'No answer finished yet in this session.'
+// The kinds of command and the rows that count them (a kind this does not know is counted as "other")
+const KIND_ROWS: Record<string, string> = { test: 'cmdf.happened_kind_test', build: 'cmdf.happened_kind_build', lint: 'cmdf.happened_kind_lint', git: 'cmdf.happened_kind_git', install: 'cmdf.happened_kind_install' }
+
+// `said`: in the language of this answer (the chat); else English, for Claude (the steer tool)
+export function happenedWords(t: Turn | undefined, said = false): string {
+  const say: (s: string) => string = said ? tr : s => s
+  const count = (key: string, n: number): string => (said ? tHere(key, { n }) : tEn(key, { n }))
+  const frame = (s: string, x: string): string => fillIn(say(s), { x })
+  if (t === undefined) return say('No answer finished yet in this session.')
   const parts: string[] = []
-  if (t.reads > 0) parts.push(`looked at ${n(t.reads, 'file or page', 'files or pages')}`)
-  if (t.edits > 0) parts.push(`changed ${n(t.edits, 'file')}${t.files.length === 0 ? '' : ` (${t.files.map(base).join(', ')})`}`)
-  if (t.commands > 0) parts.push(`ran ${n(t.commands, 'command')} (${Object.entries(t.kinds).map(([k, c]) => n(c, k)).join(', ')})`)
-  if (t.agents > 0) parts.push(`started ${n(t.agents, 'agent')}`)
-  if (t.outside > 0) parts.push(`used ${n(t.outside, 'outside tool')}`)
-  const head = parts.length === 0 ? 'Only answered; it did not touch anything.' : `${parts[0].charAt(0).toUpperCase()}${parts[0].slice(1)}${parts.length > 1 ? `, ${parts.slice(1).join(', ')}` : ''}.`
-  return t.risks.length === 0 ? head : `${head} Risky: ${t.risks.join(', ')}.`
+  if (t.reads > 0) parts.push(frame('looked at {x}', count('cmdf.happened_file_or_page', t.reads)))
+  if (t.edits > 0) parts.push(`${frame('changed {x}', count('cmdf.happened_file', t.edits))}${t.files.length === 0 ? '' : ` (${t.files.map(base).join(', ')})`}`)
+  if (t.commands > 0) parts.push(`${frame('ran {x}', count('cmdf.happened_command', t.commands))} (${Object.entries(t.kinds).map(([k, c]) => count(KIND_ROWS[k] ?? 'cmdf.happened_kind_other', c)).join(', ')})`)
+  if (t.agents > 0) parts.push(frame('started {x}', count('cmdf.happened_agent', t.agents)))
+  if (t.outside > 0) parts.push(frame('used {x}', count('cmdf.happened_outside_tool', t.outside)))
+  const head = parts.length === 0 ? say('Only answered; it did not touch anything.') : `${parts[0].charAt(0).toUpperCase()}${parts[0].slice(1)}${parts.length > 1 ? `, ${parts.slice(1).join(', ')}` : ''}.`
+  return t.risks.length === 0 ? head : `${head} ${fillIn(say(RISKY_BAND), { list: t.risks.map(say).join(', ') })}.`
 }
 
 export const riskNote = (t: Turn): string | undefined => (t.risks.length === 0 ? undefined : `Risky this answer: ${t.risks.join(', ')}.`)

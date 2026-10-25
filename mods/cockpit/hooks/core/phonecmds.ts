@@ -42,7 +42,9 @@ export const phoneSectionOn = (mode: string, joined: Iterable<number>, now: numb
   return false
 }
 
-export const phoneCockpitLine = (mode: PhoneMode): string => `Phone mode: ${mode === 'on' ? 'on' : mode === 'off' ? 'off' : 'asks once'} · Settings > Attention`
+// Said on the phone only (its status answer): on the Mac, Settings shows it
+const MODE_LINE: Record<PhoneMode, string> = { on: 'Phone mode: on · Settings > Attention', off: 'Phone mode: off · Settings > Attention', ask: 'Phone mode: asks once · Settings > Attention' }
+export const phoneModeLine = (mode: PhoneMode, t: (english: string) => string): string => t(MODE_LINE[mode])
 
 export const PHONECMDS_STRINGS: string[] = [
   'Phone mode',
@@ -52,5 +54,6 @@ export const PHONECMDS_STRINGS: string[] = [
   'Nothing needs you.',
   'Working',
   'Short, numbered answers while you are on the phone? Turn on Phone mode: Settings > Attention.',
+  ...Object.values(MODE_LINE),
 ]
 

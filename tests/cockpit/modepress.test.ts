@@ -58,7 +58,7 @@ test('two quick mode presses leave one whole mode, the last one, never a mix', S
   expect(mem.has('cockpit:setting:guard.secrets')).toBe(false)
 })
 
-test('the Welcome card press closes the card, says which mode is on in one line, and writes no ledger line (U36, D5)', SLOW, async ($, on) => {
+test('Finish on the Start here card closes the card, writes the whole mode of step 1, says so in one line, and writes no ledger line', SLOW, async ($, on) => {
   mock.clock(on, { now: NOW })
   mock.env(on, { HOME: '/home/test' })
   const mem = new Map<string, unknown>()
@@ -66,10 +66,16 @@ test('the Welcome card press closes the card, says which mode is on in one line,
   engine(on, mem, toasts)
   const pane = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
   await pane.press({ key: 'start-mode-quiet' })
+  for (let n = 0; n < 5; n += 1) {
+    await pane.redraw()
+    await pane.press({ key: 'start-next' })
+  }
+  await pane.redraw()
+  await pane.press({ key: 'start-finish' })
   await pane.unmount()
   expect(mem.get('cockpit:firstrun')).toBe('done')
   expect(allMatch(mem, 'quiet')).toBe(true)
-  expect(toasts).toEqual(['Only alerts is on. Change it any time in Settings.'])
+  expect(toasts).toEqual(['Your setup is on. Change any answer in Settings.'])
   expect(mem.get('cockpit:ledger:compact')).toBeUndefined()
 })
 

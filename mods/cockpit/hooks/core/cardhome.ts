@@ -51,12 +51,12 @@ export const isGroupOrder = (ids: readonly string[]): boolean => ids.every((id, 
 // Expert keys are listed too: they stay off the card face but the text twin lists them.
 export const CARD_SETTINGS: Record<string, readonly string[]> = {
   limit: ['limits.warn', 'cost.budget', 'cost.session', 'cost.day', 'resume.mode', 'cost.why'],
-  here: ['compact.mode', 'compact.from', 'compact.card', 'cache.keeper', 'happened.mode', 'plain.mode', 'errors.mode', 'answer.shape', 'hints.model', 'recap.mode', 'heartbeat.mode', 'steer.mode'],
-  others: ['neighbors.warn', 'crew.collide', 'phone.mode', 'crew.ports', 'phone.hello'],
-  autopilot: ['fresh.nudge', 'plan.first', 'prompt.check', 'assume.check', 'rules.mode', 'decisions.mode', 'value.weekly', 'today.brief', 'brief.mode'],
+  here: ['compact.mode', 'compact.from', 'compact.min', 'compact.lead', 'compact.card', 'cache.keeper', 'lean.mode', 'happened.mode', 'next.mode', 'plain.mode', 'errors.mode', 'answer.shape', 'hints.model', 'recap.mode', 'heartbeat.mode', 'steer.mode'],
+  others: ['neighbors.warn', 'crew.collide', 'crew.ports'],
+  autopilot: ['fresh.nudge', 'plan.first', 'prompt.check', 'assume.check', 'tasks.visible', 'habit.summary', 'habit.ask', 'habit.chapters', 'rules.mode', 'decisions.mode', 'teach.mode', 'value.weekly', 'today.brief', 'brief.mode'],
   proof: ['proof.claims', 'proof.done', 'proof.receipts', 'proof.drift', 'proof.anomaly', 'proof.confidence'],
-  guard: ['guard.destructive', 'guard.scope', 'guard.packages', 'guard.tests', 'guard.world', 'guard.secrets', 'guard.migrations', 'away.policy', 'guard.outbox', 'guard.env', 'guard.commands', 'guard.fence'],
-  agents: ['cap.mode', 'route.mode', 'runner.researcher', 'runner.builder', 'runner.reviewer', 'runner.fixer', 'cap.max', 'agents.board', 'crew.worktrees'],
+  guard: ['guard.destructive', 'guard.scope', 'guard.packages', 'guard.tests', 'guard.world', 'guard.secrets', 'guard.migrations', 'away.policy', 'guard.outbox', 'guard.env', 'guard.commands', 'guard.fence', 'allow.rules'],
+  agents: ['cap.mode', 'route.mode', 'runner.researcher', 'runner.builder', 'runner.reviewer', 'runner.fixer', 'cap.max', 'agents.offer', 'agents.board', 'crew.worktrees'],
   computer: ['laptop.mode', 'awake.mode', 'awake.away'],
   skills: ['coach.mode'],
   prs: ['crew.pr'],
@@ -70,7 +70,7 @@ export const CARD_SETTINGS: Record<string, readonly string[]> = {
 }
 
 export const GLOBAL_SETTINGS: readonly string[] = [
-  'detail', 'view.problems', 'look.view', 'look.needs', 'look.columns', 'look.theme', 'look.language', 'look.motion', 'notify.mode', 'notify.quiet', 'inbox.mode', 'stability.check', 'modhealth.mode',
+  'detail', 'view.problems', 'look.open', 'look.view', 'look.needs', 'look.columns', 'look.theme', 'look.language', 'look.motion', 'notify.mode', 'notify.quiet', 'phone.mode', 'phone.note', 'phone.hello', 'inbox.mode', 'stability.check', 'modhealth.mode',
 ]
 
 const LISTED = new Map<string, string>(Object.entries(CARD_SETTINGS).flatMap(([id, keys]) => keys.map((k): [string, string] => [k, id])))

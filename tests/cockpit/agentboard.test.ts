@@ -37,7 +37,8 @@ import {
 import type { AgentEntry, Start } from '../hooks/core/agentboard'
 import { boardTextFrom, loadBoard, noteCall, noteCost, noteEnd, noteProgress, noteSessionEnd, noteStart, watchBeat } from '../hooks/features/agentboard'
 import { agentsHeadOf, agentsText, othersCount, rowCost, rowRight, splitAgents } from '../hooks/core/agentboard'
-import { agentsHead } from '../hooks/core/headline'
+import { agentsHead, agentsShort } from '../hooks/core/headline'
+import { waitingApart } from '../hooks/features/home/cards/agents'
 import { agentsModel } from '../hooks/features/home/cards/agents'
 import { setLang, tr } from '../hooks/core/lang'
 import { detailChars } from '../hooks/ui/kit'
@@ -108,6 +109,14 @@ test('a background helper counts as running for 45 minutes from its start, and n
   expect(runningCount(list, NOW + 30 * MIN + BACKGROUND_LIMIT_MS)).toBe(0)
   expect(runningCount(endAgent(list, 'tu1', 'done', NOW + 2 * MIN), NOW + 3 * MIN)).toBe(1)
   expect(runningCount([], NOW)).toBe(0)
+})
+
+test('a helper of this session the engine no longer lists, or lists as ended, does not fill the agent cap; other sessions count as before', () => {
+  const list = startAgent(startAgent(startAgent([], start(1), NOW), start(2), NOW), start(3, { session: 'other-session' }), NOW)
+  expect(runningCount(list, NOW + MIN)).toBe(3)
+  expect(runningCount(list, NOW + MIN, { session: 'abcdef123456', statuses: [] })).toBe(1)
+  expect(runningCount(list, NOW + MIN, { session: 'abcdef123456', statuses: [{ id: 'ag1', status: 'running' }, { id: 'ag2', status: 'completed' }] })).toBe(2)
+  expect(runningCount(list, NOW + MIN, { session: 'abcdef123456', statuses: [{ id: 'ag1', status: 'idle' }, { id: 'ag2', status: 'pending' }] })).toBe(3)
 })
 
 test('rows: running first, then the newest; past 45 minutes a running line is "probably done", never running', () => {
@@ -359,12 +368,18 @@ test('a row: dot, word, task, time and second line, like an Other sessions row',
   const rows = boardRows(done, NOW)
   expect(rows.map(r => [rowKind(r), rowWord(r), rowName(r), rowAge(r, NOW)])).toEqual([
     ['working', 'Running', 'Explore', '3 min'],
-    ['waiting', 'Done', 'Search part 1', '6 min'],
+    ['waiting', 'Done', 'Search part 1', '4 min ago'],
   ])
-  expect(rowDetail(rows[1], 'Fix the login page')).toBe('haiku · Explore · Fix the login page')
-  // A narrow column: the session part goes first, so the model and role are never cut in the middle of a word.
-  expect(rowDetail(rows[1], 'Fix the login page', 36)).toBe('haiku · Explore · Fix the login page')
-  expect(rowDetail(rows[1], 'Fix the login page', 20)).toBe('haiku · Explore')
+  // An ended row's right column says when it ended; how long it took is in the detail line
+  expect(rowDetail(rows[1], 'Fix the login page')).toBe('haiku · Explore · took 6 min · Fix the login page')
+  // A narrow column: whole parts go, the session first, then the model, so a part is never cut in two and the time and cost stay
+  expect(rowDetail(rows[1], 'Fix the login page', 49)).toBe('haiku · Explore · took 6 min · Fix the login page')
+  expect(rowDetail(rows[1], 'Fix the login page', 36)).toBe('haiku · Explore · took 6 min')
+  expect(rowDetail(rows[1], 'Fix the login page', 20)).toBe('Explore · took 6 min')
+  expect(rowDetail(rows[1], 'Fix the login page', 5)).toBe('took 6 min')
+  expect(rowDetail(rows[1], undefined, 24, 'about $0.12')).toBe('took 6 min · about $0.12')
+  // A row of this session carries no tag
+  expect(rowDetail(rows[1], undefined)).toBe('haiku · Explore · took 6 min')
   const failed = boardRows(endAgent(list, 'ag2', 'failed', NOW), NOW).find(r => r.state === 'failed')!
   expect([rowKind(failed), rowWord(failed)]).toEqual(['needs', 'Failed'])
   const lost = boardRows(markSessionUnknown(list, 'abcdef12'), NOW)[0]
@@ -382,6 +397,22 @@ test('an open row says what it was asked, who started it, the time, the result a
   ])
   const running = boardRows(startAgent([], start(2), NOW - 2 * MIN), NOW)[0]
   expect(rowFacts(running, NOW, 'x').slice(2)).toEqual(['Time: running for 2 min so far', 'Result: not yet, it still runs', 'Cost: not known yet'])
+})
+
+test('opened under its row, an agent adds only what the row does not say; a failed end is "ended", never "failed or stopped"', () => {
+  const list = addAgentCost(endAgent(startAgent([], start(1), NOW - 10 * MIN), 'ag1', 'done', NOW - 4 * MIN), 'ag1', 0.42)
+  const done = boardRows(list, NOW)[0]
+  const detail = rowDetail(done, undefined, undefined, rowCost(done))
+  expect(detail).toBe('haiku · Explore · took 6 min · about $0.42 (estimate)')
+  // No name, time, state word, model, kind or cost again: only who started it
+  expect(rowFacts(done, NOW, 'This session', undefined, detail)).toEqual(['Started by: This session'])
+  // At Glance the row has no second line: the model, the time it took and the cost stay
+  expect(rowFacts(done, NOW, 'This session', undefined, '')).toEqual(['Started by: This session, as Explore on haiku', 'Time: took 6 min', 'Cost: about $0.42 (estimate)'])
+  const failed = boardRows(endAgent(startAgent([], start(2), NOW - 8 * MIN), 'ag2', 'failed', NOW - 2 * MIN), NOW)[0]
+  expect(rowFacts(failed, NOW, 'This session')).toContain('Result: ended')
+  expect(rowFacts(failed, NOW, 'This session', undefined, '')).toContain('Result: ended')
+  const running = boardRows(startAgent([], start(3), NOW - 2 * MIN), NOW)[0]
+  expect(rowFacts(running, NOW, 'x', undefined, 'haiku · Explore')).toEqual(['Started by: x', 'Cost: not known yet'])
 })
 
 test('a cost is noted on its line, or waits for a line that is not written yet', async () => {
@@ -491,11 +522,16 @@ test('a beat of the watch flags a quiet helper, posts one band line and writes t
 test('Other sessions: the group name leaves the second line first when the column is narrow', () => {
   const row = { kind: 'waiting', reason: 'finished, waits for you', sinceMs: 4 * MIN, group: 'Test', rec: { cwd: '/work/app' } } as never
   // The word beside the name says "Your turn", so the dim line leaves out "finished, waits for you".
-  expect(othersDetail(row, undefined, false, 80)).toBe('Test · 4 min')
-  expect(othersDetail(row, undefined, false, 8)).toBe('4 min')
-  // A grouped list has no group title, so the row's line names its group too, and drops it first when narrow.
-  expect(othersDetail(row, undefined, true, 20)).toBe('Test · 4 min')
-  expect(othersDetail(row, undefined, true, 8)).toBe('4 min')
+  // A value never breaks inside: its spaces do not break
+  expect(othersDetail(row, undefined, false, 80)).toBe('Test · 4\u00a0min\u00a0ago')
+  expect(othersDetail(row, undefined, false, 12)).toBe('4\u00a0min\u00a0ago')
+  // A grouped list names the project once, on the group: the row's line is its age alone, at any width.
+  expect(othersDetail(row, undefined, true, 80)).toBe('4\u00a0min\u00a0ago')
+  expect(othersDetail(row, undefined, true, 12)).toBe('4\u00a0min\u00a0ago')
+  // A session at work says "now": how long it has worked read as old news beside the working word
+  const working = { kind: 'working', reason: '', sinceMs: 14 * MIN, group: 'Test', rec: { cwd: '/work/app' } } as never
+  expect(othersDetail(working, undefined, true, 80)).toBe('now')
+  expect(othersDetail(working, undefined, false, 80)).toBe('Test \u00b7 now')
 })
 
 const HOUR = 60 * MIN
@@ -537,10 +573,10 @@ test('the headline comes from the same rows as the body', () => {
 const prefsOf = (over: Record<string, unknown> = {}) =>
   ({ agents: helpers(), sid: 'abcdef123456', lists: { others: 'now', agents: 'now', from: 'all' }, agentsAll: false, cardDetail: { agents: 'explained' }, run: undefined, agentFrom: {}, ...over }) as never
 
-test('the card model: running and the last hour show, the older 30 hide behind "Show 30 more" (one word for every list); Show fewer once open', () => {
+test('the card model: running and the last hour show, the older 30 hide behind "Show 30 older" (the fold says what it holds); Show fewer once open', () => {
   const m = agentsModel({ now: NOW } as never, prefsOf(), 5)
   expect(m.list.shown.map(r => r.id)).toEqual(['tu103', 'tu102', 'tu101', 'tu100'])
-  expect(m.list.label).toBe('Show 30 more')
+  expect(m.list.label).toBe('Show 30 older')
   expect(m.list.hidden).toBe(30)
   expect(m.head).toEqual({ running: 2, stuck: 0, total: 4 })
   const open = agentsModel({ now: NOW } as never, prefsOf({ agentsAll: true }), 5)
@@ -556,9 +592,9 @@ test('a row keeps its whole words, and a finished one says what it cost', () => 
   const rows = helpers()
   const long = rows.find(r => r.id === 'tu100')!
   expect(rowName(long).endsWith('sixty characters')).toBe(true)
-  expect(rowRight({ ...long, usd: 0.65 }, NOW)).toBe('2 min · about $0.65')
+  expect(rowRight({ ...long, usd: 0.65 }, NOW)).toMatch(/^\d+ min ago · about\u00a0\$0\.65$/)
   expect(rowRight(rows.find(r => r.id === 'tu102')!, NOW)).toBe('4 min')
-  expect(rowDetail(long, 'This session')).toBe('haiku · Explore · This session')
+  expect(rowDetail(long, 'This session')).toBe('haiku · Explore · took 2 min · This session')
 })
 
 test('/vaken text: the Agents line, a line per running and recent helper, each with the explain command, ', () => {
@@ -576,14 +612,35 @@ test('other sessions: the count for the This session filter, None here in the he
   expect(agentsHead(agentsHeadOf(splitAgents(helpers(), NOW, 'here', 'nosuchsession'), 4))).toBe('None here')
   expect(agentsHead(agentsHeadOf(splitAgents(helpers(), NOW, 'here', 'nosuchsession'), 0))).toBe('None')
   const long = helpers().find(r => r.id === 'tu100')!
-  expect(rowDetail(long, 'This session', undefined, '$0.65')).toBe('haiku · Explore · $0.65 · This session')
-  expect(rowCost({ ...long, usd: 0.65 })).toBe('about $0.65')
+  expect(rowDetail(long, 'This session', undefined, '$0.65')).toBe('haiku · Explore · took 2 min · $0.65 · This session')
+  expect(rowCost({ ...long, usd: 0.65 })).toBe('about\u00a0$0.65 (estimate)')
   expect(rowCost(helpers().find(r => r.id === 'tu102')!)).toBeUndefined()
 })
 
-test('the card model: a big screen shows the newest five finished helpers, the rest behind "Show N more"', () => {
+test('teammates that wait are counted in the Agents header: "1 waiting", and "2 running, 1 waiting" when some run', () => {
+  const idle = [{ id: 'tm-1', name: 'scout', min: 6 }]
+  const none = agentsModel({ now: NOW } as never, prefsOf({ agents: [], idle }), 5)
+  expect(agentsHead(none.head)).toBe('1 waiting')
+  expect(agentsHead({ running: 0, stuck: 0, total: 0, waiting: 3 })).toBe('3 waiting')
+  expect(agentsHead({ running: 2, stuck: 0, total: 2, waiting: 1 })).toBe('2 running, 1 waiting')
+  expect(agentsShort({ running: 0, stuck: 0, total: 0, waiting: 1 })).toBe('Waiting')
+  // a failure or a stuck helper still leads; with nothing waiting the words are as before
+  expect(agentsHead({ running: 0, stuck: 0, total: 1, failed: 1, waiting: 1 })).toBe('1 failed')
+  expect(agentsHead(agentsModel({ now: NOW } as never, prefsOf({ agents: [] }), 5).head)).toBe('None')
+})
+
+test('the card model: a big screen shows the newest five finished helpers, the rest behind "Show N older"', () => {
   const finished = Array.from({ length: 30 }, (_, n) => ({ ...helpers().find(r => r.id === 'tu100')!, id: `big${n}`, state: 'done' as const, startedAt: NOW - (n + 2) * MIN, endedAt: NOW - (n + 1) * MIN }))
   const m = agentsModel({ now: NOW } as never, prefsOf({ agents: finished }), 25)
   expect(m.list.shown).toHaveLength(5)
-  expect(m.list.label).toBe('Show 25 more')
+  expect(m.list.label).toBe('Show 25 older')
+})
+
+test('a waiting agent counts only as waiting: two agents that both wait say "2 waiting", never "2 running, 2 waiting"', () => {
+  const list = startAgent(startAgent([], { ...start(1), agentId: 'ag1' }, NOW - 5 * MIN), { ...start(2), agentId: 'ag2' }, NOW - 3 * MIN)
+  const running = boardRows(list, NOW).filter(r => r.state === 'running')
+  const head = { running: 2, stuck: 0, total: 2 }
+  expect(agentsHead(waitingApart(head, running, [{ id: 'ag1' }, { id: 'ag2' }]))).toBe('2 waiting')
+  expect(agentsHead(waitingApart({ ...head, running: 3, total: 3 }, running, [{ id: 'ag1' }]))).toBe('2 running, 1 waiting')
+  expect(waitingApart(head, running, [])).toEqual(head)
 })

@@ -35,7 +35,7 @@ const CLASSES: Record<string, Kind> = {
   CHIP_TEXT_LIGHT: 'text', CHIP_TEXT_DARK: 'text', CHIP_TEXT_OFF_LIGHT: 'text', CHIP_TEXT_OFF_DARK: 'text', CHIP_TEXT_ON_LIGHT: 'text', CHIP_TEXT_ON_DARK: 'text',
   ARRANGE_LIFT_TEXT: 'text',
   BLUE: 'mark', AMBER: 'mark', RED: 'mark', AMBER_LIGHT: 'mark', RED_LIGHT: 'mark',
-  THEME_VIOLET: 'mark', THEME_TEAL: 'mark', THEME_ROSE: 'mark', THEME_TEAL_LIGHT: 'mark', THEME_ACCENTS: 'mark', THEME_ACCENTS_LIGHT: 'mark',
+  THEME_VIOLET: 'mark', THEME_TEAL: 'mark', THEME_ROSE: 'mark', THEME_GREEN: 'mark', THEME_OCEAN: 'mark', THEME_SLATE: 'mark', THEME_PLUM: 'mark', THEME_TEAL_LIGHT: 'mark', THEME_ACCENTS: 'mark', THEME_ACCENTS_LIGHT: 'mark',
   SWITCH_KNOB_FILL: 'mark', SWITCH_OFF_KNOB_LIGHT: 'mark', SWITCH_OFF_OUTLINE_LIGHT: 'mark',
   GROUND_LIGHT: 'ground', GROUND_DARK: 'ground',
   CARD_FILL: 'decor', HOVER_FILL: 'decor', CARD_HOVER_FILL: 'decor', HOVER_CLEAR: 'decor', BAR_BUSY_COLOR: 'decor', PRESS_WASH_GREY: 'decor', ACTIVE_LINE: 'decor', CARD_LINE: 'decor', ROUND_LINE: 'decor',

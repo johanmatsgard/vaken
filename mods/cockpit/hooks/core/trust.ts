@@ -1,8 +1,8 @@
 // Plugin trust card: what each plugin can do and did, from what the engine scans of every hooks module loaded after vaken.
-import { tr } from './lang'
+import { langNow, t, tr } from './lang'
+import { fillIn } from './fillin'
 import type { HelpEntry } from './registry'
 import { fmt } from './fmt'
-import { tEn } from '../i18n/t'
 
 export const VERSIONS_KEY = 'cockpit:trust:versions'
 export const SEEN_KEY = 'cockpit:trust:seen'
@@ -105,29 +105,29 @@ const EVENT_WORDS: [RegExp, string][] = [
 ]
 
 const uniq = (list: string[]): string[] => [...new Set(list)]
-export const canDo = (calls: readonly string[]): string[] => uniq(CALL_WORDS.filter(([re]) => calls.some(c => re.test(c))).map(([, w]) => w))
-export const hooksWhat = (events: readonly string[]): string[] => uniq(EVENT_WORDS.filter(([re]) => events.some(e => re.test(e))).map(([, w]) => w))
+export const canDo = (calls: readonly string[]): string[] => uniq(CALL_WORDS.filter(([re]) => calls.some(c => re.test(c))).map(([, w]) => tr(w)))
+export const hooksWhat = (events: readonly string[]): string[] => uniq(EVENT_WORDS.filter(([re]) => events.some(e => re.test(e))).map(([, w]) => tr(w)))
 
 export type Row = { name: string; version?: string; seen?: Seen; commands: number; agentsStarted: number; own?: boolean }
 export type Servers = { name: string; tools: number }[]
 
-const ago = (ms: number): string => fmt.ago(ms, 'recent')
-const list = (xs: string[]): string => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`)
+const ago = (ms: number): string => fmt.ago(ms, 'recent', langNow())
+const list = (xs: string[]): string => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} ${tr('and')} ${xs[xs.length - 1]}`)
 
 export function rowLine(r: Row, now: number): string {
-  const head = `${r.name}${r.version === undefined ? '' : ` ${r.version}`}${r.own === true ? ' (this suite)' : ''}`
+  const head = `${r.name}${r.version === undefined ? '' : ` ${r.version}`}${r.own === true ? ` (${tr('this suite')})` : ''}`
   const bits: string[] = []
-  if (r.seen === undefined && r.own === true) bits.push('the engine does not scan the plugin that reads the scan, so see its source for what it can do')
-  else if (r.seen === undefined) bits.push('not scanned by vaken (it loaded before vaken, or this session has not loaded it yet), so what its hooks can do is not known')
+  if (r.seen === undefined && r.own === true) bits.push(tr('the engine does not scan the plugin that reads the scan, so see its source for what it can do'))
+  else if (r.seen === undefined) bits.push(tr('not scanned by vaken (it loaded before vaken, or this session has not loaded it yet), so what its hooks can do is not known'))
   else {
     const can = canDo(r.seen.calls)
     const hooks = hooksWhat(r.seen.events)
-    bits.push(can.length === 0 ? 'its scan shows no calls that change things' : `its scan says it can ${list(can)}`)
-    bits.push(hooks.length === 0 ? `hooks ${tEn('words.event', { n: r.seen.events.length })}` : `its hooks ${list(hooks)} (${tEn('words.event', { n: r.seen.events.length })})`)
-    bits.push(`scanned ${ago(now - r.seen.at)}`)
+    bits.push(can.length === 0 ? tr('its scan shows no calls that change things') : fillIn(tr('its scan says it can {list}'), { list: list(can) }))
+    bits.push(hooks.length === 0 ? fillIn(tr('hooks {events}'), { events: t('words.event', { n: r.seen.events.length }) }) : fillIn(tr('its hooks {list} ({events})'), { list: list(hooks), events: t('words.event', { n: r.seen.events.length }) }))
+    bits.push(fillIn(tr('scanned {ago}'), { ago: ago(now - r.seen.at) }))
   }
-  if (r.commands > 0) bits.push(`${tEn('words.slash_command', { n: r.commands })}`)
-  if (r.agentsStarted > 0) bits.push(`started ${tEn('words.agent', { n: r.agentsStarted })} in this session`)
+  if (r.commands > 0) bits.push(t('words.slash_command', { n: r.commands }))
+  if (r.agentsStarted > 0) bits.push(fillIn(tr('started {agents} in this session'), { agents: t('words.agent', { n: r.agentsStarted }) }))
   return `${head}: ${bits.join('; ')}.`
 }
 
@@ -139,32 +139,33 @@ export function updateLines(changes: Change[]): string[] {
     const newest = list[0] as Change
     const oldest = list[list.length - 1] as Change
     const span = newest.at - oldest.at
-    lines.push(`${name}: ${oldest.from} to ${newest.to}, ${tEn('words.change', { n: list.length })}${list.length > 1 && span >= 60_000 ? ` in ${span < 3_600_000 ? tEn('fmt.n_min', { n: Math.round(span / 60_000) }) : span < 48 * 3_600_000 ? tEn('words.hour', { n: Math.round(span / 3_600_000) }) : tEn('words.day', { n: Math.round(span / 86_400_000) })}` : ''}`)
+    const over = span < 3_600_000 ? t('fmt.n_min', { n: Math.round(span / 60_000) }) : span < 48 * 3_600_000 ? t('words.hour', { n: Math.round(span / 3_600_000) }) : t('words.day', { n: Math.round(span / 86_400_000) })
+    lines.push(`${fillIn(tr('{name}: {from} to {to}, {changes}'), { name, from: oldest.from, to: newest.to, changes: t('words.change', { n: list.length }) })}${list.length > 1 && span >= 60_000 ? ` ${fillIn(tr('in {span}'), { span: over })}` : ''}`)
   }
   const more = groups.size - SHOW_PLUGINS
-  if (more > 0) lines.push(`and ${more} more`)
+  if (more > 0) lines.push(fillIn(tr('and {n} more'), { n: more }))
   return lines
 }
 
 export function trustCard(rows: Row[], servers: Servers, changes: Change[], now: number): string {
   const out: string[] = []
-  out.push('Plugin trust card. What each plugin can do, as far as vaken can see. Counts and names only.')
+  out.push(tr('Plugin trust card. What each plugin can do, as far as vaken can see. Counts and names only.'))
   out.push('')
   const recent = changes.filter(c => now - c.at < SEEN_DAYS * 86_400_000)
-  if (recent.length > 0) out.push('Updated plugins, newest first:', ...updateLines(recent).map(l => `  ${l}`), '')
-  if (rows.length === 0) out.push('No plugin seen yet.')
+  if (recent.length > 0) out.push(tr('Updated plugins, newest first:'), ...updateLines(recent).map(l => `  ${l}`), '')
+  if (rows.length === 0) out.push(tr('No plugin seen yet.'))
   else out.push(...rows.map(r => `  ${rowLine(r, now)}`))
   if (servers.length > 0) {
-    out.push('', 'Tool servers (MCP) in this session:')
-    for (const s of servers.slice(0, 8)) out.push(`  ${s.name}: ${tEn('words.tool', { n: s.tools })}`)
-    if (servers.length > 8) out.push(`  and ${servers.length - 8} more`)
+    out.push('', tr('Tool servers (MCP) in this session:'))
+    for (const s of servers.slice(0, 8)) out.push(`  ${s.name}: ${t('words.tool', { n: s.tools })}`)
+    if (servers.length > 8) out.push(`  ${fillIn(tr('and {n} more'), { n: servers.length - 8 })}`)
   }
   out.push(
     '',
-    'Not knowable from here:',
-    '  Plugins that loaded before vaken (they show no scan).',
-    '  What a plugin really does inside its hooks, and which files, commands or addresses it touched.',
-    '  Whether its tools are safe. "Can do" is what its code asks the engine for, not what it did.',
+    tr('Not knowable from here:'),
+    `  ${tr('Plugins that loaded before vaken (they show no scan).')}`,
+    `  ${tr('What a plugin really does inside its hooks, and which files, commands or addresses it touched.')}`,
+    `  ${tr('Whether its tools are safe. "Can do" is what its code asks the engine for, not what it did.')}`,
   )
   return out.join('\n')
 }

@@ -51,10 +51,11 @@ export function limitWarning(windows: UsageWindow[], now: number, hist: History 
   return best
 }
 
+// The band line beside the plan chip: each limit by the chip's own name ("5 h", "Week", "Week · Fable"), and a forecast says it is one
 export function bandWords(w: LimitWarning, now: number): string {
   const when = clockWord(w.hitAt, now)
-  if (/5-hour/i.test(w.label)) return `5-hour limit runs out about ${when}`
-  if (/^extra/i.test(w.label)) return `Extra usage runs out about ${when}`
+  if (/5-hour/i.test(w.label)) return `5 h runs out about ${when} (estimate)`
+  if (/^extra/i.test(w.label)) return `Extra usage runs out about ${when} (estimate)`
   const model = /^weekly\s*[·(-]\s*\(?([^)]+?)\)?$/i.exec(w.label.trim())?.[1]?.trim()
-  return model === undefined || /^all models$/i.test(model) ? `Weekly limit runs out about ${when}` : `Weekly limit (${model}) runs out about ${when}`
+  return model === undefined || /^all models$/i.test(model) ? `Week runs out about ${when} (estimate)` : `Week · ${model} runs out about ${when} (estimate)`
 }

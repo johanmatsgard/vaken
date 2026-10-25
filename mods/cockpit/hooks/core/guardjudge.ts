@@ -18,7 +18,7 @@ export type Env = { home: string; cwd: string; root: string }
 export type Modes = Record<Block, Mode>
 export type Judged = { found: Found[]; learn: string[]; warned?: string[] }
 
-export const DEFAULT_PROTECTED = ['.claude/settings.json', '.claude/settings.local.json', '.git/hooks', '.git/config', '~/.ssh', '~/.aws', '~/.zshrc', '~/.bashrc', '~/.zprofile', '~/.profile', '~/.gitconfig', '/etc']
+export const DEFAULT_PROTECTED = ['.claude/settings.json', '.claude/settings.local.json', '.claude/hooks', '.claude/agents', '.claude/commands', '.mcp.json', '.git/hooks', '.git/config', '~/.ssh', '~/.aws', '~/.zshrc', '~/.zshenv', '~/.bashrc', '~/.bash_profile', '~/.zprofile', '~/.profile', '~/.gitconfig', '~/.npmrc', '~/Library/LaunchAgents', '/etc']
 
 const str = (v: unknown): string => (typeof v === 'string' ? v : '')
 const list = (items: string[], max = 3): string => (items.length <= max ? items.join(', ') : `${items.slice(0, max).join(', ')} and ${items.length - max} more`)
@@ -164,7 +164,7 @@ async function judgeShell(io: Io, env: Env, command: string, modes: Modes, flavo
   return out
 }
 
-function protectedHit(path: string, home: string): string | undefined {
+export function protectedHit(path: string, home: string): string | undefined {
   const win = looksWin(path)
   const fwd = (s: string): string => (win ? s.replace(/\\/g, '/') : s)
   const kind = win && !isInsideTemp(path) ? winProtectedKind(path, home) : undefined
@@ -204,9 +204,10 @@ async function judgeWrite(io: Io, env: Env, tool: string, a: Record<string, unkn
   return out
 }
 
+// A database tool's query is read in every usual field; any other tool's only in a field named for SQL, so a search box is never read as SQL.
+const DB_TOOL = /sql|query|execute|database|db_|_db|postgres|mysql|maria|sqlite|supabase|mongo|migration|bigquery|snowflake|clickhouse|neon|turso|planetscale|cockroach|duckdb|redshift|prisma|d1_/i
 function mcpSql(tool: string, a: Record<string, unknown>): Finding[] {
-  if (!/sql|query|execute|database|db_/i.test(tool)) return []
-  const text = ['query', 'sql', 'statement', 'command'].map(k => str(a[k])).join('\n')
+  const text = (DB_TOOL.test(tool) ? ['query', 'sql', 'statement', 'command'] : ['sql', 'statement']).map(k => str(a[k])).join('\n')
   return text.trim() === '' ? [] : checkSql(text)
 }
 

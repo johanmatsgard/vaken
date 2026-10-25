@@ -70,7 +70,9 @@ test('the words: the room line, its reasons, the shares, the Claude and power li
   expect(memoryHead(calm)).toBe('Memory 50% used · 12.0 GB free')
   expect(processorHead(calm)).toBe('Processor 22% busy · 18 cores')
   expect(claudeLine(calm, 2)).toBe('Claude: 3 sessions use 4.1 GB · 2 agents running')
-  expect(powerLine(calm)).toBe('Battery 80%, plugged in · heat is fine')
+  // Calm is quiet: plugged in and cool says nothing; a low battery not plugged in, or heat that slows it, does
+  expect(powerLine(calm)).toBeUndefined()
+  expect(powerLine({ ...calm, battery: { hasBattery: true, onAc: false, percent: 12 }, thermal: { state: 'slowed', speedLimit: 70 } })).toBe('Battery 12%, not plugged in · slowed by heat to 70%')
   expect(powerLine({ at: NOW })).toBeUndefined()
   expect(computerText('on', roomOf(calm, load(1), NOW), calm)).toBe('Computer: room for about 2 more agents (memory 50%, processor 22%).')
   expect(computerText('off', undefined, undefined)).toMatch(/computer reading is off/)
@@ -121,8 +123,9 @@ test('the Computer card offers Turn on while the gauge is off, then shows the ro
   const on1 = await mount()
   expect(await on1.find({ type: 'Text', text: /^Room for about 3 more agents$/ })).toBeDefined()
   for (const text of ['Memory', '50% used', '12.0 GB free', 'Processor', '22% busy', '18 cores']) expect(await on1.find({ type: 'Text', text }), text).toBeDefined()
-  expect(await on1.find({ type: 'Text', text: /^Claude: 3 sessions use 4\.1 GB$/ })).toBeDefined()
-  expect(await on1.find({ type: 'Text', text: /^Battery 80%, plugged in · heat is fine$/ })).toBeDefined()
+  expect(await on1.find({ type: 'Text', text: /^Claude$/ })).toBeDefined()
+  expect(await on1.find({ type: 'Text', text: /^3 sessions use 4\.1 GB$/ })).toBeDefined()
+  expect(await on1.find({ type: 'Text', text: /^Battery/ })).toBeUndefined()
   await on1.press({ key: 'press-ol-computer:room-0' })
   await on1.unmount()
   const open = await mount()
@@ -135,7 +138,7 @@ test('the Computer card offers Turn on while the gauge is off, then shows the ro
   await compact.unmount()
 })
 
-test('while helpers run, the room is said once, on the Computer card (its home); the Agents note carries no room and the Computer card keeps its room line (kit item 98)', SLOW, async ($, on) => {
+test('while agents run, the room is said once, on the Computer card (its home); the Agents note carries no room and the Computer card keeps its room line', SLOW, async ($, on) => {
   mock.clock(on, { now: NOW })
   mock.env(on, { HOME: '/home/test' })
   const mem = engine(on)
@@ -212,7 +215,7 @@ test('on Auto the agent cap gives no count: the reasons say the computer decides
 
 const CLAUDE_PATH = '/Users/someone/Library/Application Support/Claude/claude-code/2.1.295/9d6405864fdc/claude.app/Contents/MacOS/claude'
 const DISCLAIMER = '/Applications/Claude.app/Contents/Helpers/disclaimer'
-test('T1: the disclaimer wrapper line is not a session: 11 programs and 11 wrappers count 11', () => {
+test('the disclaimer wrapper line is not a session: 11 programs and 11 wrappers count 11', () => {
   const rows: string[] = ['  PID   RSS COMMAND']
   for (let n = 0; n < 11; n++) {
     rows.push(`${1000 + n} 600 ${DISCLAIMER} --pgroup -- ${CLAUDE_PATH} --output-format stream-json`)
@@ -236,7 +239,7 @@ Anonymous pages:                              717768.
 Pages stored in compressor:                   372160.
 Pages occupied by compressor:                 205779.
 `
-test('T4: memory used is app + wired + compressed over all pages, the way Activity Monitor counts it', () => {
+test('memory used is app + wired + compressed over all pages, the way Activity Monitor counts it', () => {
   const share = parseFreeShare(VM_STAT_THIS_MAC)!
   const used = (717768 - 8844 + 254296 + 205779) / (113999 + 470756 + 463661 + 5669 + 254296 + 205779)
   expect(Math.abs(share - (1 - used))).toBeLessThan(1e-9)
@@ -245,7 +248,7 @@ test('T4: memory used is app + wired + compressed over all pages, the way Activi
   expect(Math.abs(parseFreeShare(old)! - (113999 + 463661 + 5669 + 8844) / (113999 + 470756 + 463661 + 5669 + 254296 + 205779))).toBeLessThan(1e-9)
 })
 
-test('T5: the processor is the busy share `top` gave; a Mac reading with only the load says "Load 6.0 of 18 cores", never busy', () => {
+test('the processor is the busy share `top` gave; a Mac reading with only the load says "Load 6.0 of 18 cores", never busy', () => {
   expect(Math.round(parseCpuBusy('Processes: 800 total\nCPU usage: 2.6% user, 5.36% sys, 92.57% idle \nSharedLibs: 1M')! * 100)).toBe(796)
   expect(parseCpuBusy('CPU usage: 8,7% user, 0,0% sys, 91,3% idle')).toBe(8.7)
   expect(parseCpuBusy('nothing here')).toBeUndefined()
@@ -261,7 +264,7 @@ test('T5: the processor is the busy share `top` gave; a Mac reading with only th
   expect(processorFact(win)).toEqual({ label: 'Processor', value: '50% busy', note: ['18 cores'] })
 })
 
-test('T3: with memory not read the room is the smaller known part, at most 2, and the line says so', () => {
+test('with memory not read the room is the smaller known part, at most 2, and the line says so', () => {
   const blind: Laptop = { ...calm, freeShare: undefined }
   const r = roomOf(blind, load(0, { max: 6 }), NOW)!
   expect(r.parts.memory).toBeUndefined()
@@ -276,7 +279,7 @@ test('T3: with memory not read the room is the smaller known part, at most 2, an
   expect(roomOf(calm, load(0, { max: 6 }), NOW)!.n).toBe(6)
 })
 
-test('T2: a reading with no stamp, or an older one, is not current; the card says another session runs an older vaken', () => {
+test('a reading with no stamp, or an older one, is not current; the card says another session runs an older vaken', () => {
   const old: Laptop = { ...calm, freeShare: undefined, procs: { count: 0, rssMb: 0 } }
   expect(olderCockpitNote(old)).toBe('Another session runs an older version of vaken, so some figures are not read. Restart it to read them all.')
   expect(olderCockpitNote({ ...old, schema: LAPTOP_SCHEMA })).toBeUndefined()

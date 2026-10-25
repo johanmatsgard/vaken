@@ -5,20 +5,21 @@ import { CAP_HOLD_WHAT } from './agentcap'
 import { HELD_WHAT as BUDGET_HELD_WHAT } from './budget'
 import { itemShort, waitWord } from './inbox'
 import type { InboxItem } from './inbox'
-import { didLine } from './ledger'
+import { shownTitle } from './ledger'
 import type { Entry } from './ledger'
-import { moneyEn as money } from './prices'
+import { money } from './prices'
 import type { HelpEntry } from './registry'
 import type { Setting } from './settings'
 import { hhmm } from './time'
-import { tEn } from '../i18n/t'
+import { t, tr } from '../i18n/t'
+import { fillIn } from './fillin'
 
 export const AWAY_SETTINGS: Setting[] = [
   {
     key: 'away.digest',
     group: 'Attention',
     label: 'Away recap',
-    note: 'A summary of what happened when you end away mode.',
+    note: 'A summary of what happened when you end away mode.', // en-only: a setting note; /vaken-settings text stays English
     options: [
       { value: 'on', label: 'On' },
       { value: 'off', label: 'Off' },
@@ -49,7 +50,7 @@ export const LEDGER_FULL = 60
 
 const DURATION_MIN_MS = 60_000
 const DURATION_MAX_MS = 24 * 3_600_000
-export const DURATION_HELP = 'Say how long like this: /vaken-away on 2h, /vaken-away on 90m, /vaken-away on 1h30m. It can be from 1 minute to 24 hours.'
+export const DURATION_HELP = 'Say how long like this: /vaken-away on 2h, /vaken-away on 90m, /vaken-away on 1h30m. It can be from 1 minute to 24 hours.' // en-only: the key; features/away.ts says it with tr() where it answers
 
 const DURATION = /^(?:for\s+)?(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours|m|min|mins|minute|minutes)(?:\s*(\d+)\s*(m|min|mins|minute|minutes))?$/
 
@@ -95,23 +96,23 @@ export function parseSaved(raw: unknown): Saved {
 }
 
 const word = (v: string | null): string => {
-  const t = v ?? 'off'
-  return t.charAt(0).toUpperCase() + t.slice(1)
+  const w = v ?? 'off'
+  return tr(w.charAt(0).toUpperCase() + w.slice(1))
 }
 
 export function modeLines(run: Run, saved: Saved, now: number): string[] {
-  const lines: string[] = [`Away mode is on since ${hhmm(run.at)}. ${run.until === undefined ? 'It stays on until you type /vaken-away off.' : `It ends at ${hhmm(run.until)} (in ${waitWord(run.until - now)}), or when you type /vaken-away off.`}`]
-  if (saved.policy !== undefined) lines.push(`Vaken set the away policy to ${word(saved.policy.set)} (it was ${word(saved.policy.old)}): risky steps are stopped by themselves.`)
-  if (saved.budget !== undefined) lines.push(`Vaken set the cost budget to ${word(saved.budget.set)}${saved.budget.limit === undefined ? '' : ` at ${money(saved.budget.limit)} a session`} (it was ${word(saved.budget.old)}): costly calls stop at 100%.`)
-  if (saved.policy !== undefined || saved.budget !== undefined) lines.push('Both go back when away mode ends.')
+  const lines: string[] = [run.until === undefined ? fillIn(tr('Away mode is on since {time}. It stays on until you type /vaken-away off.'), { time: hhmm(run.at) }) : fillIn(tr('Away mode is on since {time}. It ends at {end} (in {wait}), or when you type /vaken-away off.'), { time: hhmm(run.at), end: hhmm(run.until), wait: tr(waitWord(run.until - now)) })]
+  if (saved.policy !== undefined) lines.push(fillIn(tr('Vaken set the away policy to {to} (it was {was}): risky steps are stopped by themselves.'), { to: word(saved.policy.set), was: word(saved.policy.old) }))
+  if (saved.budget !== undefined) lines.push(saved.budget.limit === undefined ? fillIn(tr('Vaken set the cost budget to {to} (it was {was}): costly calls stop at 100%.'), { to: word(saved.budget.set), was: word(saved.budget.old) }) : fillIn(tr('Vaken set the cost budget to {to} at {limit} a session (it was {was}): costly calls stop at 100%.'), { to: word(saved.budget.set), limit: money(saved.budget.limit), was: word(saved.budget.old) }))
+  if (saved.policy !== undefined || saved.budget !== undefined) lines.push(tr('Both go back when away mode ends.'))
   return lines
 }
 
 export type Restore = { policy?: 'back' | 'kept'; budget?: 'back' | 'kept' }
 export function restoreLines(saved: Saved, r: Restore): string[] {
   const lines: string[] = []
-  if (saved.policy !== undefined && r.policy !== undefined) lines.push(r.policy === 'back' ? `The away policy is back to ${word(saved.policy.old)}.` : 'The away policy stays as you changed it.')
-  if (saved.budget !== undefined && r.budget !== undefined) lines.push(r.budget === 'back' ? `The cost budget is back to ${word(saved.budget.old)}.` : 'The cost budget stays as you changed it.')
+  if (saved.policy !== undefined && r.policy !== undefined) lines.push(r.policy === 'back' ? fillIn(tr('The away policy is back to {was}.'), { was: word(saved.policy.old) }) : tr('The away policy stays as you changed it.'))
+  if (saved.budget !== undefined && r.budget !== undefined) lines.push(r.budget === 'back' ? fillIn(tr('The cost budget is back to {was}.'), { was: word(saved.budget.old) }) : tr('The cost budget stays as you changed it.'))
   return lines
 }
 
@@ -168,13 +169,13 @@ export function buildDigest(f: DigestFacts): Digest {
 
   // When the ledger lost lines from the away time, stopped-step counts are a least.
   const ledgerCut = f.ledger.length >= LEDGER_FULL && (f.ledger.at(-1)?.at ?? 0) > f.from
-  const atLeast = ledgerCut ? 'at least ' : ''
+  const atLeast = ledgerCut ? `${tr('at least')} ` : ''
   const parts: string[] = []
-  if (finished > 0) parts.push(`${tEn('words.session', { n: finished })} finished`)
-  if (needed > 0) parts.push(`${tEn('words.session', { n: needed })} needed you`)
-  if (risky.length > 0) parts.push(`${atLeast}${tEn('words.risky_step_stopped', { n: risky.length })}`)
-  if (stops.length > 0) parts.push(`${atLeast}${tEn('words.costly_call_stopped', { n: stops.length })}`)
-  if (f.spent !== undefined && f.spent > 0) parts.push(`about ${money(f.spent)} spent (estimate)`)
+  if (finished > 0) parts.push(t('toast.n_sessions_finished', { n: finished }))
+  if (needed > 0) parts.push(t('engines.n_sessions_needed_you', { n: needed }))
+  if (risky.length > 0) parts.push(`${atLeast}${t('words.risky_step_stopped', { n: risky.length })}`)
+  if (stops.length > 0) parts.push(`${atLeast}${t('words.costly_call_stopped', { n: stops.length })}`)
+  if (f.spent !== undefined && f.spent > 0) parts.push(fillIn(tr('about {usd} spent (estimate)'), { usd: money(f.spent) }))
   const counted = new Set([...risky, ...stops])
   const others: { what: string; n: number }[] = []
   for (const e of did) {
@@ -183,19 +184,19 @@ export function buildDigest(f: DigestFacts): Digest {
     if (old === undefined) others.push({ what: e.what, n: 1 })
     else old.n += 1
   }
-  const lead = `${f.ended ? 'While you were away' : 'So far while you are away'} (${waitWord(f.to - f.from)})`
-  const headline = parts.length > 0 ? `${lead}: ${parts.join(', ')}.` : others.length > 0 ? 'Little happened while you were away.' : f.ended ? NOTHING_HAPPENED : 'Nothing happened yet while you are away.'
+  const lead = `${f.ended ? tr('While you were away') : tr('So far while you are away')} (${tr(waitWord(f.to - f.from))})`
+  const headline = parts.length > 0 ? `${lead}: ${parts.join(', ')}.` : others.length > 0 ? tr('Little happened while you were away.') : f.ended ? tr(NOTHING_HAPPENED) : tr('Nothing happened yet while you are away.')
   if (parts.length === 0 && others.length === 0 && f.waiting.length === 0 && !ledgerCut) return { headline, text: headline }
 
   const lines: string[] = [headline, '']
-  if (f.waiting.length === 0) lines.push('Nothing waits for you.')
+  if (f.waiting.length === 0) lines.push(tr('Nothing waits for you.'))
   else {
-    lines.push('Waiting for you:')
+    lines.push(tr('Waiting for you:'))
     for (const it of f.waiting.slice(0, SHOWN)) lines.push(`- ${itemShort(it, f.to)}`)
-    if (f.waiting.length > SHOWN) lines.push(`- and ${f.waiting.length - SHOWN} more. /vaken inbox lists them all.`)
+    if (f.waiting.length > SHOWN) lines.push(fillIn(tr('- and {n} more. /vaken inbox lists them all.'), { n: f.waiting.length - SHOWN }))
   }
-  if (others.length > 0) lines.push('', `Vaken also did this: ${others.map(didLine).join(' ')}`)
-  if (ledgerCut) lines.push('', `The ledger keeps only the last ${LEDGER_FULL} entries, so the oldest ones from this time may be missing.`)
+  if (others.length > 0) lines.push('', fillIn(tr('Vaken also did this: {list}'), { list: others.map(d => `${tr(shownTitle(d.what))} ${t('words.times', { n: d.n })}.`).join(' ') }))
+  if (ledgerCut) lines.push('', fillIn(tr('The ledger keeps only the last {n} entries, so the oldest ones from this time may be missing.'), { n: LEDGER_FULL }))
   return { headline, text: lines.join('\n') }
 }
 
@@ -205,7 +206,7 @@ export function parseDigest(raw: unknown): SavedDigest | undefined {
   return isObj(raw) && typeof raw.at === 'number' && typeof raw.from === 'number' && typeof raw.to === 'number' && typeof raw.text === 'string' ? { at: raw.at, from: raw.from, to: raw.to, text: raw.text } : undefined
 }
 export const digestText = (d: SavedDigest, _now: number): string => d.text
-export const NO_DIGEST = 'There is no digest yet. Vaken makes one when you end away mode: /vaken-away off.'
+export const NO_DIGEST = 'There is no digest yet. Vaken makes one when you end away mode: /vaken-away off.' // en-only: the key; features/away.ts says it with tr() where it answers
 
 
 export const timerEndDetail = 'The time you set ran out.'

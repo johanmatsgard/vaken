@@ -4,7 +4,7 @@ import type { HelpEntry } from './registry'
 import type { WhatIs } from './whatis'
 import { fmt } from './fmt'
 import { langNow } from '../i18n/t'
-import { tEn } from '../i18n/t'
+import { fillIn } from './fillin'
 
 export const SKILLS_COUNTS_KEY = 'cockpit:skills:counts'
 export const SKILLS_LISTING_KEY = 'cockpit:skills:listing'
@@ -12,7 +12,6 @@ export const SKILLS_DAYS = 7
 export const SKILLS_NAMES_MAX = 200
 export const SKILL_NAME_MAX = 64
 export const SKILLS_FLUSH_MS = 60_000
-export const UNUSED_SHOWN = 8
 export const UNUSED_FOLD = 3
 export const LISTING_TRIES = 3
 
@@ -20,6 +19,10 @@ export const SKILLS_HELP: HelpEntry[] = [
   {
     title: 'What the Skills card shows',
     text: 'It counts the skills you and Claude used in the last 7 days (names and counts only, never what was said). It also says how many skills are listed in Claude\'s memory, what that list costs, and which ones you did not use this week. A skill you never use only costs memory.',
+  },
+  {
+    title: 'What the repeat offer does',
+    text: 'When you do the same routine 3 times in 14 days in one project, such as run tests, fix, commit, the Skills card offers once to save it as a skill. Draft the skill asks Claude to write it in .claude/skills, and you read it first; Not now waits 14 days. Only the kinds of steps are counted, never what was said, and Skill coach turns it off.',
   },
 ]
 
@@ -112,6 +115,9 @@ export function topSkills(raw: unknown, now: number, n: number): TopSkill[] {
     .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
     .slice(0, Math.max(0, n))
 }
+
+// How many skills were used this week, every one, not only the rows the card shows first.
+export const usedCount = (raw: unknown, now: number): number => Object.keys(weekTotals(raw, now)).length
 
 export type SkillListing = { at: number; total: number; included: number; tokens: number; names: string[] }
 
@@ -252,7 +258,8 @@ const times = (n: number, t: (s: string) => string): string => (n === 1 ? t('1 t
 const SKILLS_MEANS = 'A skill is a ready-made way of working that Claude can load, such as grilling or a code review. The count is how often one was used in the last 7 days.'
 
 export function skillsWhat(f: SkillsFacts, t: (s: string) => string = s => s): SkillsView {
-  const top = topSkills(f.counts, f.now, TOP_SHOWN)
+  const used = topSkills(f.counts, f.now, SKILLS_NAMES_MAX)
+  const top = used.slice(0, TOP_SHOWN)
   const cost = skillsCostLine(f.listing, f.counts, f.now, t)
   const unused = unusedSkills(f.listing, f.counts, f.now)
   const base: WhatIs = { means: t(SKILLS_MEANS) }
@@ -266,37 +273,39 @@ export function skillsWhat(f: SkillsFacts, t: (s: string) => string = s => s): S
   }
   const unusedWhat = (name: string): WhatIs => ({ means: t('Listed for Claude, but not used in the last 7 days.'), facts: [name] })
   const groups: SkillGroup[] = [
-    ...(top.length === 0 ? [] : [{ head: t('Used this week'), rows: top.map(s => ({ key: `skill-${s.name}`, title: plainSkillName(s.name), right: times(s.count, t), what: useWhat(s), ...(startSkillCommand(s.name) === undefined ? {} : { command: startSkillCommand(s.name) as string }) })) }]),
+    ...(used.length === 0
+      ? []
+      : [{ head: t('Used this week'), ...(used.length > TOP_SHOWN ? { fold: { id: 'used', shown: TOP_SHOWN, more: used.length - TOP_SHOWN } } : {}), rows: used.map(s => ({ key: `skill-${s.name}`, title: plainSkillName(s.name), right: times(s.count, t), what: useWhat(s), ...(startSkillCommand(s.name) === undefined ? {} : { command: startSkillCommand(s.name) as string }) })) }]),
     ...(cost === undefined ? [] : [{ head: t('Skill list'), rows: [{ key: 'cost', title: cost, what: costWhat }] }]),
     ...(unused.length === 0
       ? []
       : [
           {
             head: t('Not used this week'),
-            ...(unused.length > UNUSED_FOLD ? { fold: { id: 'unused', shown: UNUSED_FOLD, more: Math.min(unused.length, UNUSED_SHOWN) - UNUSED_FOLD } } : {}),
-            rows: [
-              ...unused.slice(0, UNUSED_SHOWN).map(name => ({ key: `unused-${name}`, title: plainSkillName(name), what: unusedWhat(name) })),
-              ...(unused.length > UNUSED_SHOWN ? [{ key: 'unused-more', title: t('and {n} more').replace('{n}', String(unused.length - UNUSED_SHOWN)), what: costWhat }] : []),
-            ],
+            // The fold holds every unused skill: "Show N more" counts them all, so no "and N more" line follows it
+            ...(unused.length > UNUSED_FOLD ? { fold: { id: 'unused', shown: UNUSED_FOLD, more: unused.length - UNUSED_FOLD } } : {}),
+            rows: unused.map(name => ({ key: `unused-${name}`, title: plainSkillName(name), what: unusedWhat(name) })),
           },
         ]),
   ]
-  const nothing = t('No skill used yet this week.')
-  const short = top.length === 0 ? (cost ?? nothing) : `${t('Top:')} ${top.slice(0, 3).map(s => `${plainSkillName(s.name)} ${s.count}`).join(', ')}`
+  const nothing = t('No skill used this week')
+  const short = top.length === 0 ? (cost ?? nothing) : `${t('Top:')} ${top.slice(0, 3).map(s => `${plainSkillName(s.name)} · ${times(s.count, t)}`).join(', ')}`
   const lines = [...(top.length === 0 ? [nothing] : top.map(s => `${plainSkillName(s.name)}: ${times(s.count, t)}`)), ...(cost === undefined ? [] : [cost])]
   return { title: t('Skills'), blurb: '', short, lines, whats: lines.map(() => base), shortWhat: base, groups }
 }
 
-export function skillsText(f: SkillsFacts): string[] {
+export function skillsText(f: SkillsFacts, t: (s: string) => string = s => s): string[] {
   const top = topSkills(f.counts, f.now, 15)
-  const cost = skillsCostLine(f.listing, f.counts, f.now)
+  const cost = skillsCostLine(f.listing, f.counts, f.now, t)
   const unused = unusedSkills(f.listing, f.counts, f.now)
+  const names = unused.slice(0, 30).join(', ')
+  const withMore = fillIn(t('{list}, and {n} more'), { list: names, n: unused.length - 30 })
   return [
-    top.length === 0 ? 'No skill was used in the last 7 days.' : 'Skills used in the last 7 days:',
-    ...top.map(s => `  ${s.name}: ${tEn('words.time', { n: s.count })}`),
+    top.length === 0 ? t('No skill was used in the last 7 days.') : t('Skills used in the last 7 days:'),
+    ...top.map(s => `  ${s.name}: ${times(s.count, t)}`),
     '',
-    cost ?? 'The list of skills in memory could not be read, so the cost is not shown.',
-    ...(unused.length === 0 ? [] : ['Not used this week:', `  ${unused.slice(0, 30).join(', ')}${unused.length > 30 ? `, and ${unused.length - 30} more` : ''}`]),
+    cost ?? t('The list of skills in memory could not be read, so the cost is not shown.'),
+    ...(unused.length === 0 ? [] : [t('Not used this week:'), `  ${unused.length > 30 ? withMore : names}`]),
   ]
 }
 

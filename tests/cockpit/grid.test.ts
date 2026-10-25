@@ -3,9 +3,9 @@ import { expect, mock } from 'claude-code/testing'
 import { test } from './slow'
 import type { On } from 'claude-code'
 
-import { BORDER_X_PT, CARD_GAP_X, CARD_MIN_INNER_PT, COLUMN_MIN_PT, COLUMNS_2_FROM_PT, COLUMNS_3_FROM_PT, COLUMNS_4_FROM_PT, COLUMNS_5_FROM_PT, COLUMNS_6_FROM_PT, COL_PT, LIST_SHOW, LIST_SHOW_MAX, MAX_COLUMNS, ROW_PT, STACK_BELOW_PT, cols, columnsFor } from '../hooks/ui/tokens'
-import { COLUMN_CHOICES, columnsUsed, listShowFor, paneGrid } from '../hooks/features/home/grid'
-import { boardLayout, placeColumns } from '../hooks/features/home/board'
+import { BORDER_X_PT, cardGapX, CARD_PAD_X_PT, LIST_TALL_ROWS, CARD_MIN_INNER_PT, COLUMN_MIN_PT, COLUMNS_2_FROM_PT, COLUMNS_3_FROM_PT, COLUMNS_4_FROM_PT, COLUMNS_5_FROM_PT, COLUMNS_6_FROM_PT, COL_PT_MAC, COL_PT_WIN, columnPt, LIST_SHOW, LIST_SHOW_MAX, MAX_COLUMNS, ONE_COLUMN_MAX_PT, PRESS_WASH_OUT, ROW_PT, STACK_BELOW_PT, cols, columnsFor, setColumnSystem, settingsSpanGap, switchHitW } from '../hooks/ui/tokens'
+import { COLUMN_CHOICES, columnCells, columnsUsed, listShowFor, paneGrid } from '../hooks/features/home/grid'
+import { boardLists, listsLayout, placeColumns } from '../hooks/features/home/board'
 import { BUCKETS, isBucket, parseLayouts, readOrders, sameLayout, snapshot } from '../hooks/features/home/layouts'
 import { CARD_IDS } from '../hooks/features/home/logic'
 import { defaults, findSetting } from '../hooks/core/settings'
@@ -16,12 +16,14 @@ const MIN = 60_000
 const WIDTHS_PT = [300, 500, 800, 1200, 1600, 2400, 3400]
 const HEIGHTS_PT = [600, 1400, 2400]
 const CLOSE = 0.01
+const TWO_SCREENS_PT = 2 * LIST_TALL_ROWS * ROW_PT // a pane two laptop screens tall: a list shows twice LIST_SHOW rows
 
-test('the columns: one more for each 340 pt of pane body, up to six; a column always holds a card whose rows do not stack', () => {
-  expect([COLUMNS_2_FROM_PT, COLUMNS_3_FROM_PT, COLUMNS_4_FROM_PT, COLUMNS_5_FROM_PT, COLUMNS_6_FROM_PT]).toEqual([680, 1020, 1360, 1700, 2040])
+test('the columns: one more for each COLUMN_MIN_PT of pane body, up to six; a column always holds a card whose rows do not stack', () => {
+  const m = COLUMN_MIN_PT
+  expect([COLUMNS_2_FROM_PT, COLUMNS_3_FROM_PT, COLUMNS_4_FROM_PT, COLUMNS_5_FROM_PT, COLUMNS_6_FROM_PT]).toEqual([2 * m, 3 * m, 4 * m, 5 * m, 6 * m])
   expect(MAX_COLUMNS).toBe(6)
   const at = (pt: number) => columnsFor(pt)
-  expect([at(300), at(679), at(680), at(1019), at(1020), at(1359), at(1360), at(1699), at(1700), at(2039), at(2040), at(3400), at(10_000)]).toEqual([1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 6])
+  expect([at(300), at(2 * m - 1), at(2 * m), at(3 * m - 1), at(3 * m), at(4 * m - 1), at(4 * m), at(5 * m - 1), at(5 * m), at(6 * m - 1), at(6 * m), at(3400), at(10_000)]).toEqual([1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 6])
   for (let n = 2; n <= MAX_COLUMNS; n += 1) {
     const g = paneGrid(n * COLUMN_MIN_PT, 'auto', 10)
     expect(g.ncol).toBe(n)
@@ -46,7 +48,7 @@ test('the rows a list shows: five on a laptop pane in Auto, more on a tall pane,
   const rowsOf = (pt: number) => Math.round(pt / ROW_PT)
   expect(listShowFor(2, 2, rowsOf(600))).toBe(LIST_SHOW)
   expect(listShowFor(1, 1, undefined)).toBe(LIST_SHOW)
-  expect(listShowFor(2, 2, rowsOf(1400))).toBe(2 * LIST_SHOW)
+  expect(listShowFor(2, 2, rowsOf(TWO_SCREENS_PT))).toBe(2 * LIST_SHOW)
   expect(listShowFor(2, 2, rowsOf(2400))).toBe(3 * LIST_SHOW)
   expect(listShowFor(6, 3, rowsOf(600))).toBe(2 * LIST_SHOW)
   expect(listShowFor(6, 1, rowsOf(2400))).toBe(LIST_SHOW_MAX)
@@ -55,7 +57,8 @@ test('the rows a list shows: five on a laptop pane in Auto, more on a tall pane,
 })
 
 // The grid rule: columns are WHOLE cells (floored), one whole column apart.
-const wholeCols = (w: number, n: number): number => Math.floor((Math.floor(w / COL_PT + 0.01) - (n - 1)) / n)
+const wholeCols = (w: number, n: number): number => Math.floor((Math.floor(w / columnPt() + 0.01) - (n - 1)) / n)
+const oneCol = (w: number): number => Math.min(w, Math.floor(ONE_COLUMN_MAX_PT / columnPt()) * columnPt())
 test('the placement grid at every width, height and choice: same left edge as the title, equal columns of whole cells, one-column gaps, the last column ends within a few cells of the title row', () => {
   for (const w of WIDTHS_PT)
     for (const hgt of HEIGHTS_PT)
@@ -65,22 +68,23 @@ test('the placement grid at every width, height and choice: same left edge as th
           const rights = g.lefts.map(l => l + g.colPt)
           expect(g.lefts[0]).toBe(0)
           expect(g.lefts).toHaveLength(g.ncol)
-          for (let n = 1; n < g.ncol; n += 1) expect(Math.abs(g.lefts[n] - rights[n - 1] - CARD_GAP_X)).toBeLessThan(CLOSE)
+          for (let n = 1; n < g.ncol; n += 1) expect(Math.abs(g.lefts[n] - rights[n - 1] - cardGapX())).toBeLessThan(CLOSE)
           if (g.ncol === g.bucket && g.ncol > 1) {
             expect(Number.isInteger(g.colCells)).toBe(true)
             expect(rights[rights.length - 1]).toBeLessThanOrEqual(w + CLOSE)
-            expect(w - rights[rights.length - 1]).toBeLessThan((g.ncol + 1) * COL_PT)
-          } else if (g.ncol === g.bucket) expect(Math.abs(rights[rights.length - 1] - w)).toBeLessThan(CLOSE)
+            expect(w - rights[rights.length - 1]).toBeLessThan((g.ncol + 1) * columnPt())
+          } else if (g.ncol === g.bucket) expect(Math.abs(rights[rights.length - 1] - oneCol(w))).toBeLessThan(CLOSE)
           else {
             expect(Math.abs(g.colPt - g.cap.colPt)).toBeLessThan(CLOSE)
             expect(rights[rights.length - 1]).toBeLessThanOrEqual(w + CLOSE)
           }
-          expect(g.cap.capped).toBe(g.bucket > 1)
-          expect(Math.abs(g.cap.colPt - (g.bucket === 1 ? w : wholeCols(w, g.bucket) * COL_PT))).toBeLessThan(CLOSE)
+          // One column on a wide pane keeps a reading width (ONE_COLUMN_MAX_PT) at the left
+          expect(g.cap.capped).toBe(g.bucket > 1 || oneCol(w) < w)
+          expect(Math.abs(g.cap.colPt - (g.bucket === 1 ? oneCol(w) : wholeCols(w, g.bucket) * columnPt()))).toBeLessThan(CLOSE)
           expect(g.innerPt).toBeGreaterThanOrEqual(CARD_MIN_INNER_PT)
           if (w >= CARD_MIN_INNER_PT + 2 * BORDER_X_PT) expect(g.innerPt + 2 * BORDER_X_PT).toBeLessThanOrEqual(g.colPt + CLOSE)
           // More than one column only when each is at least a phone-sized card.
-          if (g.ncol > 1) expect(g.colPt + CARD_GAP_X + COL_PT).toBeGreaterThanOrEqual(COLUMN_MIN_PT - CLOSE)
+          if (g.ncol > 1) expect(g.colPt + cardGapX() + columnPt()).toBeGreaterThanOrEqual(COLUMN_MIN_PT - CLOSE)
           expect(g.ncol).toBeLessThanOrEqual(Math.min(cards, columnsUsed(w, choice)))
           if (g.ncol === g.bucket && g.ncol > 1) expect(g.colCells).toBe(wholeCols(w, g.ncol))
         }
@@ -120,7 +124,7 @@ function engine(on: On) {
   on('session.measure', (_$, e) => ({ changed: e.changed }))
   on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
 }
-const propsAt = (wPt: number, hPt: number) => ({ title: 'Vaken', isFocused: false, bodyColumns: wPt / COL_PT, placement: 'dock' as const, scroll: { bodyRows: Math.round(hPt / ROW_PT), offset: 0, total: 200 }, view: {} })
+const propsAt = (wPt: number, hPt: number) => ({ title: 'Vaken', isFocused: false, bodyColumns: wPt / columnPt(), placement: 'dock' as const, scroll: { bodyRows: Math.round(hPt / ROW_PT), offset: 0, total: 200 }, view: {} })
 
 type Node = { type?: string; key?: string; props?: Record<string, unknown>; children?: unknown[] }
 const kids = (n: Node): Node[] => (n.children ?? []).filter((c): c is Node => c !== null && typeof c === 'object')
@@ -136,7 +140,7 @@ const widest = (n: Node): number =>
     0,
     ...walk(n)
       .slice(1)
-      .map(x => (x.type === 'Svg' ? Number(x.props?.width ?? 0) : typeof x.props?.width === 'number' ? (x.props.width as number) * COL_PT : 0)),
+      .map(x => (x.type === 'Svg' ? Number(x.props?.width ?? 0) : typeof x.props?.width === 'number' ? (x.props.width as number) * columnPt() : 0)),
   )
 
 async function checkGeometry($: { ui: { mount: (o: unknown) => Promise<never> } }, choice: string): Promise<{ one: number; many: number }> {
@@ -159,14 +163,18 @@ async function checkGeometry($: { ui: { mount: (o: unknown) => Promise<never> } 
       const columnsChoice = choice
       if (row === undefined) {
         expect(columnsUsed(innerPt + 2 * BORDER_X_PT, columnsChoice)).toBe(1)
-        for (const card of kids(root)) for (const k of [...OFFSETS, 'width']) expect(card.props?.[k]).toBeUndefined()
+        // A card sets its own side padding (CARD_PAD_X_PT) so the host's default never applies; nothing else shifts it
+        for (const card of kids(root)) {
+          for (const k of [...OFFSETS.filter(o => o !== 'paddingLeft' && o !== 'paddingRight'), 'width']) expect(card.props?.[k]).toBeUndefined()
+          for (const k of ['paddingLeft', 'paddingRight']) expect([undefined, cols(CARD_PAD_X_PT)]).toContain(card.props?.[k])
+        }
         for (const card of kids(root)) expect(widest(card)).toBeLessThanOrEqual(innerPt + 2 * BORDER_X_PT + CLOSE)
         seen.one += 1
         continue
       }
       seen.many += 1
       expect(row.props?.width).toBe('100%')
-      expect(row.props?.columnGap).toBe(cols(CARD_GAP_X))
+      expect(row.props?.columnGap).toBe(cols(cardGapX()))
       for (const k of [...OFFSETS, 'height', 'flexGrow']) expect(row.props?.[k]).toBeUndefined()
       const columns = kids(row)
       const g = paneGrid(innerPt + 2 * BORDER_X_PT, columnsChoice, 10, Math.round(hgt / ROW_PT))
@@ -175,12 +183,12 @@ async function checkGeometry($: { ui: { mount: (o: unknown) => Promise<never> } 
       const cells = columns.map(c => c.props?.width as number)
       expect(new Set(cells).size).toBe(1)
       expect(Number.isInteger(cells[0])).toBe(true)
-      expect(cells.length * cells[0] + (cells.length - 1) * cols(CARD_GAP_X)).toBeLessThanOrEqual(w / COL_PT + 0.05)
+      expect(cells.length * cells[0] + (cells.length - 1) * cols(cardGapX())).toBeLessThanOrEqual(w / columnPt() + 0.05)
       for (const c of columns) {
         expect([c.props?.flexGrow, c.props?.flexShrink, c.props?.overflow]).toEqual([0, 0, 'hidden'])
         for (const k of OFFSETS) expect(c.props?.[k]).toBeUndefined()
-        expect(widest(c)).toBeLessThanOrEqual(cells[0] * COL_PT + CLOSE)
-        expect(cells[0] * COL_PT - 2 * BORDER_X_PT).toBeGreaterThanOrEqual(CARD_MIN_INNER_PT)
+        expect(widest(c)).toBeLessThanOrEqual(cells[0] * columnPt() + CLOSE)
+        expect(cells[0] * columnPt() - 2 * BORDER_X_PT).toBeGreaterThanOrEqual(CARD_MIN_INNER_PT)
       }
       // A full-width bar's picture is never narrower than its bar, so it reaches the card's right end on any screen.
       for (const svg of walk(root).filter(x => x.type === 'Svg' && String(x.props?.source ?? '').includes('preserveAspectRatio="none"'))) {
@@ -211,20 +219,21 @@ test('the drawn pane with Columns 2 on every screen: two wide columns, the same 
   expect(await checkGeometry($ as never, '2')).toEqual({ one: 6, many: 15 })
 })
 
-test('a bar on a very wide card reaches its end: the picture is as wide as the bar', async ($, on) => {
+test('Columns 1 on a very wide pane keeps a reading width at the left, and its bars reach their end', async ($, on) => {
   mock.clock(on, { now: NOW })
   mock.store(on, world({ 'cockpit:setting:look.columns': '1' }))
   mock.env(on, { HOME: '/home/test' })
   engine(on)
   const ui = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: propsAt(3400, 1400) })
+  const col = await ui.find({ key: 'column-one' })
+  expect(col, 'the one column is a box of its own width').toBeDefined()
+  expect(Number(col?.props.width)).toBeLessThanOrEqual(cols(ONE_COLUMN_MAX_PT))
   const bars = (await ui.findAll({ type: 'Svg' })).filter(x => String(x.props.source).includes('preserveAspectRatio="none"'))
   expect(bars.length).toBeGreaterThan(0)
-  const widths = bars.map(b => Number(/width="([\d.]+)"/.exec(String(b.props.source))?.[1]))
-  expect(Math.max(...widths)).toBeGreaterThan(3000)
   await ui.unmount()
 })
 
-test('a tall pane shows more sessions before "Show N more"; a laptop pane keeps five; fewer columns on a wide screen show more', async ($, on) => {
+test('a tall pane shows more sessions before "N more sessions"; a laptop pane keeps five; fewer columns on a wide screen show more', async ($, on) => {
   mock.clock(on, { now: NOW })
   const mem = new Map<string, unknown>(Object.entries(world()))
   on('store.get', (_$, e) => ({ value: mem.get(e.key) }) as never)
@@ -240,19 +249,19 @@ test('a tall pane shows more sessions before "Show N more"; a laptop pane keeps 
   mock.env(on, { HOME: '/home/test' })
   engine(on)
   const ui = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: propsAt(800, 600) })
-  const more = async () => ((await ui.find({ text: /^Show \d+ more$/ })) as { text?: string } | undefined)?.text
-  expect(await more()).toBe('Show 7 more')
-  await ui.redraw(propsAt(800, 1400))
-  expect(await more()).toBe('Show 2 more')
+  const more = async () => ((await ui.find({ text: /^\d+ more sessions?$/ })) as { text?: string } | undefined)?.text
+  expect(await more()).toBe('7 more sessions')
+  await ui.redraw(propsAt(800, TWO_SCREENS_PT))
+  expect(await more()).toBe('2 more sessions')
   await ui.redraw(propsAt(800, 2400))
   expect(await more()).toBeUndefined()
   await ui.redraw(propsAt(2400, 600))
-  expect(await more()).toBe('Show 7 more')
+  expect(await more()).toBe('7 more sessions')
   await ui.unmount()
   const cmd = (await $.command.run({ ...viaParent('vaken-settings', 'look.columns 3'), origin: { kind: 'composer' } } as never)) as { text?: string } | undefined
   expect(cmd?.text ?? '').toMatch(/look\.columns: 3/)
   const three = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: propsAt(2400, 600) })
-  expect(((await three.find({ text: /^Show \d+ more$/ })) as { text?: string } | undefined)?.text).toBe('Show 2 more')
+  expect(((await three.find({ text: /^\d+ more sessions?$/ })) as { text?: string } | undefined)?.text).toBe('2 more sessions')
   const row = (await three.find({ key: 'columns' })) as { children: unknown[] } | undefined
   expect(row?.children.filter(c => c !== null && typeof c === 'object')).toHaveLength(3)
   await three.unmount()
@@ -300,21 +309,23 @@ test('saved layouts keep all six widths; an older layout of three widths still l
   expect(sameLayout(old.Old, snapshot(old.Old.values, old.Old.orders))).toBe(true)
 })
 
-test('the arrange board at five columns: five equal columns, filled in turn, the last ending at the board edge', () => {
+test('the arrange board at five columns: five equal columns, filled in turn, the last ending within a few cells of the board edge', () => {
   const ids = ['limit', 'here', 'others', 'autopilot', 'proof', 'guard', 'agents', 'computer', 'skills', 'prs']
   const heights = Object.fromEntries(ids.map((id, n) => [id, 3 + (n % 4)]))
   // Not group by group (an arranged order): one sequence cut into five columns of two.
   expect(placeColumns(ids.length, 5).map(g => g[0])).toEqual([0, 2, 4, 6, 8])
-  const rects = boardLayout(ids, heights, 5, 221, 1)
+  const rects = [...listsLayout(boardLists(ids, undefined, 5), heights, 221, 1).tiles.values()]
   const xs = [...new Set(rects.map(r => r.x))]
   expect(xs).toHaveLength(5)
   expect(xs[0]).toBe(0)
   const last = rects.reduce((a, r) => (r.x > a.x ? r : a))
-  expect(last.x + last.w).toBe(221)
-  const widths = new Set(rects.filter(r => r.x < last.x).map(r => r.w))
+  // Every column is as wide as the others; the spare cells (fewer than one per column) stay free at the right
+  expect(last.x + last.w).toBeLessThanOrEqual(221)
+  expect(221 - (last.x + last.w)).toBeLessThan(5)
+  const widths = new Set(rects.map(r => r.w))
   expect(widths.size).toBe(1)
-  const bottoms = new Set(xs.map(x => Math.max(...rects.filter(r => r.x === x).map(r => r.y + r.tall))))
-  expect(bottoms.size).toBe(1)
+  // Each tile is as tall as its card: no tile stretches to the tallest column's foot
+  expect(rects.map(r => r.tall)).toEqual(ids.map(id => heights[id]))
 })
 
 test('arranging at five columns: the board gets five columns and a drop is kept for that width only', async ($, on) => {
@@ -337,13 +348,85 @@ test('arranging at five columns: the board gets five columns and a drop is kept 
   await start.press({ key: 'arrange' })
   await start.unmount()
   const board = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props })
-  const client = (await board.find({ key: 'arrange-board' })) as { props: { props: { columns: number; bucket: number; order: string[] } } } | undefined
-  expect(client?.props.props.columns).toBe(5)
+  const client = (await board.find({ key: 'arrange-board' })) as { props: { props: { lists: string[][]; bucket: number } } } | undefined
+  expect(client?.props.props.lists).toHaveLength(5)
   expect(client?.props.props.bucket).toBe(5)
-  const order = [...(client?.props.props.order ?? [])].filter(id => id !== 'needs').reverse()
-  await board.post({ order: order.join(','), bucket: 5 }, { in: 'arrange-board' })
-  expect(String(mem.get('cockpit:pref:gorder:5')).startsWith(order.join(','))).toBe(true)
+  const lists = (client?.props.props.lists ?? []).map(l => l.filter(id => id !== 'needs').reverse())
+  const text = lists.map(l => l.join(',')).join('|')
+  await board.post({ lists: text, bucket: 5 }, { in: 'arrange-board' })
+  // Each column keeps its own list; the cards not shown stay under the last column
+  const kept = String(mem.get('cockpit:pref:gorder:5')).split('|')
+  expect(kept).toHaveLength(5)
+  for (const [n, l] of lists.entries()) expect(kept[n].startsWith(l.join(','))).toBe(true)
+  expect(kept.slice(0, 4)).toEqual(lists.slice(0, 4).map(l => l.join(',')))
   expect(mem.get('cockpit:pref:gorder:3')).toBeUndefined()
   await board.press({ key: 'arrange-done' })
   await board.unmount()
+})
+
+// The same app (3.6556.2) draws a narrower text cell on Windows: 43 whole cells measured 509 px at 1.5 scale there, 8.8 pt a cell on a Mac
+const onSystem = <T>(sys: 'posix' | 'win32', run: () => T): T => {
+  setColumnSystem(sys)
+  try {
+    return run()
+  } finally {
+    setColumnSystem('posix')
+  }
+}
+const near = (got: number, want: number, within = 1e-9): void => expect(Math.abs(got - want), `${got} is ${want}`).toBeLessThanOrEqual(within)
+
+test('the text column per system: 8.8 pt on a Mac and anything not Windows, 7.9 pt on Windows; everything made of columns follows', () => {
+  expect([COL_PT_MAC, COL_PT_WIN]).toEqual([8.8, 7.9])
+  expect(columnPt()).toBe(8.8)
+  const mac = { col: columnPt(), gap: cardGapX(), span: settingsSpanGap(), hit: switchHitW(), cells: cols(88) }
+  expect(mac).toMatchObject({ col: 8.8, gap: 8.8, cells: 10 })
+  near(mac.span, 17.6)
+  const win = onSystem('win32', () => ({ col: columnPt(), gap: cardGapX(), span: settingsSpanGap(), hit: switchHitW(), cells: cols(79), gapCells: cols(cardGapX()), spanCells: cols(settingsSpanGap()) }))
+  expect(win).toMatchObject({ col: 7.9, gap: 7.9, cells: 10, gapCells: 1, spanCells: 2 })
+  near(win.span, 15.8)
+  near(mac.hit - win.hit, PRESS_WASH_OUT * (8.8 - 7.9))
+  near(onSystem('win32', () => 43 * columnPt()), 509 / 1.5, 0.5)
+  // Only Windows changes it; any other value is the Mac's
+  expect(onSystem('linux' as never, () => columnPt())).toBe(8.8)
+  expect(columnPt()).toBe(8.8)
+})
+
+test('the grid on Windows is laid in 7.9 pt cells: the same body of 120 cells is 3 columns of 39 on a Mac and 2 of 59 on Windows, and fills the pane', () => {
+  const at = (sys: 'posix' | 'win32') =>
+    onSystem(sys, () => {
+      const bodyPt = 120 * columnPt()
+      const g = paneGrid(bodyPt, 'auto', 10, 30)
+      return { bodyPt, ncol: g.ncol, colCells: g.colCells, colPt: g.colPt, gapPt: g.gapPt, gapCells: g.gapCells, twoCells: columnCells(bodyPt, 2) }
+    })
+  const mac = at('posix')
+  expect(mac).toMatchObject({ ncol: 3, colCells: 39, gapPt: 8.8, gapCells: 1, twoCells: 59 })
+  near(mac.bodyPt, 1056, 1e-6)
+  near(mac.colPt, 39 * 8.8, 1e-6)
+  const win = at('win32')
+  expect(win).toMatchObject({ ncol: 2, colCells: 59, gapPt: 7.9, gapCells: 1, twoCells: 59 })
+  near(win.bodyPt, 948, 1e-6)
+  near(win.colPt, 59 * 7.9, 1e-6)
+  // Columns and gaps in whole cells end within the pane's own cells on both systems
+  for (const g of [mac, win]) expect(g.ncol * g.colCells + (g.ncol - 1) * g.gapCells).toBeLessThanOrEqual(120)
+})
+
+// The plugin reads the system once at session start (the OS variable) and lays the pane in that system's cells
+async function columnsAt120(sys: Record<string, string>, $: { session: { start: (e: never) => Promise<unknown> }; ui: { mount: (o: unknown) => Promise<never> } }, on: On): Promise<unknown[]> {
+  mock.clock(on, { now: NOW })
+  mock.store(on, world())
+  mock.env(on, { HOME: '/home/test', ...sys })
+  engine(on)
+  await $.session.start({ cwd: '/work/app', surface: 'desktop', isInteractive: true } as never)
+  const ui = (await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: { ...propsAt(0, 1400), bodyColumns: 120 } })) as { drawn: () => Promise<Node>; unmount: () => Promise<void> }
+  const row = walk(await ui.drawn()).find(x => (x.key ?? x.props?.key) === 'columns')
+  await ui.unmount()
+  return kids(row ?? {}).map(c => c.props?.width)
+}
+
+test('a session on Windows (OS is Windows_NT) draws a 120-cell pane in 7.9 pt cells: 2 columns of 59', async ($, on) => {
+  expect(await columnsAt120({ OS: 'Windows_NT' }, $ as never, on)).toEqual([59, 59])
+})
+
+test('a Mac session draws the same 120-cell pane in 8.8 pt cells: 3 columns of 39', async ($, on) => {
+  expect(await columnsAt120({}, $ as never, on)).toEqual([39, 39, 39])
 })

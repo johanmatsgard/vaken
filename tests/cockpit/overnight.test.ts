@@ -31,7 +31,7 @@ test('a limit pause: the stopped tasks wait again with no try counted, the run w
   expect(p.tasks.map(t => t.state)).toEqual(['done', 'waiting', 'waiting'])
   expect(p.tasks[1]).toMatchObject({ tries: 1, why: 'waits: the plan limit stopped it' })
   expect(p.tasks[1]?.agentId).toBeUndefined()
-  expect(runSummary(p)).toMatch(/^Waits for the plan limit: 1 of 3 done, 2 waiting$/)
+  expect(runSummary(p)).toMatch(/^Waits for the plan limit, goes on at \d\d:\d\d: 1 of 3 done, 2 waiting$/)
 })
 
 test('at the reset: go on; wait again while still full; after a few waits leave it to the person', () => {
@@ -47,7 +47,7 @@ test('the report: done, failed, cost, each task; the list of past runs keeps 10,
   const r = run([task(1, { state: 'done', check: 'passed', usd: 0.4 }), task(2, { state: 'failed', usd: 0.8, why: 'tests failed' }), task(3, { state: 'done', check: 'failed', usd: 0.1 })], { status: 'done' })
   const rep = reportOf(r, NOW)
   expect(rep).toMatchObject({ id: 'r1', done: 1, failed: 2, other: 0, status: 'done' })
-  expect(reportHead(rep)).toBe('1 done, 2 failed · about $1.30')
+  expect(reportHead(rep)).toBe('1 done, 2 failed · about\u00a0$1.30')
   expect(reportWhen(rep, NOW)).toBe('Ended 06:12')
   expect(reportWhen(rep, NOW + 24 * 60 * MIN)).toBe('Ended 11 Oct, 06:12')
   expect(rep.tasks.map(taskLineWord)).toEqual(['checked', 'failed', 'check failed'])
@@ -60,9 +60,9 @@ test('the report: done, failed, cost, each task; the list of past runs keeps 10,
   expect(list).toHaveLength(10)
   expect(list[0]?.id).toBe('x11')
   expect(parseReports([rep, { id: 1 }, 'x'])).toHaveLength(1)
-  expect(reportText(rep, NOW)).toMatch(/^Nightly: Ended 06:12\. 1 done, 2 failed · about \$1\.30\.\n1\. Task 1: checked \(about \$0\.40\)/)
+  expect(reportText(rep, NOW)).toMatch(/^Nightly: Ended 06:12\. 1 done, 2 failed · about\u00a0\$1\.30\.\n1\. Task 1: checked \(about\u00a0\$0\.40\)/)
   expect(reportText(undefined, NOW)).toBe('No task run has ended yet.')
-  expect(historyText([rep], NOW)).toBe('Past runs, newest first:\nNightly: Ended 06:12. 1 done, 2 failed · about $1.30.')
+  expect(historyText([rep], NOW)).toBe('Past runs, newest first:\nNightly: Ended 06:12. 1 done, 2 failed · about\u00a0$1.30.')
 })
 
 import { mock } from 'claude-code/testing'
@@ -108,7 +108,7 @@ test('the report card: on top after a run ends, a row per task that opens, Done 
   const mount = () => $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
   const ui = await mount()
   expect(await ui.find({ type: 'Text', text: /^Task run report$/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /^Nightly: 1 done, 1 failed · about \$1\.20$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^Nightly: 1\u00a0done, 1\u00a0failed · about\u00a0\$1\.20$/ })).toBeDefined()
   await ui.press({ key: 'press-rep-2-0' })
   await ui.unmount()
   const open = await mount()
@@ -126,7 +126,7 @@ test('the report card: on top after a run ends, a row per task that opens, Done 
   await agents.unmount()
 })
 
-test('past runs expire after REPORT_DAYS days (L3-12)', () => {
+test('past runs expire after REPORT_DAYS days', () => {
   const rep = reportOf(run([task(1, { state: 'done' })], { status: 'done' }), NOW)
   const old = { ...rep, id: 'old', endedAt: NOW - (REPORT_DAYS * 24 * 60 + 1) * MIN }
   const fresh = { ...rep, id: 'new', endedAt: NOW - (REPORT_DAYS * 24 * 60 - 5) * MIN }

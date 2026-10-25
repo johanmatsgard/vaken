@@ -57,6 +57,11 @@ function render(n: LNode | string, ctx: Ctx): string[] {
       const label = clean(String(n.props?.label ?? ''))
       return label === '' ? [] : [`[${label}]`]
     }
+    case 'Input': {
+      // An answer box shows as its placeholder in a field, so a screen says the box is there
+      const hint = clean(String(n.props?.placeholder ?? ''))
+      return [`[${hint === '' ? 'text box' : hint} ___]`]
+    }
     case 'Svg': {
       const alt = clean(String(n.props?.alt ?? ''))
       if (alt === '') return n.props?.source === ROW_CHEVRON ? ['>'] : []

@@ -1,7 +1,7 @@
 {
   "name": "vaken",
-  "version": "1.119.8",
-  "description": "A quiet side pane for Claude Code Desktop: what needs you, plan limits, context, agents and risky steps.",
+  "version": "1.168.6",
+  "description": "Mission control for Claude Code Desktop: what needs you, plan limits, context, agents and a safety stop.",
   "author": {
     "name": "Johan Matsgard"
   },

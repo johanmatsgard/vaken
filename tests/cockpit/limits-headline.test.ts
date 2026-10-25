@@ -1,4 +1,4 @@
-// First-user fixes for the limits: the figures say "used", every limit says its reset, the week's share is a pace.
+// The limits: the figures say "used", every limit says its reset, the week's share is a pace.
 import { expect, mock } from 'claude-code/testing'
 import { test } from './slow'
 import type { On } from 'claude-code'
@@ -16,39 +16,45 @@ const NOW = Date.parse('2026-10-11T12:00:00Z')
 const MIN = 60_000
 const DAY = 86_400_000
 
-test('F1 and R3: the Plan limits headline says which limit, used and the reset, longest form first', () => {
-  expect(limitHead([{ short: '5-hour limit', percent: 45, reset: 'resets 15:00' }])).toBe('5-hour: 45% used · resets 15:00')
+test('the Plan limits headline says which limit (its card name, then the band short one), used and the reset, longest form first; the name never goes', () => {
+  expect(limitHead([{ short: '5-hour limit', percent: 45, reset: 'resets 15:00' }])).toBe('5-hour limit: 45% used · resets 15:00')
   expect(limitHead([{ short: 'Week', percent: 30, reset: 'resets Thu 09:00' }])).toBe('Week: 30% used · resets Thu 09:00')
   expect(limitHead([{ short: 'Spend', percent: 5 }])).toBe('Spend: 5% used')
   expect(limitHead([])).toBe('Not known yet')
-  expect(limitForms([{ short: '5-hour limit', percent: 45, reset: 'resets 15:00' }])).toEqual(['5-hour: 45% used · resets 15:00', '45% used · resets 15:00', '5-hour: 45% used', '45% used'])
-  expect(limitHead([{ short: '5-hour limit', percent: 45, reset: 'resets 15:00' }], s => s, s => s.length <= 25)).toBe('45% used · resets 15:00')
-  expect(limitHead([{ short: '5-hour limit', percent: 45, reset: 'resets 15:00' }], s => s, s => s.length <= 20)).toBe('5-hour: 45% used')
-  expect(limitHead([{ short: '5-hour limit', percent: 45, reset: 'resets 15:00' }], s => s, s => s.length <= 10)).toBe('45% used')
-  expect(limitHead([{ short: '5-hour limit', percent: 45, reset: 'resets 15:00' }], s => s, () => false)).toBe('45% used')
+  expect(limitForms([{ short: '5-hour limit', percent: 45, reset: 'resets 15:00' }])).toEqual(['5-hour limit: 45% used · resets 15:00', '5 h: 45% used · resets 15:00', '5-hour limit: 45% used', '5 h: 45% used', '5 h: 45%', '5 h 45%'])
+  expect(limitHead([{ short: '5-hour limit', percent: 45, reset: 'resets 15:00' }], s => s, s => s.length <= 28)).toBe('5 h: 45% used · resets 15:00')
+  expect(limitHead([{ short: '5-hour limit', percent: 45, reset: 'resets 15:00' }], s => s, s => s.length <= 25)).toBe('5-hour limit: 45% used')
+  expect(limitHead([{ short: '5-hour limit', percent: 45, reset: 'resets 15:00' }], s => s, s => s.length <= 20)).toBe('5 h: 45% used')
+  expect(limitHead([{ short: '5-hour limit', percent: 45, reset: 'resets 15:00' }], s => s, s => s.length <= 10)).toBe('5 h: 45%')
+  expect(limitHead([{ short: '5-hour limit', percent: 45, reset: 'resets 15:00' }], s => s, () => false)).toBe('5 h 45%')
+  // The band's fixed order (5 h first) unless a limit is hot; a model's week by its card name
+  expect(limitHead([{ short: 'Week', percent: 31 }, { short: '5-hour limit', percent: 23 }])).toBe('5-hour limit: 23% used')
+  expect(limitHead([{ short: 'Fable', name: 'Week · Fable', percent: 91, hot: true }, { short: '5-hour limit', percent: 23 }])).toBe('Week · Fable: 91% used')
 })
 
-test('F1: the headline fits its Glance row at 400 pt and at the narrowest pane (294 pt)', () => {
+test('the headline fits its Glance row at 400 pt and at the narrowest pane (294 pt)', () => {
   const at400 = glanceFits('Plan limits', 400 - 2 * 13 - 16)
   const at294 = glanceFits('Plan limits', 294 - 2 * 13 - 16)
   const forms = [{ short: '5-hour limit', percent: 45, reset: 'resets 15:00' }]
-  expect(limitHead(forms, s => s, at400)).toBe('5-hour: 45% used · resets 15:00')
+  expect(limitHead(forms, s => s, at400)).toBe('5 h: 45% used · resets 15:00')
   expect(at400(limitHead(forms, s => s, at400))).toBe(true)
   expect(at294(limitHead(forms, s => s, at294))).toBe(true)
-  expect(limitHead([{ short: 'Week', percent: 30, reset: 'resets Thu 09:00' }], s => s, at400)).toBe('Week: 30% used · resets Thu 09:00')
-  expect(limitHead(forms, s => s, at294)).toBe('5-hour: 45% used')
-  expect(limitHead(forms, s => s, glanceFits('Plan limits', 700))).toBe('5-hour: 45% used · resets 15:00')
+  // The week's whole form needs a wide row with the wider letters: at 400 pt its reset gives way first, wide it is whole
+  expect(limitHead([{ short: 'Week', percent: 30, reset: 'resets Thu 09:00' }], s => s, at400)).toBe('Week: 30% used')
+  expect(limitHead([{ short: 'Week', percent: 30, reset: 'resets Thu 09:00' }], s => s, glanceFits('Plan limits', 700))).toBe('Week: 30% used · resets Thu 09:00')
+  expect(limitHead(forms, s => s, at294)).toMatch(/^5 h: 45%/)
+  expect(limitHead(forms, s => s, glanceFits('Plan limits', 700))).toBe('5-hour limit: 45% used · resets 15:00')
   expect(glanceFits('Plan limits', undefined)('x'.repeat(200))).toBe(true)
 })
 
-test('F1 and F7: This session says the context is full to a share; the calm context word is All small', () => {
-  expect(hereHead({ state: 'Working', contextPercent: 60 })).toBe('Context 60% full')
-  expect(contextHead({ loud: 'none', goodMoment: false })).toBe('All small')
+test('This session says its state and its cost (the context speaks through the dot); the calm word of Memory and notes is Small', () => {
+  expect(hereHead({ state: 'Working', costUsd: 9.3 })).toBe('Working · $9.30')
+  expect(contextHead({ loud: 'none', goodMoment: false })).toBe('Small')
 })
 
 const block = (kind: string, short: string, percent: number, reset: string, withDay: boolean): LimitBlock => ({ kind, short, label: short, percent, reset, withDay })
 
-test('F1 and F14: every limit says used and its whole reset; the week keeps its day and time', () => {
+test('every limit says used and its whole reset; the week keeps its day and time', () => {
   const week = block('week', 'Week', 72, 'resets Thu 09:00', true)
   const five = block('session', '5-hour limit', 40, 'resets 15:00', false)
   const fable = block('m', 'Fable', 4, '', true)
@@ -56,7 +62,7 @@ test('F1 and F14: every limit says used and its whole reset; the week keeps its 
   expect(foldWords([block('week', 'Week', 25, 'resets Thu 09:00', true), fable])).toBe('Under half used: Week 25% used, resets Thu 09:00 · Fable 4% used')
 })
 
-test('F14: the share of the week reads as a pace', () => {
+test('the share of the week reads as a pace', () => {
   const thu = new Date(NOW + 3 * DAY)
   thu.setHours(9, 0, 0, 0)
   const d = dayShare({ percent: 62, resetsAt: thu.toISOString() }, NOW, [[NOW - DAY / 2, 50]])
@@ -68,7 +74,7 @@ test('F14: the share of the week reads as a pace', () => {
 const rec = (id: string, over: Partial<SessionRecord> = {}): SessionRecord =>
   ({ sessionId: id, cwd: `/work/${id}`, model: 'm', state: 'waiting', startedAt: NOW - 60 * MIN, updatedAt: NOW - 1000, lastEventAt: NOW - 1000, stateSince: NOW - 5 * MIN, ...over }) as SessionRecord
 
-test('F3: an old question from a live process still needs you; a dead or unknown process is gone', () => {
+test('an old question from a live process still needs you; a dead or unknown process is gone', () => {
   const old = rec('a', { pid: 4242, updatedAt: NOW - DROP_MS - 5 * MIN, ask: { kind: 'question', tool: 'AskUserQuestion', since: NOW - DROP_MS - 5 * MIN } } as Partial<SessionRecord>)
   expect(classify(old, NOW, new Set([4242]))).toBe('needs')
   expect(classify(old, NOW, new Set([1]))).toBe('gone')
@@ -81,14 +87,16 @@ test('F3: an old question from a live process still needs you; a dead or unknown
   expect(classify(rec('c', { pid: 7, ask: { kind: 'question', tool: 'AskUserQuestion', since: NOW - 1000 } } as Partial<SessionRecord>), NOW, new Set([1]))).toBe('gone')
 })
 
-test('F3: with only a session in Needs you, Other sessions says where it is', () => {
+test('with only a session in Needs you, Other sessions says where it is, never None', () => {
   const asking = rec('a', { ask: { kind: 'question', tool: 'AskUserQuestion', since: NOW - MIN } } as Partial<SessionRecord>)
   const view = buildView([asking, rec('me', { state: 'working' })], NOW, 'me', undefined)
   expect(view.needs.length).toBe(1)
-  expect(othersWord(view)).toBe('1 waiting for you')
+  expect(othersWord(view)).toBe('No other session is active now; 1 waits in Needs you.')
   expect(othersWord(buildView([], NOW, 'me', undefined))).toBe('No other session is active now.')
-  expect(othersHead({ waiting: 0, working: 0, total: 0, needs: 1 })).toBe('1 waiting for you')
-  expect(othersHead({ waiting: 1, working: 0, total: 1, needs: 1 })).toBe('1 your turn')
+  expect(othersHead({ waiting: 0, working: 0, total: 0 })).toBe('None')
+  expect(othersHead({ waiting: 0, working: 0, total: 0, needs: 1 })).toBe('1 waits in Needs you')
+  expect(othersHead({ waiting: 0, working: 0, total: 0, needs: 2 })).toBe('2 wait in Needs you')
+  expect(othersHead({ waiting: 1, working: 0, total: 1 })).toBe('1 your turn')
 })
 
 function engine(on: On) {
@@ -108,13 +116,15 @@ const world = (): Record<string, unknown> => ({
   ...Object.fromEntries(Object.keys(APPEARS).map(id => [`cockpit:setting:cards.${id}`, 'show'])),
   'cockpit:setting:look.view': 'custom',
   'cockpit:setting:look.columns': '1',
+  // Setup done: until then the first screen shows only Start here and Needs you
+  'cockpit:firstrun': 'done',
   'cockpit:session:test-session': seed('test-session', { cwd: '/work/app', contextPercent: 38, fiveHourPercent: 62, fiveHourResetsAt: '2026-10-11T18:00:00Z' }),
 })
 
 for (const [cols, want] of [
-  [51, /^5-hour: 62% used( · resets \d\d:\d\d)?$/],
-  [37, /^(5-hour: )?62% used( · resets \d\d:\d\d)?$/],
-  [90, /^5-hour: 62% used · resets \d\d:\d\d$/],
+  [51, /^(5-hour limit|5 h): 62% used( · resets \d\d:\d\d)?$/],
+  [37, /^(5-hour limit|5 h): 62%( used)?( · resets \d\d:\d\d)?$/],
+  [90, /^5-hour limit: 62% used · resets \d\d:\d\d$/],
 ] as const) {
   test(`the closed Plan limits card at ${cols} columns`, async ($, on) => {
     forgetProjectSet()
@@ -125,7 +135,7 @@ for (const [cols, want] of [
     const props = { title: 'Vaken', isFocused: false, bodyColumns: cols, placement: 'inline' as const, scroll: { bodyRows: 40, offset: 0, total: 40 }, view: {} }
     const ui = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props })
     expect(await ui.find({ key: 'glance-limit' })).toBeDefined()
-    const shown = ((await ui.findAll({ type: 'Text', text: /62% used/ })) as { props: unknown; children?: unknown[] }[]).map(x => String(x.children?.[0] ?? ''))
+    const shown = ((await ui.findAll({ type: 'Text', text: /62%/ })) as { props: unknown; children?: unknown[] }[]).map(x => String(x.children?.[0] ?? ''))
     expect(shown.some(s => want.test(s)), shown.join(' | ')).toBe(true)
     await ui.unmount()
   })

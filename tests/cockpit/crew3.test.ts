@@ -15,7 +15,7 @@ import { viaParent } from './viaparent'
 const MIN = 60_000
 const NOW = Date.parse('2026-10-10T12:00:00Z')
 
-test('the Crew wave 3 settings: four rows in the Crew group with the defaults the brief asks for', () => {
+test('the Crew settings: four rows in the Crew group with the defaults the brief asks for', () => {
   expect(CREW3_SETTINGS.map(s => s.key)).toEqual(['crew.worktrees', 'crew.ports', 'awake.mode', 'awake.away'])
   expect(new Set(CREW3_SETTINGS.map(s => s.group))).toEqual(new Set(['Crew']))
   expect(CREW3_SETTINGS.map(s => s.default)).toEqual(['on', 'on', 'off', 'phone'])
@@ -124,7 +124,7 @@ test('a command that starts a server: --port N, PORT=N and the usual start comma
 test('the note for Claude says who holds the port and what to do; it never says to stop the other program', () => {
   const folder: Folder = { cwd: '/work/p/b', name: 'feat-b', seen: NOW }
   const other = { port: 3000, pid: 4242, command: 'node', cwd: '/work/p/b', folder, kind: 'other' as const }
-  expect(portNote(other, true)).toBe("Vaken saw that port 3000 is held by a Node program started in the folder of session 'feat-b'. This command asks for the same port. Use another port (for example 3001), or ask the person before you go on. Do not stop the other program yourself.")
+  expect(portNote(other, true)).toBe("Vaken saw that port 3000 is held by a Node program started in the folder of session 'feat-b'. This command asks for the same port. Use another port (for example 3001). Do not stop the other program yourself.")
   expect(portNote({ ...other, kind: 'ended' }, false)).toMatch(/\(that session has ended, and the program was left running\)\. This command may use the same port/)
 })
 
@@ -313,7 +313,8 @@ test('/vaken-ship worktrees: a count first, then only the safe ones by short nam
   expect(full).not.toMatch(/worktree remove \/w\/wt\/dirty/)
   expect(full).not.toMatch(/worktree remove \/w\/main/)
   expect(full).toMatch(/To let git forget it, run: git worktree prune/)
-  expect(full).toMatch(/Vaken never removes a worktree\./)
+  // Vaken removes one only on the person's press, on the Pull requests card
+  expect(full).toMatch(/Vaken removes a worktree only when you press Remove this copy on the Pull requests card/)
   expect(worktreesText('off', scan, undefined, NOW)).toMatch(/Worktree cleanup is off\. Turn it on: Settings > Agents\./)
   expect(worktreesText('on', undefined, 'This folder is not a git folder.', NOW)).toBe('This folder is not a git folder.')
 })
@@ -534,26 +535,26 @@ const MACHINE = (argv: readonly string[]): Answer | undefined => {
   return undefined
 }
 
-test('F6: a Bash command that starts a server on a port another session holds gets a note once, a toast and a ledger line; the command runs', SLOW, async ($, on) => {
+test('ports: a Bash command that starts a server on a port another session holds gets a note once, a toast and a ledger line; the command runs', SLOW, async ($, on) => {
   const w = world(on, MACHINE, () => ({ 'cockpit:setting:claude.notes': 'all', 'cockpit:session:other': rec('other') }))
   const first = await $.tool.call({ tool: 'Bash', command: 'npm run dev -- --port 3000' } as never)
   expect(JSON.stringify(first)).toMatch(/port 3000 is held by a Node program started in the folder of session 'feat-b'\. This command asks for the same port\./)
   expect(JSON.stringify(first)).not.toMatch(/"deny"/)
-  expect(w.toasts).toEqual(["Port 3000 is held by session 'feat-b'."])
+  expect(w.toasts).toEqual(['Port 3000 is held by session "feat-b".'])
   expect(whats(w.mem)).toEqual([PORT_WHAT])
   const again = await $.tool.call({ tool: 'Bash', command: 'PORT=3000 node server.js' } as never)
   expect(JSON.stringify(again)).not.toMatch(/Vaken saw/)
   expect(w.toasts).toHaveLength(1)
 })
 
-test('F6: the same server start in the PowerShell tool gets the note too', async ($, on) => {
+test('ports: the same server start in the PowerShell tool gets the note too', async ($, on) => {
   const w = world(on, MACHINE, () => ({ 'cockpit:setting:claude.notes': 'all', 'cockpit:session:other': rec('other') }))
   const first = await $.tool.call({ tool: 'PowerShell', command: 'npm run dev -- --port 3000' } as never)
   expect(JSON.stringify(first)).toMatch(/port 3000 is held by a Node program started in the folder of session 'feat-b'/)
-  expect(w.toasts).toEqual(["Port 3000 is held by session 'feat-b'."])
+  expect(w.toasts).toEqual(['Port 3000 is held by session "feat-b".'])
 })
 
-test('F6: no note for a port this session holds, a free port, a command that is not a server, a tool that is not Bash, or when the setting is off', async ($, on) => {
+test('ports: no note for a port this session holds, a free port, a command that is not a server, a tool that is not Bash, or when the setting is off', async ($, on) => {
   const w = world(on, MACHINE, () => ({ 'cockpit:session:other': rec('other') }))
   for (const command of ['vite --port 5173', 'npm run dev -- --port 4999', 'npm test', 'ls']) expect(JSON.stringify(await $.tool.call({ tool: 'Bash', command } as never))).not.toMatch(/Vaken saw/)
   expect(JSON.stringify(await $.tool.call({ tool: 'Write', file_path: '/work/p/a/x.ts', content: 'PORT=3000 npm run dev' } as never))).not.toMatch(/Vaken saw/)
@@ -565,7 +566,7 @@ test('F6: no note for a port this session holds, a free port, a command that is 
   expect(whats(w.mem)).toEqual([])
 })
 
-test('F6: /vaken-help run ports prints the holders in plain words', async ($, on) => {
+test('ports: /vaken-help run ports prints the holders in plain words', async ($, on) => {
   world(on, MACHINE, () => ({ 'cockpit:session:other': rec('other') }))
   const t = await text($, 'vaken-ports')
   expect(t).toMatch(/Port 3000: a Node program started in the folder of session 'feat-b'\. Port 3000 is the usual port of a web dev server\./)
@@ -588,7 +589,7 @@ const GIT = (argv: readonly string[]): Answer | undefined => {
   return undefined
 }
 
-test('F7: /vaken-ship worktrees lists the worktrees, marks the clean merged one safe, and prints a remove command that is never run', async ($, on) => {
+test('worktrees: /vaken-ship worktrees lists the worktrees, marks the clean merged one safe, and prints a remove command that is never run', async ($, on) => {
   const w = world(on, GIT)
   const short = await text($, 'vaken-worktrees')
   expect(short.split('\n')[0]).toBe('7 worktrees, 1 safe to remove.')
@@ -605,7 +606,7 @@ test('F7: /vaken-ship worktrees lists the worktrees, marks the clean merged one 
   for (const c of w.calls) expect(c.join(' ')).not.toMatch(/worktree (remove|prune)|\brm\b|\bkill\b/)
 })
 
-test('F7: three safe worktrees give one toast a day; two do not; off does nothing', { timeoutMs: 15_000 }, async ($, on) => {
+test('worktrees: three safe worktrees give one toast a day; two do not; off does nothing', { timeoutMs: 15_000 }, async ($, on) => {
   const three = PORCELAIN.replace('worktree /w/wt/dirty', 'worktree /w/wt/dirty2').replace('branch refs/heads/feat-dirty', 'branch refs/heads/feat-d2')
   const w = world(on, argv => {
     const a = GIT(argv)
@@ -623,7 +624,7 @@ test('F7: three safe worktrees give one toast a day; two do not; off does nothin
   expect(w.toasts).toHaveLength(1)
 })
 
-test('F8: /vaken-ship merge-order asks gh once, prints the order, and does not ask again within 5 minutes', async ($, on) => {
+test('merge order: /vaken-ship merge-order asks gh once, prints the order, and does not ask again within 5 minutes', async ($, on) => {
   const w = world(on, argv => {
     if (argv[0] === 'gh') return { exitCode: 0, stdout: PR_JSON }
     return GIT(argv)
@@ -639,7 +640,7 @@ test('F8: /vaken-ship merge-order asks gh once, prints the order, and does not a
   expect(only(w.calls, 'gh')).toHaveLength(2)
 })
 
-test('F8: without gh it says so in words', async ($, on) => {
+test('merge order: without gh it says so in words', async ($, on) => {
   world(on, argv => (argv[0] === 'which' ? { exitCode: 1, stdout: '' } : undefined))
   expect(await text($, 'vaken-merge-order')).toMatch(/^Merge order: The gh program was not found/)
 })
@@ -660,24 +661,24 @@ test('words: a rejected start (ENOENT, failed to start, not found) is told from 
   expect(ghNeedsGit('To get started with GitHub CLI, please run:  gh auth login')).toBe(false)
 })
 
-test('F7 words: git that runs out of time still reads "did not answer in time"', async ($, on) => {
+test('worktrees, in words: git that runs out of time still reads "did not answer in time"', async ($, on) => {
   world(on, argv => (argv[0] === 'git' ? { exitCode: 0, stdout: '', reject: 'timed out after 5000 ms' } : GIT(argv)))
   expect(await text($, 'vaken-worktrees')).toBe('git did not answer in time.')
 })
 
-test('F8 words: gh that runs out of time reads "did not answer in time"', async ($, on) => {
+test('merge order, in words: gh that runs out of time reads "did not answer in time"', async ($, on) => {
   world(on, argv => (argv[0] === 'gh' ? { exitCode: 0, stdout: '', reject: 'timed out after 15000 ms' } : GIT(argv)))
   expect(await text($, 'vaken-merge-order')).toBe('Merge order: gh did not answer in time.')
 })
 
-test('F8 words: gh that fails because git is missing reads the git line, never the raw text', async ($, on) => {
+test('merge order, in words: gh that fails because git is missing reads the git line, never the raw text', async ($, on) => {
   world(on, argv => (argv[0] === 'gh' ? { exitCode: 1, stdout: '', stderr: 'unable to find git executable in PATH; please install Git for Windows before retrying' } : GIT(argv)))
   const t = await text($, 'vaken-merge-order')
   expect(t).toBe('Merge order: git is not installed or not on the path.')
   expect(t).not.toMatch(/unable to find/)
 })
 
-test('F8 words: any other gh failure is one plain line, never the stderr', async ($, on) => {
+test('merge order, in words: any other gh failure is one plain line, never the stderr', async ($, on) => {
   world(on, argv => (argv[0] === 'gh' ? { exitCode: 4, stdout: '', stderr: 'To get started with GitHub CLI, please run:  gh auth login' } : GIT(argv)))
   const t = await text($, 'vaken-merge-order')
   expect(t).toBe('Merge order: gh could not read the pull requests.')
@@ -690,7 +691,7 @@ const CI = (argv: readonly string[]): Answer | undefined => {
   return GIT(argv)
 }
 
-test('F11: /vaken-ship ci-fix prints a plain prompt from the failing check, stores only the try, never the log', async ($, on) => {
+test('CI fix: /vaken-ship ci-fix prints a plain prompt from the failing check, stores only the try, never the log', async ($, on) => {
   const w = world(on, CI, () => ({ 'cockpit:session:me': rec('me', { cwd: '/work/p/a', branch: 'feat-x' }) }))
   const t = await text($, 'vaken-ci-fix')
   expect(t).toMatch(/^Fix CI: try 1 of 3 in 24 hours for feat-x\. Other checks that failed: lint\./)
@@ -703,7 +704,7 @@ test('F11: /vaken-ship ci-fix prints a plain prompt from the failing check, stor
   expect(await text($, 'vaken-ci-fix')).toMatch(/try 1 of 3/)
 })
 
-test('F11: send puts the prompt in the prompt box after a short wait; after 3 tries in a day no new prompt is built', async ($, on) => {
+test('CI fix: send puts the prompt in the prompt box after a short wait; after 3 tries in a day no new prompt is built', async ($, on) => {
   let run = 222
   const w = world(on, argv => (argv[0] === 'gh' && argv[2] === 'checks' ? { exitCode: 1, stdout: CHECKS.replace(/222/g, String(run)) } : CI(argv)), () => ({ 'cockpit:session:me': rec('me', { cwd: '/work/p/a', branch: 'feat-x' }) }))
   const t = await text($, 'vaken-ci-fix', 'send')
@@ -726,17 +727,17 @@ test('F11: send puts the prompt in the prompt box after a short wait; after 3 tr
   expect(w.filled).toHaveLength(1)
 })
 
-test('F11: no failing check, no pull request, no checks', SLOW, async ($, on) => {
+test('CI fix: no failing check, no pull request, no checks', SLOW, async ($, on) => {
   world(on, argv => (argv[0] === 'gh' && argv[2] === 'checks' ? { exitCode: 0, stdout: 'build\tpass\t1m\thttps://github.com/o/r/actions/runs/1/job/1\t\ncov\tpending\t0\t\t\n' } : GIT(argv)))
   expect(await text($, 'vaken-ci-fix')).toBe('Fix CI: no check failed. 1 still runs.')
 })
 
-test('F11: a branch with no pull request is an answer', async ($, on) => {
+test('CI fix: a branch with no pull request is an answer', async ($, on) => {
   world(on, argv => (argv[0] === 'gh' ? { exitCode: 1, stdout: '', stderr: 'no pull requests found for branch "feat-x"' } : GIT(argv)))
   expect(await text($, 'vaken-ci-fix')).toBe('Fix CI: there is no pull request for this branch.')
 })
 
-test('F12: /vaken-ship digest-branch compares with the base branch and lists the riskiest first', async ($, on) => {
+test('branch digest: /vaken-ship digest-branch compares with the base branch and lists the riskiest first', async ($, on) => {
   const w = world(on, GIT)
   const t = await text($, 'vaken-digest-branch')
   expect(t).toMatch(/^Branch digest: 2 commits and 10 files changed against main \(feat-x\)/)
@@ -766,12 +767,11 @@ test('outside a git folder: git and gh text never shows; one plain sentence does
   }
 })
 
-test('F12: without a main branch it says so and runs no diff', async ($, on) => {
+test('branch digest: without a main branch it says so and runs no diff', async ($, on) => {
   const w = world(on, argv => (argv[0] === 'git' ? { exitCode: 1, stdout: '' } : undefined))
   expect(await text($, 'vaken-digest-branch')).toMatch(/main branch could not be found/)
   expect(w.calls.some(c => c[1] === 'diff')).toBe(false)
 })
-
 const HOLD = (psOut: () => string) => {
   let nextHold = 0
   return (argv: readonly string[]): Answer | undefined => {
@@ -783,7 +783,7 @@ const HOLD = (psOut: () => string) => {
   }
 }
 
-test('F7: one safe worktree gives no toast', SLOW, async ($, on) => {
+test('worktrees: one safe worktree gives no toast', SLOW, async ($, on) => {
   const w = world(on, GIT)
   await begin($)
   await w.clock.advance(35_000)
@@ -792,7 +792,7 @@ test('F7: one safe worktree gives no toast', SLOW, async ($, on) => {
   expect(w.calls.some(c => c[1] === 'worktree')).toBe(true)
 })
 
-test('F7: with the setting off nothing is asked', SLOW, async ($, on) => {
+test('worktrees: with the setting off nothing is asked', SLOW, async ($, on) => {
   const w = world(on, GIT, () => ({ 'cockpit:setting:crew.worktrees': 'off' }))
   await begin($)
   await w.clock.advance(35_000)
@@ -800,7 +800,7 @@ test('F7: with the setting off nothing is asked', SLOW, async ($, on) => {
   expect(w.calls.some(c => c[1] === 'worktree')).toBe(false)
 })
 
-test('K2: off by default and runs nothing; on, it holds the Mac while a session works, renews, logs once, and stops that exact id when nobody works', async ($, on) => {
+test('keep awake: off by default and runs nothing; on, it holds the Mac while a session works, renews, logs once, and stops that exact id when nobody works', async ($, on) => {
   const w = world(on, HOLD(() => 'caffeinate\n'), () => ({ 'cockpit:session:other': rec('other') }))
   await begin($)
   let elapsed = 0
@@ -836,7 +836,7 @@ test('K2: off by default and runs nothing; on, it holds the Mac while a session 
   for (const c of w.calls) expect(c.join(' ')).not.toMatch(/pkill|killall|-9/)
 })
 
-test('K2: a recorded id whose program is not caffeinate is never stopped', async ($, on) => {
+test('keep awake: a recorded id whose program is not caffeinate is never stopped', async ($, on) => {
   const w = world(on, HOLD(() => 'node\n'), () => ({ 'cockpit:setting:awake.mode': 'off', 'cockpit:awake:pid': 4321 }))
   await begin($)
   w.mem.set('cockpit:awake:at', w.now - 2 * MIN)
@@ -847,7 +847,7 @@ test('K2: a recorded id whose program is not caffeinate is never stopped', async
   expect(w.mem.has('cockpit:awake:pid')).toBe(false)
 })
 
-test('K2: on a machine without caffeinate it says so and starts nothing', async ($, on) => {
+test('keep awake: on a machine without caffeinate it says so and starts nothing', async ($, on) => {
   const w = world(on, argv => (argv[0] === 'which' ? { exitCode: 1, stdout: '' } : undefined), () => ({ 'cockpit:setting:awake.mode': 'on', 'cockpit:session:other': rec('other') }))
   await begin($)
   await w.clock.advance(31_000)
@@ -863,7 +863,7 @@ const tickOnce = async (w: World): Promise<void> => {
   await w.clock.settle()
 }
 
-test('K2 reasons: a phone that is connected holds the Mac with no session working; the text says why, and that the lid still sleeps the Mac', async ($, on) => {
+test('keep awake, reasons: a phone that is connected holds the Mac with no session working; the text says why, and that the lid still sleeps the Mac', async ($, on) => {
   const w = world(on, HOLD(() => 'caffeinate\n'), n => ({ ...idle, 'cockpit:awake:phone': { 'me:mobile:default': n - MIN } }))
   await begin($)
   await tickOnce(w)
@@ -874,7 +874,7 @@ test('K2 reasons: a phone that is connected holds the Mac with no session workin
   expect((w.mem.get('cockpit:ledger:compact') as Array<{ what: string; detail: string }>)[0]?.detail).toMatch(/a phone is connected/)
 })
 
-test('K2 reasons: Phone only ignores a waiting question, Waiting 2h holds for it, and a question older than 2 hours does not', SLOW, async ($, on) => {
+test('keep awake, reasons: Phone only ignores a waiting question, Waiting 2h holds for it, and a question older than 2 hours does not', SLOW, async ($, on) => {
   const w = world(on, HOLD(() => 'caffeinate\n'), () => idle)
   await begin($)
   const put = (waited: number): void => {
@@ -901,7 +901,7 @@ test('K2 reasons: Phone only ignores a waiting question, Waiting 2h holds for it
   expect(holds(w.calls)).toEqual([])
 })
 
-test('K2 reasons: a helper agent running in the background holds the Mac; the reason is renewed while it lasts and released when none is left', SLOW, async ($, on) => {
+test('keep awake, reasons: a helper agent running in the background holds the Mac; the reason is renewed while it lasts and released when none is left', SLOW, async ($, on) => {
   const agent = { id: 'a1', session: 'me', type: 'Explore', what: 'look', background: true, startedAt: 0, state: 'running' }
   const w = world(on, HOLD(() => 'caffeinate\n'), n => ({ ...idle, 'cockpit:agentboard': [{ ...agent, startedAt: n - 5 * MIN }] }))
   await begin($)
@@ -920,7 +920,7 @@ test('K2 reasons: a helper agent running in the background holds the Mac; the re
   expect(w.mem.has('cockpit:awake:pid')).toBe(false)
 })
 
-test('K2 reasons: after 8 hours in a row the hold is released once, a ledger line says so, and it does not start again while the reason lasts', async ($, on) => {
+test('keep awake, reasons: after 8 hours in a row the hold is released once, a ledger line says so, and it does not start again while the reason lasts', async ($, on) => {
   const w = world(on, HOLD(() => 'caffeinate\n'), n => ({ ...idle, 'cockpit:awake:phone': { 'me:mobile:default': n - MIN }, 'cockpit:awake:pid': 4321, 'cockpit:awake:at': n - 3 * MIN, 'cockpit:awake:since': { since: n - 8 * 60 * MIN - MIN, last: n - 3 * MIN } }))
   await begin($)
   await tickOnce(w)
@@ -933,7 +933,7 @@ test('K2 reasons: after 8 hours in a row the hold is released once, a ledger lin
   expect(await text($, 'vaken-awake')).toMatch(/Not holding: the 8 hour limit is reached/)
 })
 
-test('K2 reasons: a low battery (unplugged, under 20%, fresh reading) holds nothing and the text says so; a plugged-in Mac holds', async ($, on) => {
+test('keep awake, reasons: a low battery (unplugged, under 20%, fresh reading) holds nothing and the text says so; a plugged-in Mac holds', async ($, on) => {
   const low = (n: number) => ({ at: n - MIN, battery: { hasBattery: true, onAc: false, percent: 12 } })
   const w = world(on, HOLD(() => 'caffeinate\n'), n => ({ ...idle, 'cockpit:setting:laptop.mode': 'off', 'cockpit:awake:phone': { 'me:mobile:default': n - MIN }, 'cockpit:laptop:v2': low(n) }))
   await begin($)
@@ -945,7 +945,7 @@ test('K2 reasons: a low battery (unplugged, under 20%, fresh reading) holds noth
   expect(holds(w.calls)).toHaveLength(1)
 })
 
-test('K2 reasons: /vaken-help run awake on turns the guard on and sets Phone only; off turns it off; the status then says it', async ($, on) => {
+test('keep awake, reasons: /vaken-help run awake on turns the guard on and sets Phone only; off turns it off; the status then says it', async ($, on) => {
   const w = world(on, HOLD(() => 'caffeinate\n'))
   await begin($)
   expect(await text($, 'vaken-awake')).toMatch(/^Keep Mac awake: off\./)
@@ -959,7 +959,7 @@ test('K2 reasons: /vaken-help run awake on turns the guard on and sets Phone onl
   void w
 })
 
-test('K4: /vaken-ship orphans lists leftover programs with their exact PID and kill command, and kills nothing', async ($, on) => {
+test('orphans: /vaken-ship orphans lists leftover programs with their exact PID and kill command, and kills nothing', async ($, on) => {
   const w = world(
     on,
     argv => {

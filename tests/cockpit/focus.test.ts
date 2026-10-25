@@ -4,7 +4,7 @@ import { test } from './slow'
 import type { On } from 'claude-code'
 
 import type { BandItem } from '../hooks/core/band'
-import { FOCUS_BAND_ID, FOCUS_KEY, FOCUS_MS, focusBand, focusSummary, focusWords, isFocused, minutesLeft, parseFocus, passesFocus } from '../hooks/core/focus'
+import { FOCUS_BAND_ID, FOCUS_KEY, FOCUS_MS, focusBand, focusEmpty, focusSummary, focusWords, isFocused, minutesLeft, parseFocus, passesFocus } from '../hooks/core/focus'
 import { withToastGate } from '../hooks/core/io'
 import type { Io } from '../hooks/core/io'
 import { viaParent } from './viaparent'
@@ -23,7 +23,7 @@ test('Focus runs for 50 minutes; the minutes left are whole and coarse; a broken
   expect(isFocused(f, NOW + FOCUS_MS)).toBe(false)
   expect(minutesLeft(f, NOW + 18 * MIN)).toBe(32)
   expect(minutesLeft(f, NOW + FOCUS_MS - 1000)).toBe(1)
-  expect(focusWords(f, NOW + 18 * MIN)).toBe('Notices paused · 32 min left')
+  expect(focusWords(f, NOW + 18 * MIN)).toBe('Quiet · 32 min left')
 })
 
 test('the band during Focus keeps only urgent lines and adds the Focus line; after it, every line that has not expired shows again', () => {
@@ -31,7 +31,7 @@ test('the band during Focus keeps only urgent lines and adds the Focus line; aft
   const items = [item('budget', 'warn'), item('did:Kept the cache warm', 'info'), item('halt', 'urgent')]
   const during = focusBand(items, f, NOW)
   expect(during.map(x => x.id)).toEqual(['halt', FOCUS_BAND_ID])
-  expect(during[1]).toMatchObject({ level: 'info', text: 'Notices paused · 45 min left' })
+  expect(during[1]).toMatchObject({ level: 'info', text: 'Quiet · 45 min left' })
   expect(focusBand(items, f, f.until)).toEqual(items)
   expect(focusBand(items, undefined, NOW)).toEqual(items)
 })
@@ -39,9 +39,12 @@ test('the band during Focus keeps only urgent lines and adds the Focus line; aft
 test('only a toast that says a session needs you passes Focus; the end says what happened, or that nothing did', () => {
   expect(passesFocus('"Build" needs you: asks you a question.')).toBe(true)
   expect(passesFocus('"Build" finished.')).toBe(false)
-  expect(focusSummary({ finished: 2, warnings: 1 })).toBe('While you focused: 2 sessions finished, 1 warning.')
-  expect(focusSummary({ finished: 1, warnings: 0 })).toBe('While you focused: 1 session finished.')
-  expect(focusSummary({ finished: 0, warnings: 0 })).toBe('Focus ended. Nothing happened while you focused.')
+  expect(focusSummary({ finished: 2, warnings: 1 })).toBe('While it was quiet: 2 sessions finished, 1 warning.')
+  expect(focusSummary({ finished: 1, warnings: 0 })).toBe('While it was quiet: 1 session finished.')
+  expect(focusSummary({ finished: 0, warnings: 0 })).toBe('Quiet ended. Nothing happened while it was quiet.')
+  // Ended on its timer with nothing happened: no toast; a press still gets the line
+  expect(focusEmpty({ finished: 0, warnings: 0 })).toBe(true)
+  expect(focusEmpty({ finished: 1, warnings: 0 })).toBe(false)
 })
 
 const settle = async (): Promise<void> => {
@@ -100,7 +103,7 @@ function engine(on: On, toasts: string[]): Map<string, unknown> {
   return mem
 }
 
-test('Focus from the This session card: the band shows the minutes left and ends it early; the end toast says what happened', { timeoutMs: 15_000 }, async ($, on) => {
+test('Focus from /vaken-focus (the This session card has no Quiet row): the band shows the minutes left and ends it early; the end toast says what happened', { timeoutMs: 15_000 }, async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   mock.env(on, { HOME: '/home/test' })
   const toasts: string[] = []
@@ -108,26 +111,24 @@ test('Focus from the This session card: the band shows the minutes left and ends
   await $.session.start({ cwd: '/work/app', surface: 'desktop', isInteractive: true } as never)
   await $.command.run(viaParent('vaken-settings', 'detail.here explained'))
   const pane = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
-  await pane.press({ key: 'focus-start' })
+  expect(await pane.find({ key: 'focus-start' })).toBeUndefined()
   await pane.unmount()
+  await $.command.run(viaParent('vaken-focus', ''))
   await clock.settle()
   expect(parseFocus(mem.get(FOCUS_KEY))).toEqual({ from: NOW, until: NOW + FOCUS_MS })
   await clock.advance(10 * MIN)
-  const again = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
-  expect(await again.find({ type: 'Text', text: 'Notices paused · 40 min left' })).toBeDefined()
-  await again.unmount()
   const band = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'AbovePrompt', props: bandProps })
-  expect(await band.find({ type: 'Text', text: /Notices paused · 40 min left/ })).toBeDefined()
+  expect(await band.find({ type: 'Text', text: /Quiet · 40 min left/ })).toBeDefined()
   mem.set('cockpit:ledger:compact', [{ at: NOW + 2 * MIN, what: 'Warned about a risky command', did: true, how: 'auto' }])
   await band.press({ key: 'band-focus-end' })
   await band.unmount()
   await clock.settle()
   expect(mem.has(FOCUS_KEY)).toBe(false)
-  expect(toasts.at(-1)).toBe('While you focused: 1 session finished, 1 warning.')
-  expect(((await $.command.run(viaParent('vaken-focus', ''))) as { text: string }).text).toMatch(/^Focus is on for 50 minutes/)
-  expect(((await $.command.run(viaParent('vaken-focus', ''))) as { text: string }).text).toMatch(/^Focus: 50 min left/)
-  expect(((await $.command.run(viaParent('vaken-focus', 'off'))) as { text: string }).text).toMatch(/^(While you focused|Focus ended)/)
-  expect(((await $.command.run(viaParent('vaken-focus', 'off'))) as { text: string }).text).toBe('Focus is not on.')
+  expect(toasts.at(-1)).toBe('While it was quiet: 1 session finished, 1 warning.')
+  expect(((await $.command.run(viaParent('vaken-focus', ''))) as { text: string }).text).toMatch(/^Quiet is on for 50 minutes/)
+  expect(((await $.command.run(viaParent('vaken-focus', ''))) as { text: string }).text).toMatch(/^Quiet: 50 min left/)
+  expect(((await $.command.run(viaParent('vaken-focus', 'off'))) as { text: string }).text).toMatch(/^(While it was quiet|Quiet ended)/)
+  expect(((await $.command.run(viaParent('vaken-focus', 'off'))) as { text: string }).text).toBe('Quiet is not on.')
 })
 
 test('Focus ends by itself when its time is up, in whichever session looks first, with one summary toast', { timeoutMs: 15_000 }, async ($, on) => {
@@ -138,10 +139,10 @@ test('Focus ends by itself when its time is up, in whichever session looks first
   mem.set(FOCUS_KEY, { from: NOW - FOCUS_MS + 10 * MIN, until: NOW + 10 * MIN })
   await $.session.start({ cwd: '/work/app', surface: 'desktop', isInteractive: true } as never)
   const band = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'AbovePrompt', props: bandProps })
-  expect(await band.find({ type: 'Text', text: /Notices paused · 10 min left/ })).toBeDefined()
+  expect(await band.find({ type: 'Text', text: /Quiet · 10 min left/ })).toBeDefined()
   await band.unmount()
   await clock.advance(11 * MIN)
   await clock.settle()
   expect(mem.has(FOCUS_KEY)).toBe(false)
-  expect(toasts.filter(t => /focused/.test(t))).toHaveLength(1)
+  expect(toasts.filter(t => /it was quiet/.test(t))).toHaveLength(1)
 })

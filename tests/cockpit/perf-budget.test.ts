@@ -310,7 +310,7 @@ const SURFACES: Surface[] = [
   { name: 'Where was I card', columns: 60, hideOthers: 'back', has: /^Where was I$/ },
   { name: 'Context health card', columns: 60, hideOthers: 'context', has: /^Memory and notes$/ },
   { name: 'Agent setup card', columns: 60, hideOthers: 'setup', has: /Agent setup|Setup/ },
-  { name: 'Card guide, 17 tiles', columns: 140, open: ['morel-more-cards'], has: /^What each card does$/ },
+  { name: 'Card guide, 17 tiles', columns: 140, open: ['help', 'press-help-guide-0'], has: /^What each card does$/ },
 ]
 
 for (const s of SURFACES) {

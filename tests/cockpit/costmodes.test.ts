@@ -2,7 +2,8 @@
 import { expect, mock } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { COST_UPGRADE_DONE, OLD_COST_DEFAULTS, OLD_MODES, costStep, oldModeOf, upgradeCostModes } from '../hooks/core/costupgrade'
+import { COMPACT_UPGRADE_DONE, COST_UPGRADE_DONE, OLD_COST_DEFAULTS, OLD_MODES, costStep, installedBefore, oldModeOf, upgradeCompactAuto, upgradeCostModes } from '../hooks/core/costupgrade'
+import { upgradeNotifyMode } from '../hooks/core/nextupgrade'
 import { MODE_CLASSES, findPreset, modeNow } from '../hooks/core/presets'
 import { SETTINGS, defaults, readSettings, settingStoreKey } from '../hooks/core/settings'
 import { NEEDS_CALM_OPEN, START_OPEN_CARDS, glanceOpenKey, openCardsOf, withOpenCards } from '../hooks/core/headline'
@@ -41,14 +42,38 @@ const memIo = (seed: Record<string, unknown> = {}, onInvalidate: () => void = ()
 }
 const stored = (values: Record<string, string>): Record<string, unknown> => Object.fromEntries(Object.entries(values).map(([k, v]) => [settingStoreKey(k), v]))
 
+test('Compact by itself: a new store reads Watch only; a store from before that never chose keeps Auto, once; a choice stays', async () => {
+  expect(defaults()['compact.mode']).toBe('watch')
+  const fresh = memIo()
+  expect(await installedBefore(fresh.io)).toBe(false)
+  expect(await upgradeCompactAuto(fresh.io, false)).toBe(false)
+  expect((await readSettings(fresh.io))['compact.mode']).toBe('watch')
+  expect(fresh.mem.get(COMPACT_UPGRADE_DONE)).toBe('done')
+  // A store from before: a mark of an earlier session start, or any saved row
+  const old = memIo({ [COST_UPGRADE_DONE]: 'done' })
+  expect(await installedBefore(old.io)).toBe(true)
+  expect(await installedBefore(memIo(stored({ 'lean.mode': 'off' })).io)).toBe(true)
+  expect(await upgradeCompactAuto(old.io, true)).toBe(true)
+  expect((await readSettings(old.io))['compact.mode']).toBe('auto')
+  // Once: a later Watch only the person picks is not put back
+  old.mem.set(settingStoreKey('compact.mode'), 'watch')
+  expect(await upgradeCompactAuto(old.io, true)).toBe(false)
+  expect((await readSettings(old.io))['compact.mode']).toBe('watch')
+  // A stored choice from before stays
+  const chose = memIo({ [COST_UPGRADE_DONE]: 'done', ...stored({ 'compact.mode': 'off' }) })
+  expect(await upgradeCompactAuto(chose.io, true)).toBe(false)
+  expect((await readSettings(chose.io))['compact.mode']).toBe('off')
+})
+
 test('every row a mode writes is a real row, in one class; no (4) row is in any class', () => {
   const all = [...MODE_CLASSES.alerts, ...MODE_CLASSES.helpers, ...MODE_CLASSES.sends]
   for (const k of all) expect(SETTINGS.some(s => s.key === k), k).toBe(true)
-  for (const k of ['compact.mode', 'cache.keeper', 'route.mode', 'resume.mode', 'awake.mode', 'setup.apply']) {
+  for (const k of ['cache.keeper', 'route.mode', 'resume.mode', 'awake.mode', 'setup.apply']) {
     for (const m of ['quiet', 'balanced', 'full']) expect(['auto', 'on', 'resume'].includes(findPreset(m)!.values[k] ?? ''), `${m}: ${k}`).toBe(false)
   }
-  expect(Object.keys(OLD_COST_DEFAULTS).sort()).toEqual([...MODE_CLASSES.helpers].sort())
-  for (const k of Object.keys(OLD_COST_DEFAULTS)) expect(defaults()[k], k).toBe(findPreset('balanced')!.values[k])
+  // The budget was a helper in the old table; it is in no mode now (the setup and Settings set it).
+  expect(Object.keys(OLD_COST_DEFAULTS).sort()).toEqual([...MODE_CLASSES.helpers, 'cost.budget'].sort())
+  for (const k of Object.keys(OLD_COST_DEFAULTS).filter(x => x !== 'cost.budget')) expect(defaults()[k], k).toBe(findPreset('balanced')!.values[k])
 })
 
 test('the one-time step: Only alerts stays Only alerts, the old tips modes move to their new selves by id, a light-start store reads as Recommended', async () => {
@@ -57,7 +82,8 @@ test('the one-time step: Only alerts stays Only alerts, the old tips modes move 
   // a pick of Only alerts, stored before the decision log joined it: the log gets its old Off, so the store still reads as Only alerts
   const quiet = memIo(stored(OLD_MODES.quiet))
   expect(oldModeOf(await readSettings(quiet.io), new Set(Object.keys(OLD_MODES.quiet)))).toBe('quiet')
-  expect(await upgradeCostModes(quiet.io)).toEqual(['decisions.mode'])
+  expect((await upgradeCostModes(quiet.io)).sort()).toEqual(['allow.rules', 'decisions.mode', 'lean.mode', 'next.mode', 'teach.mode'])
+  await upgradeNotifyMode(quiet.io)
   expect(modeNow(await readSettings(quiet.io))).toBe('quiet')
   expect(quiet.mem.get(COST_UPGRADE_DONE)).toBe('done')
   expect(await upgradeCostModes(quiet.io)).toEqual([])
@@ -159,13 +185,19 @@ test('the Start choice on a fresh store opens Needs you, This session and Plan l
   const mem = new Map<string, unknown>()
   engine(on, mem)
   const pane = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
+  // The setup: an answer, the five steps, then Finish on the summary
   await pane.press({ key: 'start-mode-balanced' })
+  for (let n = 0; n < 5; n += 1) {
+    await pane.press({ key: 'start-next' })
+    await pane.redraw()
+  }
+  await pane.press({ key: 'start-finish' })
   await pane.unmount()
   expect(mem.get('cockpit:firstrun')).toBe('done')
   expect(parseLists(mem.get(PREF_LISTS)).open).toEqual(['needs', 'here', 'limit'])
 })
 
-test('Got it on the Welcome card is a Start choice too', SLOW, async ($, on) => {
+test('Skip, use recommended on the Start here card is a Start choice too', SLOW, async ($, on) => {
   mock.clock(on, { now: NOW })
   mock.env(on, { HOME: '/home/test' })
   const mem = new Map<string, unknown>()

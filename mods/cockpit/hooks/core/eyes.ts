@@ -6,11 +6,13 @@ import { below, detectStyle, isAbsolute, lines as textLines, under } from './pla
 import type { Setting } from './settings'
 import { PREVIEW_AUTO_LABEL, PREVIEW_AUTO_NOTE } from './previewwords'
 import { pad2 } from './words'
-import { tEn } from '../i18n/t'
+import { langNow, t, tEn, tr } from '../i18n/t'
+import { fillIn } from './fillin'
+import type { ProcPlatform } from './procs'
 
 
 export const EYES_SETTINGS: Setting[] = [
-  // On by default: an edit of a screen file makes the card say "Changed - look now"; no picture is taken by itself.
+  // On by default: an edit of a screen file makes the card say "Changed – look now"; no picture is taken by itself.
   {
     key: 'preview.auto',
     group: 'Page pictures',
@@ -73,18 +75,18 @@ export const VIRTUAL_TIME_MS = 3_000
 export const LOOPBACK_ONLY = ['--proxy-server=127.0.0.1:9', '--proxy-bypass-list=<-loopback>']
 export const shotArgs = (profile: string, file: string, width: Width, url: string, noSandbox = false, loopbackOnly = false): string[] => [...CHROME_FLAGS, ...(noSandbox ? ['--no-sandbox'] : []), ...(loopbackOnly ? LOOPBACK_ONLY : []), `--user-data-dir=${profile}`, `--virtual-time-budget=${VIRTUAL_TIME_MS}`, `--screenshot=${file}`, `--window-size=${width},${heightOf(width)}`, url]
 
-export const SHOT_MARK = 'bytes written to file'
+export const SHOT_MARK = 'bytes written to file' // en-only: a shell program and the text Chrome prints, not read by the person
 
 // The script is constant; everything that varies is passed as arguments, never put into the text.
 export const WRAP_SCRIPT = [
-  'out=$1; mark=$2; limit=$3; shift 3',
-  '"$@" >"$out" 2>"$out.err" </dev/null &',
-  'pid=$!; n=0',
-  'while [ "$n" -lt "$limit" ]; do',
-  '  if cat "$out" "$out.err" 2>/dev/null | grep -Eq "$mark"; then break; fi',
+  'out=$1; mark=$2; limit=$3; shift 3', // en-only: a shell program and the text Chrome prints, not read by the person
+  '"$@" >"$out" 2>"$out.err" </dev/null &', // en-only: a shell program and the text Chrome prints, not read by the person
+  'pid=$!; n=0', // en-only: a shell program and the text Chrome prints, not read by the person
+  'while [ "$n" -lt "$limit" ]; do', // en-only: a shell program and the text Chrome prints, not read by the person
+  '  if cat "$out" "$out.err" 2>/dev/null | grep -Eq "$mark"; then break; fi', // en-only: a shell program and the text Chrome prints, not read by the person
   '  sleep 0.25; n=$((n + 1))',
   'done',
-  'echo "$pid"',
+  'echo "$pid"', // en-only: a shell program and the text Chrome prints, not read by the person
 ].join('\n')
 
 export const wrapArgv = (out: string, mark: string, quarters: number, args: readonly string[], chrome: string = CHROME): string[] => ['sh', '-c', WRAP_SCRIPT, 'eyes', out, mark, String(quarters), chrome, ...args]
@@ -135,7 +137,8 @@ export function parseReach(_exitCode: number, stdout: string): number | undefine
   const n = Number(stdout.trim())
   return Number.isInteger(n) && n >= 100 ? n : undefined
 }
-export const reachArgv = (url: string): string[] => ['curl', '-s', '-o', '/dev/null', '-w', '%{http_code}', '--max-time', '4', url]
+// Windows curl.exe cannot write /dev/null (it tries a file \dev\null and exits 23): it takes the NUL device.
+export const reachArgv = (url: string, plat: ProcPlatform = 'posix'): string[] => ['curl', '-s', '-o', plat === 'win32' ? 'NUL' : '/dev/null', '-w', '%{http_code}', '--max-time', '4', url] // en-only: program arguments
 
 
 export function cleanName(raw: string): string | undefined {
@@ -172,28 +175,31 @@ export const baselineOf = (shots: readonly Shot[], name: string, width: Width): 
 export const kb = (bytes: number): string => (bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`)
 
 export function pct(p: number): string {
-  if (p === 0) return '0%'
-  if (p < 0.05) return 'under 0.1%'
-  return `${p >= 10 ? Math.round(p) : p.toFixed(1)}%`
+  if (p === 0) return tr('0%')
+  if (p < 0.05) return tr('under 0.1%')
+  const shown = String(p >= 10 ? Math.round(p) : p.toFixed(1))
+  return langNow() === 'sv' ? `${shown.replace('.', ',')} %` : `${shown}%`
 }
 
-const wide = (w: number): string => `${widthLabel(w as Width)}, ${w} wide`
+const wide = (w: number): string => fillIn(tr('{label}, {w} wide'), { label: tr(widthLabel(w as Width)), w })
+// A size with the decimal mark of the language
+const sizeText = (bytes: number): string => (langNow() === 'sv' ? kb(bytes).replace('.', ',') : kb(bytes))
 
 export type Taken = { width: Width; status: 'saved' | 'unchanged' | 'failed'; path?: string; bytes?: number; why?: string }
 
 export function lookText(url: string, name: string, taken: readonly Taken[], capped = false): string {
   const saved = taken.filter(t => t.status === 'saved').length
   const lines: string[] = []
-  if (taken.length === 0) lines.push(capped ? `No picture taken: ${LOOK_CAP} pictures were taken in this answer already.` : 'No picture taken.')
-  else if (saved === 0 && taken.every(t => t.status === 'unchanged')) lines.push(`Nothing changed on ${url} (name: ${name}). The pictures are the same as the last ones.`)
-  else lines.push(`Took ${tEn('words.new_picture', { n: saved })} of ${url} (name: ${name}).`)
-  for (const t of taken) {
-    if (t.status === 'saved') lines.push(`${wide(t.width)}: ${t.path ?? ''}${t.bytes === undefined ? '' : ` (${kb(t.bytes)})`}`)
-    else if (t.status === 'unchanged') lines.push(`${wide(t.width)}: unchanged since the last picture${t.path === undefined ? '' : ` (${t.path})`}`)
-    else lines.push(`${wide(t.width)}: no picture${t.why === undefined ? '' : ` (${t.why})`}`)
+  if (taken.length === 0) lines.push(capped ? fillIn(tr('No picture taken: {n} pictures were taken in this answer already.'), { n: LOOK_CAP }) : tr('No picture taken.'))
+  else if (saved === 0 && taken.every(t => t.status === 'unchanged')) lines.push(fillIn(tr('Nothing changed on {url} (name: {name}). The pictures are the same as the last ones.'), { url, name }))
+  else lines.push(fillIn(tr('Took {pictures} of {url} (name: {name}).'), { pictures: t('words.new_picture', { n: saved }), url, name }))
+  for (const x of taken) {
+    if (x.status === 'saved') lines.push(`${wide(x.width)}: ${x.path ?? ''}${x.bytes === undefined ? '' : ` (${sizeText(x.bytes)})`}`)
+    else if (x.status === 'unchanged') lines.push(`${wide(x.width)}: ${tr('unchanged since the last picture')}${x.path === undefined ? '' : ` (${x.path})`}`)
+    else lines.push(`${wide(x.width)}: ${tr('no picture')}${x.why === undefined ? '' : ` (${tr(x.why)})`}`)
   }
-  if (taken.some(t => t.path !== undefined)) lines.push('Look at them by reading the path.', 'A picture shows the top of the page, as high as the window, not the whole page.')
-  if (capped && taken.length > 0) lines.push(`Some sizes were left out: at most ${LOOK_CAP} pictures per answer.`)
+  if (taken.some(x => x.path !== undefined)) lines.push(tr('Look at them by reading the path.'), tr('A picture shows the top of the page, as high as the window, not the whole page.'))
+  if (capped && taken.length > 0) lines.push(fillIn(tr('Some sizes were left out: at most {n} pictures per answer.'), { n: LOOK_CAP }))
   return lines.join('\n')
 }
 

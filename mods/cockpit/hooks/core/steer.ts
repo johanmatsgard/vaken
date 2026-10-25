@@ -7,7 +7,7 @@ export const STEER_SETTINGS: Setting[] = [
     key: 'steer.mode',
     group: 'Explain simply',
     label: 'Vaken tool',
-    note: 'Lets Claude read the budget and receipts itself.',
+    note: 'Lets Claude read the budget and receipts itself.', // en-only: a setting note; /vaken-settings text stays English
     options: [
       { value: 'on', label: 'On' },
       { value: 'off', label: 'Off' },
@@ -22,7 +22,7 @@ export const STEER_TOOL = 'vaken_status'
 export const TOPICS: readonly string[] = ['proof', 'done', 'goal', 'happened', 'health']
 
 export const STEER_DESCRIPTION = `Ask vaken about this session. Read only. Topics: ${TOPICS.join(', ')}. Use "proof" before you say the work is done, "done" to see the definition of done, "goal" to remember the goal, "happened" for what the last answer did.`
-export const STEER_SCHEMA = { type: 'object', properties: { topic: { type: 'string', enum: [...TOPICS], description: 'What to ask about.' } }, required: ['topic'] }
+export const STEER_SCHEMA = { type: 'object', properties: { topic: { type: 'string', enum: [...TOPICS], description: 'What to ask about.' } }, required: ['topic'] } // en-only: the tool's schema, read by Claude
 
 export const isTopic = (topic: unknown): topic is string => typeof topic === 'string' && TOPICS.includes(topic)
 export const unknownTopic = (): string => `Unknown topic. Ask about one of: ${TOPICS.join(', ')}.`

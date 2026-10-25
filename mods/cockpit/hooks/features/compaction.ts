@@ -7,26 +7,29 @@ import { lastAfterTokens, lastSummaryOut, withCompact } from '../core/cachefacts
 import { postBand } from '../core/band'
 import { AUDIT_KEY, parseAudit, toAudit, withAudit } from '../core/insight'
 import { compare, diffKey, filesFromMessages } from '../core/compactdiff'
+import type { Diff } from '../core/compactdiff'
+import { checkSummary, failingKinds, keepListItems, keepMem, learnedLines } from '../core/compactcheck'
+import type { KeepItem } from '../core/compactcheck'
+import { readState, stateKey } from '../core/proof'
+import { loadIndex } from '../core/undo'
 import { COUNTS_KEY, FREED_TITLE, SHORTENED_TITLE, addCount, countOf } from '../core/counts'
 import { serialUpdate } from '../core/serial'
-import { CACHE_WARM_MS, DEFAULT_AFTER_TOKENS, DEFAULT_SUMMARY_OUT, cardText, compactInstructions, keepWords, openLines, paybackTurns, withKeepList } from '../core/compactmoment'
-import { workSaved } from '../core/compactscore'
+import { DEFAULT_AFTER_TOKENS, DEFAULT_SUMMARY_OUT, HELPERS_LINE, cardText, compactInstructions, keepWords, openLines, paybackTurns, ttlOrGuess, withKeepList } from '../core/compactmoment'
+import { BREAK_RETRY_MS, SIZE_LOOK2_MS, SIZE_LOOK_MS, breakAtMs, giveUpLeftMin, leadMsOf, minTokensOf } from '../core/compactauto'
+import type { Trigger } from '../core/compactauto'
 import { fromOf, nudge } from '../core/compactnudge'
 import { AUTO_NOTE_WHAT, noteText, noteWords } from '../core/autosafe'
-import { NEW_TURN, NO_BRIEF, becauseWords, skippedWords, stopWords } from '../core/compactwords'
+import { NEW_TURN, NO_BRIEF, STOP_WORDS, TYPING, detailWords, skippedWords, triggerWords } from '../core/compactwords'
 import { t, tr } from '../core/lang'
-import { namedKey, parseNamed } from '../core/undo'
 import type { Probe } from '../core/undo'
 import { allowKey } from '../core/guard'
 import { heldKey, heldOpen, parseAllowOnce, parseHeld } from '../core/allowonce'
 import { failedKey, failedLine, parseFailed } from '../core/errors'
-import { BACKGROUND_OPEN_MS, CACHE_MARGIN_MS, REST_KEY, REST_QUIET_MS, WOULD_WHAT, endsWithQuestion, notGoodLines, restChecks, restDetail, restReady, restScore, restScoreFacts } from '../core/compactrest'
+import { BACKGROUND_MAX_MS, REST_KEY, endsBackground, helpersOpen, WOULD_WHAT, notGoodLines, restChecks, restDetail, restReady, restTrigger } from '../core/compactrest'
 import type { RestFacts } from '../core/compactrest'
 import { BOARD_KEY, boardRows, parseBoard } from '../core/agentboard'
-import { readState, stateKey } from '../core/proof'
-import { shownTitle } from '../core/ledger'
+import { LEAN_TOKENS_TITLE, LEAN_WHAT, shownTitle, startOfDay } from '../core/ledger'
 import type { Entry } from '../core/ledger'
-import { readNote } from '../core/flush'
 import { withToastGate } from '../core/io'
 import { homeFrom } from '../core/platform'
 import type { Io } from '../core/io'
@@ -62,7 +65,6 @@ export const LEDGER_KEY = 'cockpit:ledger:compact'
 const LOG_CAP = 24
 // The ledger keeps more: the cache keeper adds an entry per ping, and the compacts must not be pushed out.
 const LEDGER_CAP = 60
-const REST_LOOK_MS = REST_QUIET_MS + 5_000
 
 export type { Entry }
 
@@ -74,7 +76,8 @@ const isEntry = (entry: Entry) => (x: unknown): boolean => {
   return typeof got === 'object' && got !== null && got.at === entry.at && got.what === entry.what && got.session === entry.session
 }
 
-export async function pushLog(i: Io, key: string, entry: Entry): Promise<void> {
+// `quiet`: the row only joins the log, with no band line and no audit row (the person pressed it or already sees it).
+export async function pushLog(i: Io, key: string, entry: Entry, quiet = false): Promise<void> {
   const cap = key === LEDGER_KEY ? LEDGER_CAP : LOG_CAP
   await serialUpdate(i, key, old => [entry, ...(Array.isArray(old) ? (old as Entry[]) : [])].slice(0, cap), stored => Array.isArray(stored) && stored.some(isEntry(entry)))
   if (key === LEDGER_KEY) {
@@ -92,16 +95,36 @@ export async function pushLog(i: Io, key: string, entry: Entry): Promise<void> {
       stored => countOf(stored, entry.at, entry.what) >= written,
     )
   }
-  if (key === LEDGER_KEY && entry.did === true) {
+  if (key === LEDGER_KEY && entry.did === true && !quiet) {
     await postBand(i, 'info', `did:${entry.what}`, shownTitle(entry.what), DONE_BAND_MS, entry.session)
     const row = toAudit(entry)
     await serialUpdate(i, AUDIT_KEY, old => withAudit(parseAudit(old), row), stored => parseAudit(stored).some(r => r.at === row.at && r.what === row.what && r.session === row.session))
   }
 }
 
+// The day's lean cuts as ONE row: the first cut of the day adds it, later ones add to its counts. Memory sums come in batches (features/lean.ts), never per cut.
+export async function noteLeanDay(i: Io, now: number, cuts: number, tokens: number): Promise<void> {
+  const session = await i.sessionId()
+  await serialUpdate(
+    i,
+    LEDGER_KEY,
+    old => {
+      const list = Array.isArray(old) ? (old as Entry[]) : []
+      const at = list.findIndex(e => typeof e === 'object' && e !== null && e.what === LEAN_WHAT && e.at >= startOfDay(now))
+      if (at < 0) return [{ at: now, session, what: LEAN_WHAT, how: 'auto' as const, did: true, cuts, saved: tokens }, ...list].slice(0, LEDGER_CAP)
+      const row = list[at] as Entry
+      return list.map((e, n) => (n === at ? { ...row, cuts: (row.cuts ?? 0) + cuts, saved: (row.saved ?? 0) + tokens } : e))
+    },
+    stored => Array.isArray(stored) && stored.some(e => (e as Entry | null)?.what === LEAN_WHAT),
+  )
+  await serialUpdate(i, COUNTS_KEY, old => addCount(addCount(old, now, LEAN_WHAT, cuts), now, LEAN_TOKENS_TITLE, tokens))
+}
+
+// A line from an old version or a broken write is dropped: each needs its time and its title.
+const goodEntry = (x: unknown): x is Entry => typeof x === 'object' && x !== null && typeof (x as Entry).at === 'number' && Number.isFinite((x as Entry).at) && typeof (x as Entry).what === 'string'
 export async function readLog(i: Io, key: string): Promise<Entry[]> {
   const v = await i.get(key)
-  return Array.isArray(v) ? (v as Entry[]) : []
+  return Array.isArray(v) ? v.filter(goodEntry).map(x => (x.detail === undefined || typeof x.detail === 'string' ? x : { ...x, detail: String(x.detail) })) : []
 }
 
 export const why = (err: unknown): string => (err instanceof Error ? err.message : String(err)).slice(0, 160)
@@ -110,8 +133,18 @@ export function logLines(list: Entry[], max = 12): string[] {
   return list.slice(0, max).map(x => `${hhmmss(x.at)} ${shownTitle(x.what)}${x.detail === undefined ? '' : `: ${x.detail}`}`)
 }
 
-// Never throws.
-export async function keepList(i: Io, sessionId: string): Promise<string> {
+// The files this session edited, newest first: the transcript's edit steps when the hook has them (paths only), then the undo copies vaken keeps
+async function editedPaths(i: Io, sessionId: string, more: readonly string[]): Promise<string[]> {
+  const fromSteps = [...more].reverse()
+  try {
+    return [...fromSteps, ...(await loadIndex(i, sessionId)).snaps.slice().sort((a, b) => b.at - a.at).map(s => s.path)]
+  } catch {
+    return fromSteps
+  }
+}
+
+// The keep-list and the items it asks the summary to keep (core/compactcheck.ts). Never throws.
+export async function keepPlan(i: Io, sessionId: string, edited: readonly string[] = []): Promise<{ text: string; items: KeepItem[] }> {
   const rec = await readRecord(i, sessionId)
   const base = cardText({ title: rec?.title, branch: rec?.branch })
   try {
@@ -119,13 +152,43 @@ export async function keepList(i: Io, sessionId: string): Promise<string> {
     const held = heldOpen(parseHeld(await i.get(heldKey(sessionId))), parseAllowOnce(await i.get(allowKey(sessionId))), now)
     const failed = parseFailed(await i.get(failedKey(sessionId)))
     const open = openLines({ failed: failedLine(failed === undefined ? undefined : { ...failed, what: keepWords(failed.what) }, now), held: held === undefined ? undefined : (held.words ?? 'a step') })
-    return [base, ...open].join('\n')
+    const proof = readState(await i.get(stateKey(sessionId)))
+    const goal = proof.goal?.text ?? rec?.title
+    const items = keepListItems({ ...(goal === undefined ? {} : { goal }), edited: await editedPaths(i, sessionId, edited), failing: failingKinds(proof) })
+    return { text: [base, ...learnedLines(items, goal === rec?.title), ...open].join('\n'), items }
   } catch {
-    return base
+    return { text: base, items: [] }
   }
 }
 
-let autoGivenUp = false
+// Never throws.
+export async function keepList(i: Io, sessionId: string): Promise<string> {
+  return (await keepPlan(i, sessionId)).text
+}
+
+// After a compaction: which changed files the summary names (core/compactdiff.ts) and, with the keep-list on, is each kept item in it?
+// The summary is read here and dropped: the record keeps names of our own and counts, the items left out stay in this process's memory.
+export async function checkKept(i: Io, sessionId: string, files: readonly string[], items: readonly KeepItem[] | undefined, summary: string | undefined): Promise<void> {
+  try {
+    if (summary === undefined) return
+    const now = await i.now()
+    const diff: Diff = compare([...files], summary, (await readRecord(i, sessionId))?.branch, now)
+    const c = items === undefined || items.length === 0 ? undefined : checkSummary(sessionId, items, summary, now)
+    keepMem.last = c
+    await i.set(diffKey(sessionId), c === undefined ? diff : { ...diff, keep: { total: c.total, lost: c.missing.length } })
+    if (c !== undefined && c.missing.length > 0) i.invalidate()
+  } catch {
+  }
+}
+
+// Where Auto gave up, per session: it could not start a compaction there, so it leaves that session alone for GIVE_UP_RETRY_MS (the This session card says so)
+const givenUp = new Map<string, number>()
+export const noteGiveUp = (sessionId: string, at: number): void => void givenUp.set(sessionId, at)
+export const giveUpMinOf = (sessionId: string, now: number): number => {
+  const left = giveUpLeftMin(givenUp.get(sessionId), now)
+  if (left === 0) givenUp.delete(sessionId)
+  return left
+}
 
 // The running flag is the one hard block with no way past it: it is claimed with a holder number before anything is awaited
 type How = NonNullable<Entry['how']>
@@ -161,7 +224,28 @@ function howNow(now: number): How {
   return s !== undefined && now >= s.at && now - s.at < SENT_MARK_MS ? s.how : 'typed'
 }
 
-const rest: { turnId?: string; endedAt: number; question: boolean; background: number[]; lastAutoAt?: number } = { endedAt: 0, question: false, background: [] }
+// What one session's rest keeps: the turn that just ended and the background commands it started. One slot per session, so two sessions never share a turn or a command.
+// `starts` counts the main turns that started: a compaction about to be sent checks it did not change. `background` holds the start time of each background command not yet seen to end; `timers` the looks scheduled for the turn that just ended.
+type RestSlot = { turnId?: string; endedAt: number; background: number[]; startedAt?: number; timers: { cancel: () => void }[]; starts: number }
+const slots = new Map<string, RestSlot>()
+export function cancelLooks(slot: RestSlot): void {
+  for (const timer of slot.timers) timer.cancel()
+  slot.timers = []
+}
+// A background command of the session ended (its task notification, or the person stopped it): the oldest one still counted is done.
+export function backgroundEnded(sessionId: string): void {
+  restSlotOf(sessionId).background.shift()
+}
+export function restSlotOf(sessionId: string): RestSlot {
+  const got = slots.get(sessionId)
+  if (got !== undefined) return got
+  const fresh: RestSlot = { endedAt: 0, background: [], timers: [], starts: 0 }
+  slots.set(sessionId, fresh)
+  return fresh
+}
+
+// Why Auto compacted this time: read once by the record of the compaction that follows
+let autoWhy: { kind: Trigger; pct: number | undefined; at: number } | undefined
 
 // What a compaction needs from the engine
 export type CompactOps = {
@@ -170,51 +254,49 @@ export type CompactOps = {
   probe: Probe
   agents: () => Promise<number> // helper agents the engine lists as running
   command: (args: string) => Promise<unknown>
-  direct?: (instructions: string) => Promise<{ skip?: string; tokensBefore?: number; tokensAfter?: number; outTokens?: number }>
+  direct?: (instructions: string) => Promise<{ skip?: string; tokensBefore?: number; tokensAfter?: number; outTokens?: number; summary?: string }>
 }
 
-// What the rule needs, from the session's record, the proof state, the agent board, the engine's agent list
+// What the rule needs, from the session's record, the agent board, the engine's agent list
 async function restFacts(i: Io, agents: () => Promise<number>, sessionId: string, turnId?: string): Promise<RestFacts | undefined> {
   const rec = await readRecord(i, sessionId)
   if (rec === undefined) return undefined
+  const slot = restSlotOf(sessionId)
   const now = await i.now()
-  // Unknown plan: the short cache time, so a lapsed cache is never called warm.
-  const ttl = cacheTtlMs(parseStoredUsage(await i.get(APP_USAGE_KEY))) ?? CACHE_WARM_MS
-  const board = boardRows(parseBoard(await i.get(BOARD_KEY)), now).filter(r => r.session === sessionId.slice(0, 8) && r.state === 'running').length
+  // Unknown plan: the short cache time for the payback sum, so a lapsed cache is never called warm; the break trigger never fires then (ttlKnown).
+  const knownTtl = cacheTtlMs(parseStoredUsage(await i.get(APP_USAGE_KEY)))
+  const ttl = ttlOrGuess(knownTtl)
+  const mine = boardRows(parseBoard(await i.get(BOARD_KEY)), now).filter(r => r.session === sessionId.slice(0, 8) && r.state === 'running')
+  const board = mine.length
   let engine = 0
   try {
     engine = await agents()
   } catch {
   }
-  rest.background = rest.background.filter(at => now - at < BACKGROUND_OPEN_MS)
+  slot.background = slot.background.filter(at => now - at < BACKGROUND_MAX_MS)
   const tokens = rec.ctx?.tokens
-  const lastCompact = (rec.compacts ?? []).reduce((m, c) => Math.max(m, c.at), 0)
+  // The last compaction of any kind: the record's, or one just started here (its record comes when the engine reports it)
+  const lastCompact = (rec.compacts ?? []).reduce((m, c) => Math.max(m, c.at), slot.startedAt ?? 0)
   const cacheLeftMs = rec.cache?.at === undefined ? undefined : ttl - (now - rec.cache.at)
-  const proof = readState(await readNote(i, stateKey(sessionId)))
-  let checkpointAt: number | undefined
-  try {
-    checkpointAt = parseNamed(await i.get(namedKey(sessionId))).reduce<number | undefined>((m, n) => (m === undefined || n.at > m ? n.at : m), undefined)
-  } catch {
-    checkpointAt = undefined
-  }
   const guardHeld = heldOpen(parseHeld(await i.get(heldKey(sessionId))), parseAllowOnce(await i.get(allowKey(sessionId))), now) !== undefined
   return {
-    turnEnded: (turnId === undefined || rest.turnId === turnId) && rec.state !== 'working',
-    endedWithQuestion: rest.question,
+    turnEnded: (turnId === undefined || slot.turnId === turnId) && rec.state !== 'working',
     waitsForYou: rec.ask !== undefined,
     agentsRunning: Math.max(board, engine),
-    backgroundRecent: rest.background.length,
+    foregroundAgents: mine.filter(r => !r.background).length,
+    backgroundRecent: slot.background.length,
     guardHeld,
     from: fromOf(await readSetting(i, 'compact.from')),
-    saved: workSaved(proof, checkpointAt),
-    proof,
+    minTokens: minTokensOf(await readSetting(i, 'compact.min'), rec.ctx?.window),
     tokens,
     ...(rec.contextPercent === undefined ? {} : { percent: rec.contextPercent }),
     payback: tokens === undefined ? undefined : paybackTurns({ tokens, after: lastAfterTokens(rec.compacts) ?? DEFAULT_AFTER_TOKENS, out: lastSummaryOut(rec.compacts) ?? DEFAULT_SUMMARY_OUT, warm: (cacheLeftMs ?? 0) > 0, ttlMs: ttl }),
-    quietMs: now - rest.endedAt,
+    // No answer has ended in this process yet: the idle time is not known, so it counts as none
+    quietMs: slot.endedAt === 0 ? 0 : now - slot.endedAt,
+    breakAtMs: breakAtMs(ttl, leadMsOf(await readSetting(i, 'compact.lead'))),
     cacheLeftMs,
+    ttlKnown: knownTtl !== undefined,
     sinceCompactMs: lastCompact === 0 ? undefined : now - lastCompact,
-    sinceAutoMs: rest.lastAutoAt === undefined ? undefined : now - rest.lastAutoAt,
   }
 }
 
@@ -228,11 +310,33 @@ export async function notGoodNow(ops: CompactOps, sessionId: string, say: (name:
   }
 }
 
-// Never throws.
-async function restLook($: EngineInterface, sessionId: string, turnId: string): Promise<void> {
+// The looks Auto takes after an answer: the size trigger at SIZE_LOOK_MS and again at SIZE_LOOK2_MS, the break trigger when a break nears the end of the cache time and once more BREAK_RETRY_MS later
+type Look = 'size' | 'size2' | 'break' | 'break2'
+
+// Is the person's prompt box empty? A box that cannot be read counts as not empty, so Auto waits for the next look.
+async function boxEmpty($: EngineInterface): Promise<boolean> {
+  try {
+    const box = await $.prompt.read()
+    return box.text.trim() === ''
+  } catch {
+    return false
+  }
+}
+
+// Schedules one look for the turn that just ended; a new turn or the end of the session cancels it.
+function lookAt($: EngineInterface, sessionId: string, turnId: string, ms: number, which: Look): void {
+  const timer = $.clock.after(ms, () => void restLook($, sessionId, turnId, which))
+  restSlotOf(sessionId).timers.push(timer)
+}
+
+// One look at the moment. Never throws.
+async function restLook($: EngineInterface, sessionId: string, turnId: string, which: Look): Promise<void> {
   const i = io($)
   try {
-    if (rest.turnId !== turnId) return
+    // A timer that outlived its session does nothing
+    if ((await i.sessionId()) !== sessionId) return
+    const slot = restSlotOf(sessionId)
+    if (slot.turnId !== turnId) return
     const mode = await readSetting(i, 'compact.mode')
     if (mode !== 'watch' && mode !== 'auto') return
     const f = await restFacts(i, agentsOf($), sessionId, turnId)
@@ -242,15 +346,20 @@ async function restLook($: EngineInterface, sessionId: string, turnId: string): 
     const now = await i.now()
     await i.set(REST_KEY(sessionId), { at: now, ready, checks })
     if (!ready) {
-      if (f.cacheLeftMs !== undefined && f.cacheLeftMs - REST_QUIET_MS >= CACHE_MARGIN_MS) $.clock.after(REST_QUIET_MS, () => void restLook($, sessionId, turnId))
+      // One more look soon: the timer may have fired a little early, or a check may have failed for a moment
+      if (which === 'break' && f.ttlKnown !== false) lookAt($, sessionId, turnId, BREAK_RETRY_MS, 'break2')
       return
     }
     if (mode === 'watch') {
-      rest.turnId = undefined
-      await pushLog(i, LEDGER_KEY, { at: now, session: sessionId, what: WOULD_WHAT, did: true, detail: restDetail(f) })
+      slot.turnId = undefined
+      // A note, not an action: Watch did nothing, so it is not counted as done for you
+      await pushLog(i, LEDGER_KEY, { at: now, session: sessionId, what: WOULD_WHAT, detail: restDetail(f) })
       return
     }
-    if (!autoGivenUp) await runAuto($, sessionId, turnId, f)
+    if (giveUpMinOf(sessionId, now) > 0) return
+    // The size trigger never compacts over a prompt the person is typing: the second look tries again
+    if ((restTrigger(f) ?? 'size') === 'size' && !(await boxEmpty($))) return
+    await runAuto($, sessionId, turnId, f)
   } catch {
     // an automatic step never breaks the session
   }
@@ -286,7 +395,7 @@ function opsOf($: EngineInterface): CompactOps {
     direct: async instructions => {
       const r = await $.session.compact({ instructions })
       if (r.skip !== undefined) return { skip: r.skip }
-      return { tokensBefore: r.tokensBefore, tokensAfter: r.tokensAfter, outTokens: r.usage?.output_tokens }
+      return { tokensBefore: r.tokensBefore, tokensAfter: r.tokensAfter, outTokens: r.usage?.output_tokens, summary: r.messages[0]?.text }
     },
   }
 }
@@ -311,7 +420,7 @@ async function postNote(i: Io, sessionId: string, name: string): Promise<void> {
 export type CompactEnd = 'busy' | 'skipped' | 'no-brief' | 'sent' | 'failed'
 
 // Claims the running flag (nothing awaited before it), looks at `stops` (Auto's checks
-export async function runCompaction(r: { how: 'button' | 'auto'; sessionId: string; ops: CompactOps; stops?: () => Promise<string | undefined>; because?: string }): Promise<CompactEnd> {
+export async function runCompaction(r: { how: 'button' | 'auto'; sessionId: string; ops: CompactOps; stops?: () => Promise<string | undefined>; because?: string; kind?: Trigger; pct?: number; same?: () => boolean }): Promise<CompactEnd> {
   const owner = claimCompacting(r.how)
   if (owner === undefined) return 'busy'
   const i = r.ops.io
@@ -334,9 +443,11 @@ export async function runCompaction(r: { how: 'button' | 'auto'; sessionId: stri
     }
     const late = r.stops === undefined ? undefined : await r.stops()
     if (late !== undefined) return await skip(late)
-    rest.turnId = undefined
-    rest.lastAutoAt = await i.now()
-    const keep = compactInstructions((await readSetting(i, 'compact.card')) === 'on' ? await keepList(i, r.sessionId) : undefined, saved.shown)
+    restSlotOf(r.sessionId).turnId = undefined
+    restSlotOf(r.sessionId).startedAt = await i.now()
+    if (auto && r.kind !== undefined) autoWhy = { kind: r.kind, pct: r.pct, at: await i.now() }
+    const plan = (await readSetting(i, 'compact.card')) === 'on' ? await keepPlan(i, r.sessionId) : undefined
+    const keep = compactInstructions(plan?.text, saved.shown, await helpersNow(i, r.ops.agents, r.sessionId))
     if (auto) {
       await log('auto-compact starts', r.because)
       if (r.because !== undefined) i.toast(r.because)
@@ -345,6 +456,8 @@ export async function runCompaction(r: { how: 'button' | 'auto'; sessionId: stri
       i.toast(tr('Compacting the session'), true)
     }
     let refused: unknown
+    // A new turn may have started while the brief was saved: the check and the call stand together, nothing awaited between them
+    if (r.same !== undefined && !r.same()) return await skip(NEW_TURN)
     if (r.ops.direct !== undefined) {
       try {
         const res = await r.ops.direct(keep)
@@ -353,12 +466,15 @@ export async function runCompaction(r: { how: 'button' | 'auto'; sessionId: stri
           return 'skipped'
         }
         await noteCompact(i, r.sessionId, 'plugin', res.tokensBefore, res.tokensAfter, res.outTokens, r.how)
+        // Our own call skips this module's session.compact hook, so it checks the summary here
+        await checkKept(i, r.sessionId, (plan?.items ?? []).filter(x => x.kind === 'file').map(x => x.name), plan?.items, res.summary)
         if (auto) await postNote(i, r.sessionId, saved.name)
         return 'sent'
       } catch (err) {
         refused = err === undefined ? new Error('refused') : err
       }
     }
+    if (r.same !== undefined && !r.same()) return await skip(NEW_TURN)
     try {
       await r.ops.command(keep)
       if (compacting.seenBy !== owner) compacting.sent = { how: r.how, at: await i.now() }
@@ -367,7 +483,7 @@ export async function runCompaction(r: { how: 'button' | 'auto'; sessionId: stri
       return 'sent'
     } catch (err2) {
       if (auto) {
-        autoGivenUp = true
+        noteGiveUp(r.sessionId, await i.now())
         await log('auto-compact could not run', refused === undefined ? why(err2) : `${why(refused)} | ${why(err2)}`)
       } else {
         i.toast(tr('Could not compact the session from here. Type /compact yourself.'), true)
@@ -384,19 +500,36 @@ export async function runCompaction(r: { how: 'button' | 'auto'; sessionId: stri
   }
 }
 
+// Each check of the rule, as the stop that names it in the ledger
+const CHECK_STOP: Record<string, string> = { ended: 'working', helpers: 'foreground', guard: 'guard', size: 'small', gap: 'gap', time: 'early' }
+
+// Do helpers (agents or background commands) still run in this session? Then the summary must list them. Never throws.
+async function helpersNow(i: Io, agents: () => Promise<number>, sessionId: string): Promise<boolean> {
+  try {
+    const f = await restFacts(i, agents, sessionId)
+    return f !== undefined && helpersOpen(f)
+  } catch {
+    return false
+  }
+}
+
 // Never throws.
 export async function runAuto($: EngineInterface, sessionId: string, turnId: string, looked: RestFacts): Promise<void> {
   const ops = opsOf($)
+  const kind = restTrigger(looked) ?? 'size'
+  const starts = restSlotOf(sessionId).starts
   const stops = async (): Promise<string | undefined> => {
-    if (rest.turnId !== turnId) return NEW_TURN
+    if (restSlotOf(sessionId).turnId !== turnId) return NEW_TURN
+    if (kind === 'size' && !(await boxEmpty($))) return TYPING
     const fresh = await restFacts(ops.io, ops.agents, sessionId, turnId)
     if (fresh === undefined) return NEW_TURN
     const checks = restChecks(fresh)
     if (restReady(checks)) return undefined
-    const first = restScore(fresh).hardStops[0]
-    return first !== undefined ? stopWords(first) : (checks.find(c => !c.ok)?.label ?? NEW_TURN)
+    const first = checks.find(c => !c.ok)
+    const stop = first?.id === 'time' && helpersOpen(fresh) ? 'busy' : CHECK_STOP[first?.id ?? '']
+    return first === undefined ? NEW_TURN : (STOP_WORDS[stop ?? ''] ?? first.label)
   }
-  await runCompaction({ how: 'auto', sessionId, ops, stops, because: becauseWords(restScore(looked).reasons, tr) })
+  await runCompaction({ how: 'auto', sessionId, ops, stops, kind, same: () => restSlotOf(sessionId).starts === starts, ...(looked.percent === undefined ? {} : { pct: looked.percent }), because: triggerWords(kind, looked.percent ?? 0, tr) })
 }
 
 // Keeps what one compaction did to the window: in this session's record (so the next advice uses the real summary size) and in the ledger.
@@ -404,7 +537,15 @@ async function noteCompact(i: Io, sessionId: string, trigger: string, before?: n
   const now = await i.now()
   const old = await readRecord(i, sessionId)
   await putRecord(i, { sessionId, compacts: withCompact(old?.compacts, { at: now, trigger, before, after, outTokens }) }, true)
-  if (isLedger) await pushLog(i, LEDGER_KEY, { at: now, session: sessionId, ...(before === undefined ? {} : { before }), ...(after === undefined ? {} : { after }), ...(how === undefined ? {} : { how }), what: `compacted (${trigger})`, detail: `${before === undefined ? '?' : Math.round(before / 1000)}k to ${after === undefined ? '?' : Math.round(after / 1000)}k tokens${outTokens === undefined ? '' : `, summary output ${outTokens}`}` })
+  // A compaction Auto started says when: "during a break, 640k to 18k tokens"
+  const why = how === 'auto' && autoWhy !== undefined && now >= autoWhy.at && now - autoWhy.at < SENT_MARK_MS ? `${detailWords(autoWhy.kind, autoWhy.pct)}, ` : ''
+  if (how === 'auto') autoWhy = undefined
+  if (isLedger) await pushLog(i, LEDGER_KEY, { at: now, session: sessionId, ...(before === undefined ? {} : { before }), ...(after === undefined ? {} : { after }), ...(how === undefined ? {} : { how }), what: `compacted (${trigger})`, detail: `${why}${before === undefined ? '?' : Math.round(before / 1000)}k to ${after === undefined ? '?' : Math.round(after / 1000)}k tokens${outTokens === undefined ? '' : `, summary output ${outTokens}`}` })
+}
+
+// The agent a turn belongs to, when the event names one (a helper agent's turn); the main session's turn names none.
+function loopOf(x: object): unknown {
+  return 'agentId' in x ? x.agentId : undefined
 }
 
 export function registerCompaction(on: On): void {
@@ -420,11 +561,15 @@ export function registerCompaction(on: On): void {
   on('session.compact', async ($, e, next) => {
     let sent = e
     let id = ''
+    let plan: { text: string; items: KeepItem[] } | undefined
+    let files: string[] = []
     try {
       const i = io($)
       id = await i.sessionId()
       if (e.agentId === undefined) {
-        const parts = [(await readSetting(i, 'compact.card')) === 'on' ? await keepList(i, id) : ''].filter(x => x !== '')
+        files = filesFromMessages(e.messages ?? [])
+        plan = (await readSetting(i, 'compact.card')) === 'on' ? await keepPlan(i, id, files) : undefined
+        const parts = [plan?.text ?? '', (await helpersNow(i, agentsOf($), id)) ? HELPERS_LINE() : ''].filter(x => x !== '')
         const instructions = parts.reduce((acc: string | undefined, part) => withKeepList(acc, part), e.instructions)
         if (instructions !== e.instructions) {
           sent = { ...e, instructions }
@@ -435,11 +580,7 @@ export function registerCompaction(on: On): void {
     }
     const result = await next(sent)
     try {
-      if (e.agentId === undefined && e.trigger !== 'precompute' && result.skip === undefined && result.messages.length > 0) {
-        const i = io($)
-        const rec = await readRecord(i, id)
-        await i.set(diffKey(id), compare(filesFromMessages(e.messages ?? []), result.messages[0].text, rec?.branch, await i.now()))
-      }
+      if (e.agentId === undefined && e.trigger !== 'precompute' && result.skip === undefined && result.messages.length > 0) await checkKept(io($), id, files, plan?.items, result.messages[0].text)
     } catch {
     }
     try {
@@ -459,10 +600,19 @@ export function registerCompaction(on: On): void {
       try {
         const i = io($)
         const id = await i.sessionId()
-        rest.turnId = e.turnId
-        rest.endedAt = await i.now()
-        rest.question = endsWithQuestion(e.answer)
-        $.clock.after(REST_LOOK_MS, () => void restLook($, id, e.turnId))
+        const slot = restSlotOf(id)
+        cancelLooks(slot)
+        slot.turnId = e.turnId
+        slot.endedAt = await i.now()
+        const mode = await readSetting(i, 'compact.mode')
+        if (mode === 'watch' || mode === 'auto') {
+          // The size trigger looks a little after the answer and again later; the break trigger looks when the cache time, less the lead, has passed idle.
+          lookAt($, id, e.turnId, SIZE_LOOK_MS, 'size')
+          lookAt($, id, e.turnId, SIZE_LOOK2_MS, 'size2')
+          // Without a known plan the cache time is not known, so there is no break look
+          const ttl = cacheTtlMs(parseStoredUsage(await i.get(APP_USAGE_KEY)))
+          if (ttl !== undefined) lookAt($, id, e.turnId, breakAtMs(ttl, leadMsOf(await readSetting(i, 'compact.lead'))), 'break')
+        }
       } catch {
       }
     }
@@ -470,8 +620,39 @@ export function registerCompaction(on: On): void {
   }).catch(($, e, next) => next(e))
 
   // A new main turn: the person is back, so the rest the rule waited on is over.
+  // A helper agent's turn is not the person coming back: it does not cancel the main session's look.
   on('turn.start', { turnId: /(?<cockpit>)/ }, async ($, e, next) => {
-    rest.turnId = undefined
+    try {
+      if (loopOf(e) === undefined) {
+        const slot = restSlotOf(await io($).sessionId())
+        slot.turnId = undefined
+        slot.starts += 1
+        cancelLooks(slot)
+      }
+    } catch {
+    }
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  // The session ends: its looks go with it
+  on('session.end', { sessionId: /(?<compactlooks>)/ }, async ($, e, next) => {
+    try {
+      const slot = restSlotOf(e.sessionId)
+      slot.turnId = undefined
+      cancelLooks(slot)
+      slot.background = []
+      givenUp.delete(e.sessionId)
+    } catch {
+    }
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  // A background command ended: its task notification reaches the session as a prompt of its own kind. The notification does not say which task it is, so it counts as the end of the oldest one counted; a notification that never comes is covered by BACKGROUND_MAX_MS.
+  on('prompt.submit', { text: /(?<compactbg>)/ }, async ($, e, next) => {
+    try {
+      if (endsBackground(e.origin)) backgroundEnded(await io($).sessionId())
+    } catch {
+    }
     return next(e)
   }).catch(($, e, next) => next(e))
 
@@ -493,9 +674,9 @@ export function registerCompaction(on: On): void {
       }
       if (sent) return result
       if (!(await tellsCompact(i))) return result
-      const facts = await restFacts(i, agentsOf($), id, rest.turnId ?? '')
+      const facts = await restFacts(i, agentsOf($), id, restSlotOf(id).turnId ?? '')
       if (facts === undefined) return result
-      const r = nudge({ mode, sent, from, facts: restScoreFacts(facts) })
+      const r = nudge({ mode, sent, from, minTokens: facts.minTokens, facts: { percent: facts.percent, tokens: facts.tokens, sinceCompactMs: facts.sinceCompactMs } })
       if (r.sent !== sent) await i.set(key, r.sent)
       return r.note === undefined ? result : { ...result, context: [...(result.context ?? []), r.note] }
     } catch {
@@ -508,8 +689,9 @@ export function registerCompaction(on: On): void {
     try {
       const shown = r.result as { backgroundTaskId?: unknown } | undefined
       if (shown?.backgroundTaskId !== undefined || fieldsOf(e).run_in_background === true) {
+        const i = io($)
         const nowMs = await $.clock.now()
-        rest.background.push(nowMs)
+        restSlotOf(await i.sessionId()).background.push(nowMs)
       }
     } catch {
     }

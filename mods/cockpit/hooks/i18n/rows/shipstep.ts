@@ -2,7 +2,7 @@
 import type { Rows } from '../types'
 
 export const ROWS: Rows = {
-  "shipstep.a_check_failed_press_fix": {"en":"A check failed. Press Fix in Needs you or on the Pull requests card, or type /vaken-ship fix yes.","sv":"En kontroll misslyckades. Tryck på Laga i Behöver dig eller på kortet Pull requests, eller skriv /vaken-ship fix yes."},
+  "shipstep.a_check_failed_open_the_pull_request": {"en":"A check failed. Open the pull request in Needs you, or type /vaken-ship fix yes.","sv":"En kontroll misslyckades. Öppna pull requesten i Behöver dig, eller skriv /vaken-ship fix yes."},
   "shipstep.a_review_blocks_it": {"en":"A review blocks it.","sv":"En granskning stoppar den."},
   "shipstep.checked_the_pull_request_from_a": {"en":"Checked the pull request from a typed command","sv":"Kontrollerade pull requesten med ett skrivet kommando"},
   "shipstep.checks_still_run_type_cockpit_ship": {"en":"Checks still run. Type /vaken-ship check again in a few minutes.","sv":"Kontroller pågår fortfarande. Skriv /vaken-ship check igen om några minuter."},

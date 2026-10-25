@@ -1,7 +1,9 @@
 // Pop out: put this session in its own window with the app's `ccd_window` tool `open_session_in` (core/popout.ts).
-import { tr } from '../../core/lang'
+import { t, tr } from '../../core/lang'
 import { POPOUT_ARGS, POPOUT_FAILED, POPOUT_RETRY_MS, POPOUT_SAID, POPOUT_SERVER, POPOUT_TOOL, popMem } from '../../core/popout'
 import type { HomeEngine } from './engine'
+import { RELAY_OPEN_FAILED, relayOpenArgs } from '../../core/relay'
+import type { RelayView } from '../../core/relay'
 
 // A server or tool that is not there (the call throws) is remembered: the next press does not call again and says the way by hand.
 export async function popOut(eng: HomeEngine, say: (english: string) => string = tr): Promise<{ ok: boolean; text: string }> {
@@ -26,6 +28,20 @@ export async function popOutPress(eng: HomeEngine): Promise<void> {
   try {
     const r = await popOut(eng)
     if (r.text !== '') eng.io().toast(r.text, true)
+  } catch {
+  }
+}
+
+// The band's "Open session" for a tool's question in another session (core/relay.ts): the app's window tool shows that session here.
+// The app may refuse a session this one did not start: then a toast says where to find it, by its name.
+export async function openRelaySession(eng: HomeEngine, r: RelayView): Promise<void> {
+  try {
+    const res = await eng.mcpCall(POPOUT_SERVER, POPOUT_TOOL, relayOpenArgs(r))
+    if (res.isError !== true) return
+  } catch {
+  }
+  try {
+    eng.io().toast(t(RELAY_OPEN_FAILED, { name: r.name }), true)
   } catch {
   }
 }

@@ -3,6 +3,7 @@ import type { Rows } from '../types'
 
 export const ROWS: Rows = {
   "awake.a_helper_agent_is_running_in": {"en":"an agent is running in the background","sv":"en agent körs i bakgrunden"},
+  "awake.a_night_run_is_going": {"en":"a night run is going","sv":"en nattkörning pågår"},
   "awake.a_phone_is_connected": {"en":"a phone is connected","sv":"en telefon är ansluten"},
   "awake.a_phone_is_connected_until_time": {"en":"a phone is connected, until {time}","sv":"en telefon är ansluten, till {time}"},
   "awake.a_session_is_working": {"en":"a session is working","sv":"en session arbetar"},
@@ -20,7 +21,7 @@ export const ROWS: Rows = {
   "awake.stopped_keeping_the_mac_awake_limit": {"en":"Stopped keeping the Mac awake: limit reached","sv":"Slutade hålla Macen vaken: gränsen nådd"},
   "awake.the_cockpit_could_not_keep_this": {"en":"Vaken could not keep this computer awake.","sv":"Vaken kunde inte hålla den här datorn vaken."},
   "awake.the_mac_was_kept_awake_for": {"en":"The Mac was kept awake for 8 hours, which is the most vaken allows. It lets the Mac sleep now.","sv":"Macen hölls vaken i 8 timmar. Det är det mesta vaken tillåter. Nu får den sova."},
-  "awake.waiting_2h": {"en":"Waiting 2h","sv":"Väntar 2 tim"},
+  "awake.waiting_2h": {"en":"Waiting 2h","sv":"Väntar 2 h"},
   "awake.waiting_for_your_answer": {"en":"waiting for your answer","sv":"väntar på ditt svar"},
   "awake.waiting_for_your_answer_until_time": {"en":"waiting for your answer, until {time}","sv":"väntar på ditt svar, till {time}"},
 }

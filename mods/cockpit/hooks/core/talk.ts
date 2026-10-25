@@ -25,18 +25,19 @@ export const canAnswer = (rec: Pick<SessionRecord, 'ask'>): boolean => rec.ask?.
 
 export const ASK_QUESTION_FACT = 'Claude asked you a question.'
 export const ASK_WHERE = 'It is in your session list under {name}. Open that session to read it.'
-export const ASK_SETTING_BUTTON = 'Change notices'
 export const ASK_PERMISSION_NEXT = 'Answer it in that session. Vaken never says yes for you.'
 export const ANSWER_NOTE = 'Your answer is sent to {name} as a message from you. If the question box stays open, answer it there.'
 export const REPLY_NOTE = 'Your reply is sent to {name} as a message from you and starts its next answer.'
-export const ANSWER_HINT = 'Answer'
-export const REPLY_HINT = 'Reply'
+// The box's placeholder names the session it goes to ({name})
+export const ANSWER_HINT = 'Answer {name}'
+export const REPLY_HINT = 'Reply to {name}'
 export const SEND = 'Send'
 
 export function askWhat(means: string, rec: Pick<SessionRecord, 'ask'>, waited: string, t: (s: string) => string, name?: string): WhatIs {
   const where = name === undefined ? [] : [t(ASK_WHERE).replace('{name}', name)]
+  // A question says it once: "Claude asked you a question." is what it means (the card's general words would say it twice)
   if (rec.ask?.kind === 'question') {
-    return { means, facts: [t(ASK_QUESTION_FACT), ...where], why: t('It has waited {age}.').replace('{age}', waited) }
+    return { means: t(ASK_QUESTION_FACT), facts: where, why: t('It has waited {age}.').replace('{age}', waited) }
   }
   const tool = rec.ask?.tool ?? ''
   return { means, facts: [t('It waits to run {tool} and may need your OK.').replace('{tool}', tool), ...where], why: t('It has waited {age}.').replace('{age}', waited), next: t(ASK_PERMISSION_NEXT) }
@@ -48,10 +49,21 @@ export function answerText(typed: string): string | undefined {
 }
 
 export const SENT_TO = 'Sent to {name}.'
-export const NOT_SENT = 'Not sent: {why}'
+// The engine's reason for a send that did not arrive, in the app's own words: one line per known kind, else a calm line with no reason
+export function notSentLine(reason: string): string {
+  const r = reason.toLowerCase()
+  if (/nobody|no one|no session|not found|unknown/.test(r)) return 'Not sent: no session has that name.'
+  if (/several|more than one|ambiguous/.test(r)) return 'Not sent: several sessions have that name.'
+  if (/gone|closed|ended|not running|exited/.test(r)) return 'Not sent: the session is closed.'
+  if (/refus|declin|block|denied|not allowed/.test(r)) return 'Not sent: the session said no.'
+  return 'Not sent. Type it in that session.'
+}
 export const NOT_SENT_HERE = 'Could not send from here. Type it in that session.'
 
 export const NUDGE_TEXT = 'continue'
+// The nudge for a teammate that waits for a message goes to Claude in this session, which leads the team
+export const AGENT_NUDGE_SAID = 'Asked Claude to give the agent its next step.'
+export const agentNudgeText = (name: string, min: number): string => `The agent ${name} has waited ${min} min for a message. Send it its next step, or end it if its work is done.` // en-only: a note to Claude
 // At most one nudge per session in this long, so a press never becomes a stream of messages.
 export const NUDGE_EVERY_MS = 10 * 60_000
 
@@ -66,6 +78,8 @@ export const canNudge = (sid: string, now: number): boolean => {
 }
 
 export const STUCK_TITLE = 'May be stuck: no sign for {n} min'
+// Under a row whose state word already says "May be stuck" (Other sessions): the fact is said once
+export const NO_SIGN_TITLE = 'No sign for {n} min'
 export const NUDGE_WORD = 'Nudge · sends continue'
 export const NUDGED_WORD = 'nudged'
 export const NUDGE_SAID = 'Nudged: sent continue.'

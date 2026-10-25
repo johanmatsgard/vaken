@@ -9,6 +9,7 @@ import { readRecord } from '../core/record'
 import { readSetting } from '../core/settings'
 import { SS_T_FIX_FAILED, SS_T_FIX_FILLED, SS_T_FIX_SENT, SS_T_GH, SS_T_MERGE_DONE, SS_T_MERGE_FAILED, SS_WHAT_CHECK, SS_WHAT_FIX, SS_WHAT_MERGE, SS_WHAT_NOMERGE } from '../core/shipstepwords'
 import { byEnglish } from '../i18n/table'
+import { setLang, trFill } from '../i18n/t'
 import {
   CHECK_SCRIPT, FIX_SCRIPT, SHIP_ERR_CHARS, SHIP_GH_MS, SHIP_MERGE_MS, badText, checkText, decideMerge, fixShowText, judgeStep, mergeArgv, mergeOneText, mergeRefusedText, mergeScript, mergeShowText, noGuardText, noPrText,
   parseShipStep, wrongPrText,
@@ -22,6 +23,8 @@ const fill = (s: string, v: Record<string, string | number>): string => Object.e
 
 const sayOf = async (i: Io): Promise<Say> => {
   const lang = langOf(await readSetting(i, 'look.language'), flags.macLang)
+  // The lines built from facts (a fix request's head, a check's reason) are said from the same language
+  setLang(lang)
   if (lang === 'en') return s => s
   const ix = byEnglish(lang)
   return s => ix[s] ?? s
@@ -76,10 +79,10 @@ export async function shipStepText(i: Io, env: Env, args: string, deps: StepDeps
 
   if (step === 'fix' && level > 0) {
     const built = await buildCiFix(i, async () => (await readRecord(i, await i.sessionId()))?.branch)
-    if (built.kind !== 'prompt') return t(built.text)
+    if (built.kind !== 'prompt') return trFill(built.text)
     const sent = deps.tell(built.prompt)
     await ledger(i, SS_WHAT_FIX, sent ? built.head : 'could not be sent', sent)
-    return sent ? `${fill(t(SS_T_FIX_SENT), { x: built.head })} ${t(SS_T_FIX_FILLED)}` : t(SS_T_FIX_FAILED)
+    return sent ? `${fill(t(SS_T_FIX_SENT), { x: built.said })} ${t(SS_T_FIX_FILLED)}` : t(SS_T_FIX_FAILED)
   }
 
   const p = await fetchPr(i, env)

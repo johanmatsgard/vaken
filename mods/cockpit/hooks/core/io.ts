@@ -17,6 +17,8 @@ export type Io = {
   run: EngineInterface['process']['run']
   ask: (question: string, options: string[]) => Promise<string>
   complete: EngineInterface['model']['complete']
+  // Only where a call continues this session's own chat; reached through core/modelGate.ts.
+  fork?: EngineInterface['model']['fork']
   // `urgent` toasts always show; others count against the hourly cap.
   toast: (text: string, urgent?: boolean) => void
   invalidate: () => void
@@ -30,7 +32,7 @@ export type Io = {
 // Store keys keep the old product name so saved data survives the rename.
 export const SETTING_PREFIX = 'cockpit:setting:'
 export const PROJECT_OF_KEY = (sessionId: string): string => `cockpit:projectof:${sessionId}`
-const PROJSET_PREFIX = 'cockpit:projset:'
+export const PROJSET_PREFIX = 'cockpit:projset:'
 export const PROJSET_KEY = (root: string): string => `${PROJSET_PREFIX}${root}`
 // Means 'this row's default, not a choice', so the Guard does not take it for an explicit pick.
 export const USE_DEFAULT = 'use-default'

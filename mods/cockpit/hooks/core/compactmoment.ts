@@ -8,6 +8,7 @@ import { hideSecrets } from './guardcmds'
 import { MIN_TOKENS, score, suggests, workState } from './compactscore'
 import type { Score, WorkState } from './compactscore'
 import type { ProofState } from './proof'
+import { tEn } from '../i18n/t'
 
 export { MIN_TOKENS, workState }
 export type { WorkState }
@@ -22,8 +23,11 @@ export const CACHE_TTL_SUBSCRIPTION_MS = 60 * 60_000
 export const CACHE_TTL_CREDITS_MS = 5 * 60_000
 // Short time when unknown, so a lapsed cache is never called warm.
 export const CACHE_WARM_MS = CACHE_TTL_CREDITS_MS
+// The one cache time used for an unknown plan, by Auto compaction and the cache keeper alike.
+export const ttlOrGuess = (known: number | undefined): number => known ?? CACHE_WARM_MS
 
-export type Moment = { level: 'none' | 'good' | 'soon' | 'now'; lines: string[]; why?: string }
+// `plain`: the first line without its "Compact now.", for where the Compact now button stands right under it (This session)
+export type Moment = { level: 'none' | 'good' | 'soon' | 'now'; lines: string[]; why?: string; plain?: string }
 
 export type Extra = { from?: number; proof?: ProofState; waits?: boolean; helpers?: number; background?: number; guardHeld?: boolean; saved?: boolean; sinceCompactMs?: number; cacheLeftMs?: number }
 export type Facts = { extra?: Extra; percent?: number; tokens?: number; compactAt?: number; atBreak: boolean; quietMs: number; ttlMs?: number; afterTokens?: number; summaryOut?: number }
@@ -57,10 +61,10 @@ export function compactMoment(f: Facts, t: Tr = same): Moment {
   const { percent, atBreak } = f
   if (percent === undefined) return { level: 'none', lines: [] }
   const compactAt = f.compactAt ?? ENGINE_COMPACT_AT
-  if (percent >= compactAt) return { level: 'now', lines: [t('Claude compacts the session by itself now. Compact now.'), t('It keeps your goal, the files changed and the next steps.')] }
+  if (percent >= compactAt) return { level: 'now', lines: [t('Claude compacts the session by itself now. Compact now.'), t('It keeps your goal, the files changed and the next steps.')], plain: t('Claude compacts the session by itself now.') }
   if (percent >= compactAt - NEAR_COMPACT) {
     return atBreak
-      ? { level: 'soon', lines: [t('Claude compacts the session by itself soon. Compact now.'), t('A quiet moment is better than mid-task.')] }
+      ? { level: 'soon', lines: [t('Claude compacts the session by itself soon. Compact now.'), t('A quiet moment is better than mid-task.')], plain: t('Claude compacts the session by itself soon.') }
       : { level: 'soon', lines: [t('Claude compacts the session by itself soon.'), t('Compact it at the next quiet moment.')] }
   }
   if (!atBreak) return { level: 'none', lines: [] }
@@ -105,7 +109,10 @@ export const compactLine = (p: { title?: string; branch?: string }): string => `
 
 export const withKeepList = (instructions: string | undefined, keep: string): string => (instructions === undefined || instructions === '' ? keep : instructions.includes(keep) ? instructions : `${instructions}\n${keep}`)
 
-export const compactInstructions = (keep: string | undefined, briefWhere: string): string => [...(keep === undefined ? [] : [keep]), BRIEF_LINE.replace('{where}', briefWhere)].join('\n')
+// Sent to Claude, so English (the row's Swedish is for reading only): with helpers still running, the summary must name each one
+export const HELPERS_LINE = (): string => tEn('cardcompact.keep_helpers')
+// Every compaction vaken starts: the keep-list (when on), what Claude's summary must hold (always), the helpers still running (when any), the handoff note's place
+export const compactInstructions = (keep: string | undefined, briefWhere: string, helpers = false): string => [...(keep === undefined ? [] : [keep]), tEn('cardcompact.keep_summary'), ...(helpers ? [HELPERS_LINE()] : []), BRIEF_LINE.replace('{where}', briefWhere)].join('\n')
 
 export function openLines(open: { failed?: string; held?: string }): string[] {
   return [

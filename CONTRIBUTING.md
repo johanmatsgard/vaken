@@ -30,7 +30,7 @@ Run this before every commit:
 sh scripts/check-cockpit.sh
 ```
 
-It stops at the first failure. It runs, in this order: the plugin validator (`claude plugin validate`), all tests (`scripts/test-cockpit.sh`, which runs `claude plugin test` on a temporary copy of the plugin with the tests from `tests/cockpit`), the type check (`scripts/typecheck.sh`), the name check, the command check, the token check, the public scan (no secrets or personal data), the comment check and the text check (`scripts/check-strings.sh --strict`).
+It stops at the first failure. It runs, in this order: the plugin validator (`claude plugin validate`), the tests touched since `origin/main` (changed test files, and the test named after each changed plugin file; `--full` runs every test, as CI does) through `scripts/test-cockpit.sh`, which runs `claude plugin test` on a temporary copy of the plugin with the tests from `tests/cockpit`, the type check (`scripts/typecheck.sh`), the name check, the command check, the token check, the public scan (no secrets or personal data), the comment check and the text check (`scripts/check-strings.sh --strict`).
 
 The type check needs the engine's type file, `claude-code.d.ts`. It belongs to Claude Code, so it is not in this repo. `scripts/typecheck.sh` looks for it in this order:
 

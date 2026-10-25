@@ -1,5 +1,6 @@
 // The stability layer: remembers the engine version, runs small self-tests on every load and says plainly when the version changed or a test fails.
 import { tr } from './lang'
+import { fillIn } from './fillin'
 import type { Setting } from './settings'
 import type { HelpEntry } from './registry'
 
@@ -36,12 +37,15 @@ export function summary(h: Health): string {
   return changed(h.previous, h.version) ? tr('Updated from {prev} to {ver}. All {all} self-tests passed.').replace('{prev}', String(h.previous)).replace('{ver}', String(h.version)).replace('{all}', String(h.results.length)) : tr('All {all} self-tests passed.').replace('{all}', String(h.results.length))
 }
 
+// After an update that passed its self-tests the toast names only the new version; calm is quiet, so no count.
+export const updatedText = (h: Pick<Health, 'version'>): string => tr('Updated to {ver}.').replace('{ver}', String(h.version))
+
 export function healthText(h: Health | undefined): string {
-  if (h === undefined) return 'Vaken has not checked itself yet. It does this when a session starts.'
+  if (h === undefined) return tr('Vaken has not checked itself yet. It does this when a session starts.')
   return [
-    `Engine version: ${h.version}${changed(h.previous, h.version) ? ` (was ${h.previous})` : ''}.`,
+    fillIn(tr('Engine version: {version}{was}.'), { version: h.version, was: changed(h.previous, h.version) ? ` ${fillIn(tr('(was {prev})'), { prev: String(h.previous) })}` : '' }),
     summary(h),
     '',
-    ...h.results.map(r => `${r.ok ? '✓' : '✗'} ${r.name}${r.ok || r.why === undefined ? '' : `: ${r.why}`}`),
+    ...h.results.map(r => `${r.ok ? '✓' : '✗'} ${tr(r.name)}${r.ok || r.why === undefined ? '' : `: ${tr(r.why)}`}`),
   ].join('\n')
 }

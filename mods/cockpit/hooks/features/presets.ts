@@ -8,6 +8,7 @@ import { homeFrom } from '../core/platform'
 import type { Io } from '../core/io'
 import { diffLines, listText, parseAsk, presetSteps, presetWhat } from '../core/presets'
 import { findSetting } from '../core/settings'
+import { keepUndo } from '../core/settingsundo'
 import { applySteps, projectName, projectOf, readGlobalSettings, readProjectSet } from '../core/projects'
 import { LEDGER_KEY, pushLog } from './compaction'
 import { ROLES, ROLE_PROMPT, roleDescription } from '../core/orchestra'
@@ -15,7 +16,8 @@ import { isRoleKey, rolesChangedWith } from './orchestra'
 import { subArgs } from '../core/menu'
 import { BY_PERSON_ONLY, byPerson } from '../core/origin'
 import { TIPS_KEPT_WHAT, upgradeTipDefaults } from '../core/tipsupgrade'
-import { COST_KEPT_WHAT, upgradeCostModes } from '../core/costupgrade'
+import { COST_KEPT_WHAT, installedBefore, upgradeCompactAuto, upgradeCostModes } from '../core/costupgrade'
+import { upgradeFullHint, upgradeNotifyMode, upgradeQuietRows } from '../core/nextupgrade'
 
 // IO-BLOCK-START
 function io($: EngineInterface): Io {
@@ -48,11 +50,17 @@ export function registerPresets(on: On): void {
   on('session.start', { cwd: /(?<presets>)/ }, async ($, e, next) => {
     try {
       const i = io($)
+      // Read before the steps below leave their marks, so a brand-new store is told from one from before
+      const before = await installedBefore(i)
       const wrote = await upgradeTipDefaults(i)
       // One ledger line when it changed anything, so the history says why a row moved.
       if (Object.keys(wrote).length > 0) await pushLog(i, LEDGER_KEY, { at: await i.now(), session: await i.sessionId(), what: TIPS_KEPT_WHAT, detail: Object.keys(wrote).map(k => findSetting(k)?.label ?? k).join(', '), how: 'auto', did: true })
       const moved = await upgradeCostModes(i)
       if (moved.length > 0) await pushLog(i, LEDGER_KEY, { at: await i.now(), session: await i.sessionId(), what: COST_KEPT_WHAT, detail: moved.map(k => findSetting(k)?.label ?? k).join(', '), how: 'auto', did: true })
+      await upgradeQuietRows(i)
+      await upgradeFullHint(i)
+      await upgradeNotifyMode(i)
+      await upgradeCompactAuto(i, before)
     } catch {
     }
     return next(e)
@@ -78,6 +86,8 @@ export function registerPresets(on: On): void {
     // Answers name the preset by its plain title; the id is only the word to type.
     const title = ask.preset.title
     if (ask.kind === 'show') return { text: changes.length === 0 ? `${title}: nothing would change${where}; your choices already match.` : [`${title} (${ask.preset.name}): ${ask.preset.about}`, `It would change${where}:`, ...changes, '', `To apply${where}: /vaken-settings preset ${ask.preset.name} yes${forHere ? ' here' : ''}`].join('\n') }
+    // Settings > Mode offers Undo for the rows a typed preset writes, as for a mode press
+    if (changes.length > 0) await keepUndo(i, ask.preset.name, presetSteps(ask.preset).map(st => st.key), root)
     await applySteps(i, presetSteps(ask.preset), root)
     if (Object.keys(ask.preset.values).some(isRoleKey)) await rolesChangedWith({
       register: (r, m) => {

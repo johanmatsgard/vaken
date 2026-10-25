@@ -1,9 +1,11 @@
 // Plain mode: one system-prompt section asking for short sentences, common words and at most two options with a pick. The text is constant, so it does not disturb the prompt cache.
 import type { HelpEntry } from './registry'
+import { tr } from './lang'
 import type { Setting } from './settings'
 
 export const PLAIN_SECTION_ID = 'cockpit:plain'
 export const PLAIN_TEXT =
+  // en-only: the text added to Claude's system prompt
   'The person you work with is not an engineer. Answer in short sentences and common words. Lead with what you did, whether it worked, and what the person must do now. When you must use a technical word, explain it right after in a few words. When the person must decide, give at most two options and say which one you recommend.'
 
 export const PLAIN_SETTINGS: Setting[] = [
@@ -16,10 +18,10 @@ export const PLAIN_SETTINGS: Setting[] = [
       { value: 'off', label: 'Off' },
       { value: 'on', label: 'On' },
     ],
-    default: 'off',
+    default: 'on',
   },
 ]
-export const PLAIN_HELP: HelpEntry[] = [{ title: 'What plain mode does', text: 'Plain mode asks Claude to use short sentences and common words, to explain hard words, and to give you at most two options with its pick. It takes effect from the next message. /vaken-help glossary explains the words vaken uses.' }]
+export const PLAIN_HELP: HelpEntry[] = [{ title: 'What plain mode does', text: 'Plain mode asks Claude to use short sentences and common words, to explain hard words, and to give you at most two options with its pick. It takes effect from the next message; /vaken-help glossary explains the words vaken uses. Say it simpler (/vaken-settings simple): retells the last answer in plain words; it turns nothing on.' }]
 
 export const GLOSSARY: [string, string][] = [
   ['Context', 'Everything Claude holds in mind for this session. The longer the session, the more it holds, and the more each answer costs.'],
@@ -37,5 +39,5 @@ export const GLOSSARY: [string, string][] = [
 ]
 
 export function glossaryText(): string {
-  return GLOSSARY.map(([term, meaning]) => `${term}: ${meaning}`).join('\n')
+  return GLOSSARY.map(([term, meaning]) => `${tr(term)}: ${tr(meaning)}`).join('\n')
 }

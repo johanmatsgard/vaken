@@ -8,7 +8,7 @@ import { AUDIT_KEY } from '../hooks/core/insight'
 import type { AuditRow } from '../hooks/core/insight'
 import type { Io } from '../hooks/core/io'
 import { TODAY_SETTINGS, bandBrief, todayLines, yesterdayOf } from '../hooks/core/today'
-import { DAY_KEY, dailyCheck, todayFacts, todayText } from '../hooks/features/today'
+import { DAY_KEY, TRIED_MS, dailyCheck, todayFacts, todayText } from '../hooks/features/today'
 import { LEDGER_KEY } from '../hooks/features/compaction'
 import { viaParent } from './viaparent'
 
@@ -131,10 +131,16 @@ test('the brief: first prompt of a day only, one band line, no toast, a stamp', 
   expect(await readBand(io)).toHaveLength(1)
 })
 
-test('the brief: nothing to say posts nothing but still takes the day, and Off does not even take the day', async () => {
+test('the brief: nothing to say posts nothing and keeps the day, so a later prompt with news still gets it; Off does not even take the day', async () => {
   const empty = memIo()
   expect(await dailyCheck(empty.io)).toBe(false)
   expect(await readBand(empty.io)).toEqual([])
+  expect(empty.mem.has(DAY_KEY)).toBe(false)
+  empty.mem.set('cockpit:session:a', rec('a', asks))
+  expect(await dailyCheck(empty.io)).toBe(false)
+  const later: Io = { ...empty.io, now: async () => NOW + TRIED_MS }
+  empty.mem.set('cockpit:session:a', rec('a', { ...asks, updatedAt: NOW + TRIED_MS - 5_000, lastEventAt: NOW + TRIED_MS - 5_000 }))
+  expect(await dailyCheck(later)).toBe(true)
   expect(empty.mem.get(DAY_KEY)).toBe('2026-10-10')
 
   const off = memIo({ 'cockpit:session:a': rec('a', asks), 'cockpit:setting:today.brief': 'off' })

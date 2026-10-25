@@ -2,15 +2,19 @@
 import type { EngineInterface, On, Timer } from 'claude-code'
 
 import { postBand } from '../core/band'
-import { BOARD_KEY, STUCK_BAND, STUCK_BAND_ID, addAgentCost, boardRows, boardText, endAgent, flagStuck, markSessionUnknown, parseBoard, startAgent, syncStatus, watchNeeded } from '../core/agentboard'
+import { BOARD_KEY, STUCK_BAND, STUCK_BAND_ID, addAgentCost, boardRows, boardText, doneNotice, endAgent, flagStuck, markSessionUnknown, newlyEnded, parseBoard, startAgent, syncStatus, watchNeeded, withIdle } from '../core/agentboard'
+import { tellNow } from '../core/tellme'
 import { tr } from '../core/lang'
 import { turnOf } from '../core/cost'
-import type { AgentEntry, BoardRow, Status } from '../core/agentboard'
+import type { AgentEntry, BoardRow, Idle, Status } from '../core/agentboard'
 import { withToastGate } from '../core/io'
 import { homeFrom } from '../core/platform'
 import type { Io } from '../core/io'
 import { readSetting } from '../core/settings'
 import { subArgs } from '../core/menu'
+import { sayIn } from './saylang'
+import { withStepTime, withToolTime } from '../core/agentsteps'
+import type { StepTime } from '../core/agentsteps'
 
 // IO-BLOCK-START
 function io($: EngineInterface): Io {
@@ -64,12 +68,26 @@ export async function noteEnd(i: Io, key: string, state: 'done' | 'failed'): Pro
   if (updated !== list) {
     await i.set(BOARD_KEY, updated)
     i.invalidate()
+    tellEnded(list, updated, await i.sessionId())
     return
   }
   if (!list.some(x => x.id === key || x.agentId === key)) {
     if (early.size >= EARLY_MAX) early.delete(early.keys().next().value as string)
     early.set(key, { state, at: now })
   }
+}
+
+// One done notice per ended helper of this session, through Tell me (its own gates: away, This session too, Quiet)
+function tellEnded(before: AgentEntry[], after: AgentEntry[], session: string): void {
+  for (const e of newlyEnded(before, after, session)) tellNow({ kind: 'done', text: doneNotice(e) })
+}
+
+// Teammates of this session that wait for a message: in memory only (the pane runs in this session), so a tool call only looks at a set and a draw reads no key
+export const idleMem: { idle: Idle } = { idle: {} }
+export async function noteIdle(i: Io, id: string, name: string | undefined): Promise<void> {
+  if (name === undefined && idleMem.idle[id] === undefined) return
+  idleMem.idle = withIdle(idleMem.idle, id, name, await i.now())
+  i.invalidate()
 }
 
 // When each helper last made progress (a tool call of its own, or the end of a turn): in memory only
@@ -82,6 +100,19 @@ export function noteProgress(agentId: string, at: number): void {
 }
 
 export const hasProgress = (agentId: string): boolean => progress.has(agentId)
+
+// Each agent's last answers: the tool names asked for, the time and the cost, in memory only. An opened Agents row pairs them with the steps it reads (core/agentsteps.ts).
+export const stepTimes = new Map<string, StepTime[]>()
+export function noteStepTime(agentId: string, step: StepTime): void {
+  const had = stepTimes.get(agentId) ?? []
+  stepTimes.delete(agentId)
+  stepTimes.set(agentId, withStepTime(had, step))
+  if (stepTimes.size > PROGRESS_MAX) stepTimes.delete(stepTimes.keys().next().value as string)
+}
+export function noteToolTime(agentId: string, ms: number): void {
+  const had = stepTimes.get(agentId)
+  if (had !== undefined) stepTimes.set(agentId, withToolTime(had, ms))
+}
 
 type SpawnFacts = { tool_use_id: string; subagentType: string; description: string; background: boolean; model?: string; isTeammate?: boolean; workflow?: unknown }
 type SpawnAnswer = { deny?: string; agentId?: string; model?: string }
@@ -159,6 +190,7 @@ export async function watchBeat(i: Io, infos: Status[] | undefined): Promise<boo
   if (synced !== list) {
     await i.set(BOARD_KEY, synced)
     i.invalidate()
+    tellEnded(list, synced, await i.sessionId())
   }
   await flagQuiet(i, synced, now)
   return watchNeeded(synced, await i.sessionId(), now)
@@ -194,7 +226,7 @@ function startWatch($: EngineInterface): void {
 }
 
 export async function boardTextFrom(i: Io, infos?: Status[]): Promise<string> {
-  if (!(await boardOn(i))) return 'The agent board is off. Turn it on in Settings > Agents.' // en-only: plain answer of a slash command (text twin)
+  if (!(await boardOn(i))) return tr('The agent board is off. Turn it on in Settings > Agents.')
   return boardText(await loadBoard(i, infos), await i.now())
 }
 
@@ -232,19 +264,44 @@ export function registerAgentBoard(on: On): void {
   on('tool.call', { tool: /(?<agentprogress>)/ }, async ($, e, next) => {
     const id = e.agentId
     if (id === undefined) return next(e)
+    let before: number | undefined
     try {
-      const before = await $.clock.now()
-      noteProgress(id, before)
+      const at = await $.clock.now()
+      before = at
+      noteProgress(id, at)
+      if (idleMem.idle[id] !== undefined) void noteIdle(io($), id, undefined).catch(() => undefined)
     } catch {
     }
     const r = await next(e)
     try {
       const after = await $.clock.now()
       noteProgress(id, after)
+      if (before !== undefined) noteToolTime(id, after - before)
     } catch {
     }
     return r
   }).catch(($, e, next) => next(e))
+
+  // An agent's answer: its time, its cost (an estimate from the engine's token counts) and the tool names it asked for, in memory only; the main loop costs nothing
+  on('turn.step', { turnId: /(?<agentsteps>)/ }, async function* ($, e, next) {
+    const id = e.agentId
+    let before: number | undefined
+    if (id !== undefined) {
+      try {
+        const at = await $.clock.now()
+        before = at
+      } catch {
+      }
+    }
+    const r = yield* next(e)
+    if (id === undefined || before === undefined) return r
+    try {
+      const after = await $.clock.now()
+      noteStepTime(id, { tools: r.toolUses.map(u => u.name).join(','), ms: after - before, ...(r.usage === null ? {} : { usd: turnOf(r.usage, after, 0, true)?.usd }) })
+    } catch {
+    }
+    return r
+  })
 
   on('turn.complete', { turnId: /(?<agentboard>)/ }, async ($, e, next) => {
     if (e.agentId !== undefined) {
@@ -255,6 +312,36 @@ export function registerAgentBoard(on: On): void {
         await noteEnd(i, e.agentId, e.reason === 'answer' ? 'done' : 'failed')
       } catch {
       }
+    }
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  // The engine says a helper ended: its row ends now, not at the next look at the list (the list stays the fallback)
+  on('classic.SubagentStop', { agent_type: /(?<agentdone>)/ }, async ($, e, next) => {
+    try {
+      const i = io($)
+      await noteIdle(i, e.agent_id, undefined)
+      await noteEnd(i, e.agent_id, 'done')
+    } catch {
+    }
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  // A teammate finished a task of the team's list: one done notice with its name, never the task's words
+  on('classic.TaskCompleted', { task_id: /(?<agentdone>)/ }, async ($, e, next) => {
+    try {
+      const name = e.teammate_name
+      tellNow({ kind: 'done', text: name === undefined || name === '' ? tr('An agent finished a task.') : tr('{name} finished a task.').replace('{name}', name) })
+    } catch {
+    }
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  // A teammate waits for a message: after a while the Agents card offers one nudge
+  on('classic.TeammateIdle', { teammate_name: /(?<agentidle>)/ }, async ($, e, next) => {
+    try {
+      await noteIdle(io($), e.agent_id ?? e.teammate_name, e.teammate_name)
+    } catch {
     }
     return next(e)
   }).catch(($, e, next) => next(e))
@@ -270,11 +357,12 @@ export function registerAgentBoard(on: On): void {
   on('command.run', { command: 'vaken-tasks' }, async ($, e, next) => {
     const rest0 = subArgs(e.args, 'agents-board')
     if (rest0 === undefined) return next(e)
+    await sayIn(io($))
     try {
       const statuses = await agentStatuses($)
       return { text: await boardTextFrom(io($), statuses) }
     } catch {
-      return { text: 'The agent board could not read its list. Try again in a moment.' } // en-only: plain answer of a slash command (text twin)
+      return { text: tr('The agent board could not read its list. Try again in a moment.') }
     }
   })
 }

@@ -6,16 +6,18 @@ import { ROLES, ROLE_NAMES, roleSettingKey } from './orchestra'
 import type { Role } from './orchestra'
 import type { Setting, Values } from './settings'
 import {
+  SETUP_APPLY_NOTE, SETUP_WHERE_ALL, SETUP_WHERE_PROJECT, SETUP_WHERE_SESSION,
   SETUP_BLOCK_TITLE, SETUP_GROUP, SETUP_BLURB, SETUP_C_CAP, SETUP_C_INFO, SETUP_HEAD_INFO, SETUP_C_KEEP, SETUP_C_MODEL, SETUP_HEAD_BLOCK, SETUP_HEAD_CONFLICT, SETUP_HEAD_FILES, SETUP_HEAD_ROLES, SETUP_KEEP_MINE, SETUP_NOT_NOW, SETUP_NOTE,
   SETUP_R_ADD, SETUP_R_CREATE, SETUP_R_DIFFERS, SETUP_R_KEEP, SETUP_R_MISSING, SETUP_R_REPLACE, SETUP_R_SESSION, SETUP_R_SYNC, SETUP_R_UNREADABLE, SETUP_R_UPDATE, SETUP_R_USE, SETUP_R_USE_MODEL, SETUP_R_YOURS,
   SETUP_SUM_BLOCK_DIFFERS, SETUP_SUM_BLOCK_MISSING, SETUP_SUM_BLOCK_YOURS, SETUP_SUM_CONFLICT_1, SETUP_SUM_CONFLICTS, SETUP_SUM_DIFFERS, SETUP_SUM_DIFFERS_1, SETUP_SUM_MISSING, SETUP_SUM_MISSING_1, SETUP_SUM_SYNC, SETUP_SUM_YOURS,
-  SETUP_SHORT, SETUP_SHORT_CONFLICT, SETUP_SHORT_NONE, SETUP_SHORT_NOROOT, SETUP_SHORT_SESSION, SETUP_TITLE, SETUP_YES_ADD, SETUP_YES_REPLACE, SETUP_YES_UPDATE,
+  SETUP_OFF, SETUP_SHORT, SETUP_SHORT_CONFLICT, SETUP_SHORT_NONE, SETUP_SHORT_NOROOT, SETUP_SHORT_SESSION, SETUP_TITLE, SETUP_YES_ADD, SETUP_YES_REPLACE, SETUP_YES_UPDATE,
 } from './setupwords'
 import type { WhatIs } from './whatis'
+import { stripTaught, taughtOf, withTaught } from './taught'
 
 export const SETUP_SETTINGS: Setting[] = [
-  { key: 'setup.apply', group: SETUP_GROUP, label: 'Set up agents', note: 'Write agent files that follow your choices.', options: [{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }], default: 'off', hidden: true },
-  { key: 'setup.scope', group: SETUP_GROUP, label: 'Setup place', note: 'All projects, this project or this session.', options: [{ value: 'all', label: 'All projects' }, { value: 'project', label: 'This project' }, { value: 'session', label: 'This session' }], default: 'project', hidden: true },
+  { key: 'setup.apply', group: SETUP_GROUP, label: 'Set up agents', note: SETUP_APPLY_NOTE, options: [{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }], default: 'off', hidden: true },
+  { key: 'setup.scope', group: SETUP_GROUP, label: 'Setup place', note: 'All projects, this project or this session.', options: [{ value: 'all', label: SETUP_WHERE_ALL }, { value: 'project', label: SETUP_WHERE_PROJECT }, { value: 'session', label: SETUP_WHERE_SESSION }], default: 'project', hidden: true },
   { key: 'setup.keep', group: SETUP_GROUP, label: 'Files kept', note: 'The limit in your files you left alone.', options: ['none', ...Array.from({ length: 20 }, (_, n) => String(n + 1))].map(v => ({ value: v, label: v })), default: 'none', hidden: true },
 ]
 
@@ -133,7 +135,7 @@ export function stateOf(d: Desired, disk: string | null | false): SetupState {
   if (disk === null || disk.trim() === '') return 'missing'
   if (d.kind === 'agent') return !isManagedAgent(disk) ? 'yours' : norm(disk) === norm(d.text) ? 'matches' : 'differs'
   const b = blockOf(disk)
-  return b === undefined ? 'yours' : norm(b.body) === norm(d.text) ? 'matches' : 'differs'
+  return b === undefined ? 'yours' : norm(stripTaught(b.body)) === norm(d.text) ? 'matches' : 'differs'
 }
 
 export function lineDiff(from: string, to: string, max = 10): string[] {
@@ -164,14 +166,14 @@ export function itemDiff(d: Desired, disk: string | null | false, state: SetupSt
   if (disk === null || disk === false || state === 'missing') return lineDiff('', d.text)
   if (d.kind === 'agent') return lineDiff(disk, d.text)
   const b = blockOf(disk)
-  return b === undefined ? lineDiff('', d.text) : lineDiff(b.body, d.text)
+  return b === undefined ? lineDiff('', d.text) : lineDiff(stripTaught(b.body), d.text)
 }
 
 export function nextText(d: Desired, disk: string | null | false): string {
   if (d.kind === 'agent') return d.text
   if (disk === null || disk === false || disk.trim() === '') return `${d.text}\n`
   const b = blockOf(disk)
-  return b === undefined ? `${disk.replace(/\s+$/, '')}\n\n${d.text}\n` : `${disk.slice(0, b.start)}${d.text}${disk.slice(b.end)}`
+  return b === undefined ? `${disk.replace(/\s+$/, '')}\n\n${d.text}\n` : `${disk.slice(0, b.start)}${withTaught(d.text, taughtOf(b.body))}${disk.slice(b.end)}`
 }
 
 // One draw asks for the items several times, so the last answer is kept while the reading and settings are the same.
@@ -267,7 +269,7 @@ function conflictsWork(f: SetupFacts): Conflict[] {
 
 export type SetupDo = { do: 'open'; key: string } | { do: 'close' } | { do: 'write'; key: string } | { do: 'cap'; n: number } | { do: 'keepCap'; n: number } | { do: 'model'; role: Role; family: string }
 export type SetupGroupRow = { key: string; title: string; right?: string; what: WhatIs; press?: SetupDo }
-export type SetupView = { title: string; blurb: string; short: string; lines: string[]; whats: WhatIs[]; shortWhat: WhatIs; summary?: string; groups: { head: string; rows: SetupGroupRow[]; conflict?: boolean }[] }
+export type SetupView = { title: string; blurb: string; short: string; lines: string[]; whats: WhatIs[]; shortWhat: WhatIs; groups: { head: string; rows: SetupGroupRow[]; conflict?: boolean }[] }
 
 const fill = (s: string, v: Record<string, string | number>): string => Object.entries(v).reduce((acc, [k, x]) => acc.split(`{${k}}`).join(String(x)), s)
 export const setupApplyOn = (values: Values): boolean => values['setup.apply'] === 'on'
@@ -277,10 +279,11 @@ const SETUP_NEXT = '/vaken-help run setup says the same in the session, and /vak
 
 const stateWord = (s: SetupState, t: (x: string) => string): string => t(s === 'matches' ? SETUP_R_SYNC : s === 'missing' ? SETUP_R_MISSING : s === 'differs' ? SETUP_R_DIFFERS : s === 'yours' ? SETUP_R_YOURS : SETUP_R_UNREADABLE)
 
+// Off is calm: nothing is written, so nothing waits. On, a file to make or update is something to do.
 export function setupLoud(f: SetupFacts | undefined): 'conflict' | 'drift' | 'none' {
-  if (f === undefined) return 'none'
+  if (f === undefined || !setupApplyOn(f.values)) return 'none'
   if (conflictsOf(f).length > 0) return 'conflict'
-  return setupItems(f).some(i => i.state === 'differs') ? 'drift' : 'none'
+  return setupItems(f).some(i => i.state === 'differs' || i.state === 'missing') ? 'drift' : 'none'
 }
 
 export function setupShort(f: SetupFacts, t: (s: string) => string): string {
@@ -323,8 +326,10 @@ export function setupView(f: SetupFacts | undefined, t: (s: string) => string): 
   const facts: SetupFacts = f ?? { values: {} }
   const apply = setupApplyOn(facts.values)
   const scope = parseScope(facts.values['setup.scope'])
-  const short = setupShort(facts, t)
   const what: WhatIs = { means: SETUP_MEANS, next: SETUP_NEXT, setting: 'cards.setup' }
+  // Off: only "Off" with its Turn on press (drawn in features/home/cards/lines.tsx); the counts show once it is on
+  if (!apply) return { title: SETUP_TITLE, blurb: t(SETUP_BLURB), short: t(SETUP_OFF), lines: [t(SETUP_OFF)], whats: [what], shortWhat: what, groups: [] }
+  const short = setupShort(facts, t)
   const items = setupItems(facts)
   const groups: SetupView['groups'] = []
   const rowOf = (i: SetupItem): SetupGroupRow[] => {
@@ -386,7 +391,6 @@ export function setupView(f: SetupFacts | undefined, t: (s: string) => string): 
     lines: [short, ...rows.map(r => (r.right === undefined ? r.title : `${r.title}: ${r.right}`))],
     whats: [what, ...rows.map(r => r.what)],
     shortWhat: what,
-    ...(scope === 'session' || facts.read === undefined || facts.read.scope !== scope ? {} : { summary: setupSummary(items, 0, t) }),
     groups,
   }
 }
@@ -394,7 +398,7 @@ export function setupView(f: SetupFacts | undefined, t: (s: string) => string): 
 export function setupCardText(f: SetupFacts | undefined): string[] {
   if (f === undefined) return []
   const id = (s: string): string => s
-  return [`Agent setup: ${setupShort(f, id).replace(/^Agent setup: /, '')}${setupApplyOn(f.values) ? '' : ' (off)'} · /vaken-help run setup`]
+  return [`Agent setup: ${setupShort(f, id)}${setupApplyOn(f.values) ? '' : ' (off)'} · /vaken-help run setup`]
 }
 
 export { SETUP_NOTE }

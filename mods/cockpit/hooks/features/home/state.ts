@@ -3,6 +3,8 @@
 import type { ErasePreview } from '../../core/erase'
 import type { CommandEntry } from '../../core/skills'
 import type { Lang } from '../../i18n/types'
+import type { BriefMark } from '../../core/contextcard'
+import type { ThrowLoss } from '../orchestra'
 import { isLang } from '../../i18n/langs'
 
 export type PaneView = 'cards' | 'settings' | 'runner' | 'help' | 'guide'
@@ -32,8 +34,17 @@ export const flags: {
   throwAsk: number | undefined
   // The task whose Throw away found work that would be lost (commits not merged
   throwSure: number | undefined
+  // What that Throw away would lose, read by git when its ask opened (undefined while git reads).
+  throwLoss: { n: number; loss: ThrowLoss } | undefined
+  // The Agents view's "Clear past runs" is asking (Clear or Keep).
+  pastClearAsk: boolean
   applyAsk: string | undefined
   backAsk: boolean
+  // The words typed in the search field of Settings and of Help: in memory only, gone when the view closes
+  settingsFind: string
+  helpFind: string
+  // Where the line on the old "cockpit" name shows, the first time a place shows such a path
+  oldNameAt: string | undefined
 } = {
   paneView: 'cards',
   openWhat: undefined,
@@ -53,13 +64,18 @@ export const flags: {
   eraseDone: undefined,
   throwAsk: undefined,
   throwSure: undefined,
+  throwLoss: undefined,
+  pastClearAsk: false,
   applyAsk: undefined,
   backAsk: false,
+  settingsFind: '',
+  helpFind: '',
+  oldNameAt: undefined,
 }
 
 export const runnerDraft = { task: '', check: '', template: '', say: '' }
 export const undoShown: { lines?: string[]; of?: string } = {}
-export const briefShown: { lines?: string[] } = {}
+export const briefShown: { marks?: BriefMark[] } = {}
 export const simple: { pending: boolean; lines?: string[] } = { pending: false }
 export const compactAsk: { lines?: string[]; at?: number } = {}
 export const COMPACT_ASK_MS = 5 * 60_000

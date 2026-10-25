@@ -2,7 +2,7 @@
 import { expect } from 'claude-code/testing'
 import { test } from './slow'
 
-import { cwdsFromCommands, parseWinProcs, plainCommand, readWinProcs, winProcsArgv } from '../hooks/core/winprocs'
+import { cwdPids, cwdsFromCommands, mergeCwds, parseWinCwds, parseWinProcs, plainCommand, readWinCwds, readWinProcs, winCwdScript, winCwds, winCwdsArgv, winProcsArgv } from '../hooks/core/winprocs'
 import { NETSTAT_ARGV, TASKLIST_ARGV, parseNetstat, parseTasklistNames, readWinListeners } from '../hooks/core/winnet'
 import { candidates, findOrphans, isCaffeinate, isDevProgram, orphansText, parseCwds, parseListeners, parsePid, parsePs, portsText } from '../hooks/core/crew3proc'
 import { WIN_SHOWN } from '../hooks/core/syswords'
@@ -71,7 +71,9 @@ test('windows orphans: a program naming the folder of an ended session is a left
   expect(t).toContain('--token ***')
   expect(t).not.toContain('abc123')
   expect(t).not.toContain('kill 7001\n')
-  expect(t).toContain('Windows does not tell the working folder')
+  expect(t).toContain('The folder is read from the program, or from its command when Windows does not tell it.')
+  expect(orphansText([], { ps: true, lsof: false }, 'win32')).toContain("No program's folder could be read, and none names a session folder in its command.")
+  expect(orphansText([], { ps: true, lsof: true }, 'win32')).toContain('that run in the folder of a session that has ended')
 })
 
 test('the Mac words and the Mac stop command are exactly as before', () => {
@@ -159,6 +161,50 @@ test('process runner: parses the answer; a failed or missing PowerShell is undef
   expect(await readWinProcs(fakeRun(() => ({ exitCode: 0, stdout: '' })), NOW)).toEqual([])
   expect(await readWinProcs(fakeRun(() => ({ exitCode: 1, stdout: '' })), NOW)).toBeUndefined()
   expect(await readWinProcs(fakeRun(() => 'throw'), NOW)).toBeUndefined()
+})
+
+test('real folder: only whole process numbers above the system go into the script, each once; the rest is fixed text with no double quote or backslash', () => {
+  expect(cwdPids([7001, 7001, 0, 4, -3, 1.5, Number.NaN, 2 ** 40, 7002])).toEqual([7001, 7002])
+  const s = winCwdScript([7001, 1.5, 7002])
+  expect(s).toContain('foreach ($i in @(7001,7002))')
+  expect(s).not.toContain('"')
+  expect(s).not.toContain('\\')
+  expect(s).toContain('Is64BitProcess')
+  expect(s).toContain('OpenProcess(0x410')
+  expect(s).toContain('+ 0x20')
+  expect(s).toContain('+ 0x38')
+  expect(winCwdScript([]).replace('@()', '@(X)')).toBe(winCwdScript([1.5]).replace('@()', '@(X)'))
+  const argv = winCwdsArgv([7001])
+  expect(argv.slice(0, 4)).toEqual(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command'])
+  expect(argv).toHaveLength(5)
+})
+
+test('real folder: the JSON answer becomes process number to folder; a trailing backslash goes, a drive root keeps it; bad rows, arrays and bad JSON are nothing', () => {
+  const m = parseWinCwds('\uFEFF{"7001":"C:\\\\work\\\\app\\\\","7002":"D:\\\\","7003":"\\\\\\\\server\\\\share\\\\x","7004":"relative\\\\x","7005":5,"abc":"C:\\\\x","4":"C:\\\\Windows","1.5":"C:\\\\y"}\r\n')
+  expect([...m]).toEqual([[7001, 'C:\\work\\app'], [7002, 'D:\\'], [7003, '\\\\server\\share\\x']])
+  expect(parseWinCwds('{}').size).toBe(0)
+  expect(parseWinCwds('').size).toBe(0)
+  expect(parseWinCwds('not json').size).toBe(0)
+  expect(parseWinCwds('["C:\\\\x"]').size).toBe(0)
+  expect(parseWinCwds('null').size).toBe(0)
+})
+
+test('real folder first, the command-line guess only where the read failed', async () => {
+  expect([...mergeCwds(new Map([[1, 'C:\\real']]), new Map([[1, 'C:\\guess'], [2, 'C:\\guess2']]))]).toEqual([[1, 'C:\\real'], [2, 'C:\\guess2']])
+  const procs = [{ pid: 7001, command: 'node server.js' }, { pid: 7002, command: 'node C:\\work\\app\\x.js' }]
+  const calls: string[][] = []
+  const got = await winCwds(fakeRun(() => ({ exitCode: 0, stdout: '{"7001":"C:\\\\work\\\\other\\\\"}' }), calls), procs, ['C:\\work\\app'])
+  expect([...got]).toEqual([[7001, 'C:\\work\\other'], [7002, 'C:\\work\\app']])
+  expect(calls).toEqual([winCwdsArgv([7001, 7002])])
+  const fallback = await winCwds(fakeRun(() => 'throw'), procs, ['C:\\work\\app'])
+  expect([...fallback]).toEqual([[7002, 'C:\\work\\app']])
+  expect((await readWinCwds(fakeRun(() => ({ exitCode: 1, stdout: '{"7001":"C:\\\\x"}' })), [7001])).size).toBe(0)
+  const none: string[][] = []
+  expect((await readWinCwds(fakeRun(() => ({ exitCode: 0, stdout: '{}' }), none), [0, 4, 1.5])).size).toBe(0)
+  expect(none).toEqual([])
+  const empty: string[][] = []
+  expect((await winCwds(fakeRun(() => ({ exitCode: 0, stdout: '{}' }), empty), [], ['C:\\work'])).size).toBe(0)
+  expect(empty).toEqual([])
 })
 
 test('crew3proc parsers read \\r\\n output the same as \\n (the Mac text is unchanged)', () => {

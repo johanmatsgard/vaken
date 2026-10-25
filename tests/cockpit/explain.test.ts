@@ -34,6 +34,7 @@ import * as trust from '../hooks/core/trust'
 import * as undo from '../hooks/core/undo'
 import * as compactrest from '../hooks/core/compactrest'
 import * as overnight from '../hooks/core/overnight'
+import * as ledgerwords from '../hooks/core/ledger'
 import { AUDIT_KEY } from '../hooks/core/insight'
 import type { AuditRow } from '../hooks/core/insight'
 import type { Io } from '../hooks/core/io'
@@ -51,7 +52,7 @@ const HOUR = 60 * MIN
 const DAY = 24 * HOUR
 const NOW = new Date(2026, 9, 10, 12, 0, 0).getTime()
 
-const MODULES: Record<string, Record<string, unknown>> = { agentcap, setupwords, dowords, away, budget, cachekeeper, coach, compactrest, continuity, crew, crew3, diet, eyes, freshstart, guard, guardback, guardupgrade, guardworld, inbox, loopbreaker, neighbors, overnight, planfirst, proof, proof2, resume, route, rules, stability, starters, trust, undo }
+const MODULES: Record<string, Record<string, unknown>> = { agentcap, setupwords, dowords, away, budget, cachekeeper, coach, compactrest, continuity, crew, crew3, diet, eyes, freshstart, guard, guardback, guardupgrade, guardworld, inbox, ledgerwords, loopbreaker, neighbors, overnight, planfirst, proof, proof2, resume, route, rules, stability, starters, trust, undo }
 const NOT_DID = new Set(['route.SUGGEST_WHAT'])
 
 function exportedTitles(): { name: string; title: string }[] {
@@ -244,7 +245,7 @@ test('with no words: the different things done today, then the hint', async () =
   const text = await explainText(w.io, '')
   const lines = text.split('\n')
   expect(lines[0]).toBe('Today vaken did 3 different things:')
-  expect(lines.slice(1, 4)).toEqual(['  Kept the cache warm (once today)', '  Claude said done, but no check backs it (2 times today)', '  Stopped a risky command (once today)'])
+  expect(lines.slice(1, 4)).toEqual(['  Kept the session cheap (once today)', '  Claude said done, but no check backs it (2 times today)', '  Stopped a risky command (once today)'])
   expect(lines[4]).toBe('Say /vaken-explain <words> for the reason.')
   expect(text).not.toMatch(/auto-compact/)
   expect(await explainText(memIo().io, '')).toMatch(/nothing today/)

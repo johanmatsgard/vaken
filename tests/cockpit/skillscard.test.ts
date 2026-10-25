@@ -3,7 +3,7 @@ import { expect, mock } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { setLang } from '../hooks/core/lang'
-import { FIND_PAUSE_MS, SKILLS_COUNTS_KEY, SKILLS_LISTING_KEY, UNUSED_FOLD, UNUSED_SHOWN } from '../hooks/core/skills'
+import { FIND_PAUSE_MS, SKILLS_COUNTS_KEY, SKILLS_LISTING_KEY, UNUSED_FOLD } from '../hooks/core/skills'
 import { lineCard } from '../hooks/features/home/linecards'
 import type { CardCtx } from '../hooks/features/home/linecards'
 import { CARD_IDS, LINE_CARD_IDS, parseOrder } from '../hooks/features/home/logic'
@@ -34,7 +34,7 @@ test('the card is a line card, shown by default, with its own Show or Hide and i
 test('the three looks: groups by use with the press word, the short line, an honest line when nothing is known', () => {
   const v = lineCard('skills', ctx({ skills: { counts, listing } }))
   expect(v.title).toBe('Skills')
-  expect(v.short).toBe('Top: grilling 6, code review 3')
+  expect(v.short).toBe('Top: grilling · 6 times, code review · 3 times')
   const g = v.groups ?? []
   expect(g.map(x => x.head)).toEqual(['Used this week', 'Skill list', 'Not used this week'])
   expect(g[0]?.rows.map(r => [r.title, r.right, r.action])).toEqual([
@@ -50,8 +50,8 @@ test('the three looks: groups by use with the press word, the short line, an hon
   ])
   const none = lineCard('skills', ctx())
   expect(none.groups).toBeUndefined()
-  expect(none.lines).toEqual(['No skill used yet this week.'])
-  expect(none.short).toBe('No skill used yet this week.')
+  expect(none.lines).toEqual(['No skill used this week'])
+  expect(none.short).toBe('No skill used this week')
 })
 
 const paneProps = { title: 'Vaken', isFocused: false, bodyColumns: 120, placement: 'inline' as const, scroll: { bodyRows: 60, offset: 0, total: 60 }, view: {} }
@@ -145,12 +145,12 @@ test('Short shows one line, and a stored Minimal draws as Short; the card hides 
   engine(on)
   const mount = () => $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
   const short = await mount()
-  expect(await short.find({ type: 'Text', text: /^Top: grilling 6, code review 3$/ })).toBeDefined()
+  expect(await short.find({ type: 'Text', text: /^Top: grilling · 6 times, code review · 3 times$/ })).toBeDefined()
   expect(await sectionLabel(short, /^Used this week$/)).toBeUndefined()
   await short.unmount()
   mem.set('cockpit:setting:detail.skills', 'minimal')
   const minimal = await mount()
-  expect(await minimal.find({ type: 'Text', text: /^Top: grilling 6, code review 3$/ })).toBeDefined()
+  expect(await minimal.find({ type: 'Text', text: /^Top: grilling · 6 times, code review · 3 times$/ })).toBeDefined()
   await minimal.unmount()
   mem.set('cockpit:setting:cards.skills', 'hide')
   reads.length = 0
@@ -346,15 +346,15 @@ const manyListing = { at: NOW - 60_000, total: 40, included: 40, tokens: 9000, n
 test('the unused group holds back all but UNUSED_FOLD names behind a fold, and a short list has no fold', () => {
   const v = lineCard('skills', ctx({ skills: { counts, listing: manyListing } }))
   const unused = (v.groups ?? []).find(g => g.head === 'Not used this week')
-  expect(unused?.fold).toEqual({ id: 'unused', shown: UNUSED_FOLD, more: UNUSED_SHOWN - UNUSED_FOLD })
-  expect(unused?.rows.length).toBe(UNUSED_SHOWN + 1)
-  expect(unused?.rows.at(-1)?.title).toBe(`and ${38 - UNUSED_SHOWN} more`)
+  expect(unused?.fold).toEqual({ id: 'unused', shown: UNUSED_FOLD, more: 38 - UNUSED_FOLD })
+  expect(unused?.rows.length).toBe(38)
+  expect(unused?.rows.some(r => r.title.startsWith('and '))).toBe(false)
   const few = lineCard('skills', ctx({ skills: { counts, listing } }))
   expect((few.groups ?? []).find(g => g.head === 'Not used this week')?.fold).toBeUndefined()
   expect(few.blurb).toBe('')
 })
 
-test('the pane shows three unused names and Show 5 more; a press opens the rest and Show fewer folds them again', async ($, on) => {
+test('the pane shows three unused names and Show 35 more; a press opens the rest and Show fewer folds them again', async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   memStore(on, world({ [SKILLS_LISTING_KEY]: manyListing }))
   mock.env(on, { HOME: '/home/test' })
@@ -366,11 +366,12 @@ test('the pane shows three unused names and Show 5 more; a press opens the rest 
   await ui.press({ key: 'morel-skills-unused' })
   await clock.settle()
   await ui.redraw()
-  expect(await ui.find({ type: 'Text', text: new RegExp(`^idle 0${UNUSED_SHOWN - 1}$`) })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /^and 30 more$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: new RegExp(`^idle 07$`) })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^idle 37$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^and \d+ more$/ })).toBeUndefined()
   await ui.press({ key: 'morel-skills-unused' })
   await clock.settle()
   await ui.redraw()
-  expect(await ui.find({ type: 'Text', text: new RegExp(`^idle 0${UNUSED_SHOWN - 1}$`) })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: new RegExp(`^idle 07$`) })).toBeUndefined()
   await ui.unmount()
 })

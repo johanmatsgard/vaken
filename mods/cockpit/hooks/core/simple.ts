@@ -6,11 +6,11 @@ export const SIMPLE_REPLY_TOKENS = 500
 export const SIMPLE_TIMEOUT_MS = 30_000
 
 export const SIMPLE_SYSTEM = [
-  'You re-tell a coding assistant\'s answer for a person who is not an engineer.',
-  'Use short sentences and common words. One idea per sentence. Active voice.',
-  'Say what was done, whether it worked, and what the person should do now.',
-  'Explain any technical word in a few words right after it. Keep file names and commands exact.',
-  'At most 8 short lines. No headings. Do not add facts that are not in the answer.',
+  'You re-tell a coding assistant\'s answer for a person who is not an engineer.', // en-only: the instruction for the small model, sent in English
+  'Use short sentences and common words. One idea per sentence. Active voice.', // en-only: the instruction for the small model, sent in English
+  'Say what was done, whether it worked, and what the person should do now.', // en-only: the instruction for the small model, sent in English
+  'Explain any technical word in a few words right after it. Keep file names and commands exact.', // en-only: the instruction for the small model, sent in English
+  'At most 8 short lines. No headings. Do not add facts that are not in the answer.', // en-only: the instruction for the small model, sent in English
 ].join(' ')
 
 export function answerPart(answer: string): string {

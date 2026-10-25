@@ -13,7 +13,10 @@ import { isWindowsShape } from './guardwin'
 import type { ShellFlavor } from './tools'
 import { winPlan } from './undowin'
 import { pad2 } from './words'
-import { tEn } from '../i18n/t'
+import { langNow, t as tn, tEn, tr } from '../i18n/t'
+import { fillIn } from './fillin'
+import { fmt } from './fmt'
+import { UNDO_VS_APP } from './safetywords'
 
 export const UNDO_SETTING = 'undo.mode'
 export const UNDO_SETTINGS: Setting[] = [
@@ -21,7 +24,7 @@ export const UNDO_SETTINGS: Setting[] = [
     key: UNDO_SETTING,
     group: 'Risky steps',
     label: 'Undo',
-    note: 'Keeps a copy of a file before a step changes it.',
+    note: 'Keeps a copy of a file before a step changes it.', // en-only: a setting note; /vaken-settings text stays English
     options: [
       { value: 'off', label: 'Off' },
       { value: 'on', label: 'On' },
@@ -39,6 +42,7 @@ export const UNDO_HELP: HelpEntry[] = [
     title: 'Going back to a point you saved',
     text: '/vaken-undo checkpoint name saves the state of every file changed so far. /vaken-undo name <name> shows what going back would do. Vaken never deletes a file for you.',
   },
+  { title: 'Undo and Claude Code checkpoints', text: UNDO_VS_APP },
 ]
 
 export const NAMED_WHAT = 'Named a checkpoint'
@@ -49,6 +53,8 @@ export const MAX_TOTAL_BYTES = 20 * 1024 * 1024
 export const MAX_FILE_BYTES = 1024 * 1024
 export const LIST_MAX = 10
 const MAX_NAMED = 20
+// A checkpoint's name is shown whole (it wraps on the Safety card), so this only bounds a damaged store
+const NAME_MAX = 120
 const MAX_TARGETS = 20
 
 export const indexKey = (sid: string): string => `cockpit:undo:index:${sid}`
@@ -86,7 +92,7 @@ export function parseNamed(raw: unknown): Named[] {
   for (const n of raw as Record<string, unknown>[]) {
     if (typeof n !== 'object' || n === null || typeof n.name !== 'string' || !Array.isArray(n.items)) continue
     const items = (n.items as Record<string, unknown>[]).filter(x => typeof x === 'object' && x !== null && typeof x.path === 'string' && typeof x.snap === 'number').map(x => ({ path: text(x.path, 500), snap: Math.floor(x.snap as number) }))
-    out.push({ name: text(n.name, 40), at: num(n.at), items: items.slice(0, MAX_COPIES) })
+    out.push({ name: text(n.name, NAME_MAX), at: num(n.at), items: items.slice(0, MAX_COPIES) })
   }
   return out.slice(0, MAX_NAMED)
 }
@@ -599,26 +605,26 @@ const quoted = (path: string): string => `'${path.replace(/'/g, `'\\''`)}'`
 export const rmCommand = (path: string): string => `rm ${quoted(path)}`
 
 const TOOL_WORDS: Record<string, string> = { Write: 'a Write', Edit: 'an Edit', MultiEdit: 'an Edit', NotebookEdit: 'a notebook edit', Bash: 'a shell command', PowerShell: 'a shell command', checkpoint: 'a checkpoint', undo: 'a restore' }
-const toolWord = (tool: string): string => TOOL_WORDS[tool] ?? 'a step'
-const mb = (b: number): string => `${(b / (1024 * 1024)).toFixed(1)} MB`
+const toolWord = (tool: string): string => tr(TOOL_WORDS[tool] ?? 'a step')
+const mb = (b: number): string => `${fmt.decimal(b / (1024 * 1024), langNow())} MB`
 
 export function listText(idx: Index, named: Named[], now: number, base: string, mode: 'on' | 'off'): string {
   const out: string[] = []
-  if (mode === 'off') out.push('Undo is off, so no new copies are kept. Turn it on in Settings > Safety. Copies kept earlier can still be restored.')
+  if (mode === 'off') out.push(tr('Undo is off, so no new copies are kept. Turn it on in Settings > Safety. Copies kept earlier can still be restored.'))
   const items = lastChanged(idx)
   if (items.length === 0) {
-    out.push(mode === 'off' ? 'No copy kept in this session.' : 'No file has been changed in this session yet, so there is nothing to undo.')
+    out.push(mode === 'off' ? tr('No copy kept in this session.') : tr('No file has been changed in this session yet, so there is nothing to undo.'))
   } else {
-    out.push(`Last changed files (${tEn('words.copy', { n: idx.snaps.length })} kept, ${mb(totalBytes(idx))} of ${mb(MAX_TOTAL_BYTES)}):`)
+    out.push(fillIn(tr('Last changed files ({copies} kept, {used} of {max}):'), { copies: tn('words.copy', { n: idx.snaps.length }), used: mb(totalBytes(idx)), max: mb(MAX_TOTAL_BYTES) }))
     for (const { n, snap } of items) {
-      const what = snap.kind === 'created' ? `was made by ${toolWord(snap.tool)}; there was no earlier version, so nothing to restore` : `would go back to how it was before ${toolWord(snap.tool)} (${tEn('words.line', { n: snap.lines })})`
+      const what = snap.kind === 'created' ? fillIn(tr('was made by {tool}; there was no earlier version, so nothing to restore'), { tool: toolWord(snap.tool) }) : fillIn(tr('would go back to how it was before {tool} ({lines})'), { tool: toolWord(snap.tool), lines: tn('words.line', { n: snap.lines }) })
       out.push(`  ${n}. ${shown(snap.path, base)}  ${clock(snap.at, now)}  ${what}`)
     }
-    out.push('', 'See what a restore would do: /vaken-undo <number>. Put back everything changed since your last message: /vaken-undo last. Nothing changes until you add yes.')
+    out.push('', tr('See what a restore would do: /vaken-undo <number>. Put back everything changed since your last message: /vaken-undo last. Nothing changes until you add yes.'))
   }
-  if (named.length > 0) out.push('', `Saved points: ${named.map(n => n.name).join(', ')}. Go back: /vaken-undo name <checkpoint>.`)
-  else out.push('', 'Name the present state: /vaken-undo checkpoint <name>.')
-  out.push('', 'Limits: 200 copies and 20 MB per session, files up to 1 MB, never .git, node_modules, or secret-looking names or contents. The copy folder is private to you. A shell command is read by its text, so a command that writes through a script, a glob or git is not seen. Restoring never deletes a file.')
+  if (named.length > 0) out.push('', fillIn(tr('Saved points: {names}. Go back: /vaken-undo name <checkpoint>.'), { names: named.map(n => n.name).join(', ') }))
+  else out.push('', tr('Name the present state: /vaken-undo checkpoint <name>.'))
+  out.push('', tr('Limits: 200 copies and 20 MB per session, files up to 1 MB, never .git, node_modules, or secret-looking names or contents. The copy folder is private to you. A shell command is read by its text, so a command that writes through a script, a glob or git is not seen. Restoring never deletes a file.'))
   return out.join('\n')
 }
 
@@ -637,6 +643,18 @@ export const wantsSig = (wants: Want[]): string => wants.map(w => `${w.snap}:${w
 export const LAST_TITLE = 'Preview of undoing the edits since your last message.'
 export const LAST_NONE = 'Nothing has been changed since your last message, so there is nothing to put back. /vaken-undo lists older changes.'
 
+// The times of the files and folders a change touched that no copy could be kept of, so "last" does not say nothing changed.
+export const skipKey = (sid: string): string => `cockpit:undo:skipped:${sid}`
+const SKIP_KEEP = 50
+export const skippedOf = (r: Report): number => Object.values(r.skipped).reduce((n, k) => n + k, 0)
+const times = (v: unknown): number[] => (Array.isArray(v) ? v.filter((x): x is number => typeof x === 'number') : [])
+export async function noteSkipped(i: Io, sid: string, at: number, n: number): Promise<void> {
+  if (n <= 0) return
+  await i.set(skipKey(sid), [...times(await i.get(skipKey(sid))), ...Array<number>(Math.min(n, SKIP_KEEP)).fill(at)].slice(-SKIP_KEEP))
+}
+export const skippedSince = (v: unknown, mark: number): number => times(v).filter(t => t > mark).length
+export const lastNone = (skipped: number): string => (skipped > 0 ? tn('engines.undo_last_skipped', { n: skipped }) : tr(LAST_NONE))
+
 type Offer = { toast: string; note: string }
 const NO_OFFER: Offer = { toast: '', note: '' }
 export async function undoOffer(i: Io): Promise<Offer> {
@@ -645,7 +663,7 @@ export async function undoOffer(i: Io): Promise<Offer> {
     const idx = await loadIndex(i, sid)
     if (idx.snaps.length === 0) return NO_OFFER
     if (sinceWants(idx, num(await readNote(i, markKey(sid)))).length === 0) return NO_OFFER
-    return { toast: ' If an edit went wrong: /vaken-undo last.', note: ' If the edits made earlier went wrong, the person can put those files back with /vaken-undo last.' }
+    return { toast: tr(' If an edit went wrong: /vaken-undo last.'), note: ' If the edits made earlier went wrong, the person can put those files back with /vaken-undo last.' } // en-only: a note to Claude
   } catch {
     return NO_OFFER
   }
@@ -704,23 +722,23 @@ export const restorable = (plan: PlanFile[]): number => plan.filter(f => f.kind 
 function fileLine(f: PlanFile, now: number, base: string): string {
   const name = shown(f.path, base)
   if (f.kind === 'restore') {
-    const was = f.current === undefined ? 'the file is gone now and would come back' : `${tEn('words.line', { n: f.removed })} removed, ${tEn('words.line', { n: f.added })} added`
-    return `  ${name}: ${was} (back to how it was before ${toolWord(f.snap.tool)} at ${clock(f.snap.at, now)})`
+    const was = f.current === undefined ? tr('the file is gone now and would come back') : fillIn(tr('{removed} removed, {added} added'), { removed: tn('words.line', { n: f.removed }), added: tn('words.line', { n: f.added }) })
+    return `  ${fillIn(tr('{name}: {was} (back to how it was before {tool} at {time})'), { name, was, tool: toolWord(f.snap.tool), time: clock(f.snap.at, now) })}`
   }
-  if (f.kind === 'same') return `  ${name}: already the same as the copy. Nothing to do.`
+  if (f.kind === 'same') return `  ${fillIn(tr('{name}: already the same as the copy. Nothing to do.'), { name })}`
   if (f.kind === 'created') {
-    return f.exists ? `  ${name}: made by ${toolWord(f.snap.tool)}. There was no earlier version, and vaken does not delete files. To remove it yourself: ${rmCommand(f.path)}` : `  ${name}: made by ${toolWord(f.snap.tool)}, and it is gone now. Nothing to do.`
+    return f.exists ? `  ${fillIn(tr('{name}: made by {tool}. There was no earlier version, and vaken does not delete files. To remove it yourself: {cmd}'), { name, tool: toolWord(f.snap.tool), cmd: rmCommand(f.path) })}` : `  ${fillIn(tr('{name}: made by {tool}, and it is gone now. Nothing to do.'), { name, tool: toolWord(f.snap.tool) })}`
   }
-  if (f.kind === 'absent') return f.createdSeen && f.exists ? `  ${name}: did not exist then. Vaken does not delete files. To remove it yourself: ${rmCommand(f.path)}` : `  ${name}: did not exist then. Left as it is.`
-  return `  ${name}: cannot be restored, ${f.why}.`
+  if (f.kind === 'absent') return f.createdSeen && f.exists ? `  ${fillIn(tr('{name}: did not exist then. Vaken does not delete files. To remove it yourself: {cmd}'), { name, cmd: rmCommand(f.path) })}` : `  ${fillIn(tr('{name}: did not exist then. Left as it is.'), { name })}`
+  return `  ${fillIn(tr('{name}: cannot be restored, {why}.'), { name, why: tr(f.why) })}`
 }
 
 export function previewText(title: string, plan: PlanFile[], now: number, base: string, confirm: string): string {
   const n = restorable(plan)
-  const out: string[] = [title, n === 0 ? 'Nothing would change.' : `${tEn('words.file', { n: n })} would change:`]
+  const out: string[] = [title, n === 0 ? tr('Nothing would change.') : tn('engines.n_files_would_change', { n })]
   for (const f of plan) out.push(fileLine(f, now, base))
   out.push('')
-  out.push(n === 0 ? 'Nothing was changed.' : `Nothing was changed yet. Before a restore vaken keeps a copy of the files as they are now, so a restore can be undone too. To go ahead: ${confirm}`)
+  out.push(n === 0 ? tr('Nothing was changed.') : fillIn(tr('Nothing was changed yet. Before a restore vaken keeps a copy of the files as they are now, so a restore can be undone too. To go ahead: {confirm}'), { confirm }))
   return out.join('\n')
 }
 
@@ -772,22 +790,20 @@ export function restore(i: Io, probe: Probe, sid: string, plan: PlanFile[], guar
 
 export function restoredText(r: Restored, base: string): string {
   const out: string[] = []
-  if (r.done === 0) out.push('Nothing was restored.')
-  else out.push(`Restored ${tEn('words.file', { n: r.done })}; ${tEn('words.read_back_match', { n: r.checked })}`)
+  if (r.done === 0) out.push(tr('Nothing was restored.'))
+  else out.push(fillIn(tr('Restored {files}; {check}'), { files: tn('words.file', { n: r.done }), check: tn('words.read_back_match', { n: r.checked }) }))
   if (r.refused.length > 0) {
-    const one = r.refused.length === 1
-    out.push(`Not restored: ${r.refused.map(p => shown(p, base)).join(', ')}. Vaken could not keep a copy of ${one ? 'it' : 'them'} as ${one ? 'it is' : 'they are'} now (too big, secret-looking, not plain text, or the copy could not be written), so a restore could not be undone. Nothing was changed in ${one ? 'that file' : 'those files'}.`)
+    out.push(fillIn(tn('cmdc.not_restored_files_vaken_could_not_keep', { n: r.refused.length }), { files: r.refused.map(p => shown(p, base)).join(', ') }))
   }
   if (r.linked.length > 0) {
-    const one = r.linked.length === 1
-    out.push(`Not restored: ${r.linked.map(p => shown(p, base)).join(', ')}. ${one ? 'It is' : 'They are'} a link, below a linked folder, or outside the project, and vaken does not write through a link. Nothing was changed in ${one ? 'that file' : 'those files'}.`)
+    out.push(fillIn(tn('cmdc.not_restored_files_they_are_a_link', { n: r.linked.length }), { files: r.linked.map(p => shown(p, base)).join(', ') }))
   }
-  if (r.failed.length > 0) out.push(`Check these by hand: ${r.failed.map(p => shown(p, base)).join(', ')}.`)
-  out.push('The files as they were just before are kept, so /vaken-undo can undo this.')
+  if (r.failed.length > 0) out.push(fillIn(tr('Check these by hand: {files}.'), { files: r.failed.map(p => shown(p, base)).join(', ') }))
+  out.push(tr('The files as they were just before are kept, so /vaken-undo can undo this.'))
   return out.join(' ')
 }
 
-export const cleanName = (s: string): string => s.replace(/[^A-Za-z0-9._-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 40)
+export const cleanName = (s: string): string => s.replace(/[^A-Za-z0-9._-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, NAME_MAX)
 const RESERVED = new Set(['list', 'yes', 'name', 'off', 'on'])
 const validName = (s: string): boolean => s !== '' && !RESERVED.has(s.toLowerCase())
 
@@ -800,7 +816,7 @@ export function makeCheckpoint(i: Io, probe: Probe, sid: string, name: string): 
       const now = await i.now()
       const start = await loadIndex(i, sid)
       const paths = [...new Set(start.snaps.map(s => s.path))]
-      if (paths.length === 0) return { ok: false as const, why: 'No file has been changed in this session yet, so there is nothing to name.' }
+      if (paths.length === 0) return { ok: false as const, why: tr('No file has been changed in this session yet, so there is nothing to name.') }
       const present: string[] = []
       const gone: string[] = []
       for (const p of paths) ((await probe(p)) === undefined ? gone : present).push(p)
@@ -812,7 +828,7 @@ export function makeCheckpoint(i: Io, probe: Probe, sid: string, name: string): 
       await i.set(namedKey(sid), [named, ...old].slice(0, MAX_NAMED))
       return { ok: true as const, named, held: items.filter(x => x.snap > 0).length, notHeld: items.filter(x => x.snap < 0).length, absent: gone.length }
     } catch {
-      return { ok: false as const, why: 'The checkpoint could not be saved.' }
+      return { ok: false as const, why: tr('The checkpoint could not be saved.') }
     }
   })
 }
@@ -820,50 +836,51 @@ export function makeCheckpoint(i: Io, probe: Probe, sid: string, name: string): 
 export const findNamed = (named: Named[], name: string): Named | undefined => named.find(n => n.name.toLowerCase() === name.toLowerCase())
 
 export function madeText(m: Extract<Made, { ok: true }>): string {
-  const bits = [`${tEn('words.file', { n: m.held })} held`]
-  if (m.notHeld > 0) bits.push(`${tEn('words.file', { n: m.notHeld })} could not be kept (too big, secret-looking or not plain text)`)
-  if (m.absent > 0) bits.push(`${tEn('words.file', { n: m.absent })} not there now`)
-  return `Checkpoint "${m.named.name}" saved: ${bits.join(', ')}. Go back to it with /vaken-undo name ${m.named.name} (a preview comes first).`
+  const bits = [tn('cmdc.n_files_held', { n: m.held })]
+  if (m.notHeld > 0) bits.push(tn('cmdc.n_files_could_not_be_kept_too', { n: m.notHeld }))
+  if (m.absent > 0) bits.push(tn('cmdc.n_files_not_there_now', { n: m.absent }))
+  return fillIn(tr('Checkpoint "{name}" saved: {bits}. Go back to it with /vaken-undo name {name} (a preview comes first).'), { name: m.named.name, bits: bits.join(', ') })
 }
 
 export function namedListText(named: Named[], idx: Index, now: number): string {
-  if (named.length === 0) return 'No named checkpoint yet. Name the present state: /vaken-undo checkpoint <name>.'
+  if (named.length === 0) return tr('No named checkpoint yet. Name the present state: /vaken-undo checkpoint <name>.')
   return [
-    'Saved points:',
+    tr('Saved points:'),
     ...named.map(n => {
       const alive = n.items.filter(x => x.snap > 0 && idx.snaps.some(s => s.id === x.snap)).length
-      return `  ${n.name}  ${clock(n.at, now)}  ${tEn('words.file', { n: n.items.length })}${alive < n.items.filter(x => x.snap > 0).length ? `, ${n.items.filter(x => x.snap > 0).length - alive} copies dropped to stay inside the limits` : ''}`
+      return `  ${n.name}  ${clock(n.at, now)}  ${tn('words.file', { n: n.items.length })}${alive < n.items.filter(x => x.snap > 0).length ? tn('cmdc.n_copies_dropped_to_stay_inside_the', { n: n.items.filter(x => x.snap > 0).length - alive }) : ''}`
     }),
     '',
-    'Go back to one: /vaken-undo name <checkpoint> (a preview comes first). Name the present state: /vaken-undo checkpoint <name>.',
+    tr('Go back to one: /vaken-undo name <checkpoint> (a preview comes first). Name the present state: /vaken-undo checkpoint <name>.'),
   ].join('\n')
 }
 
 type UndoAsk = { kind: 'list' } | { kind: 'file'; n: number; yes: boolean } | { kind: 'named'; name: string; yes: boolean } | { kind: 'last'; yes: boolean } | { kind: 'bad'; why: string }
 
-const USE = 'Use: /vaken-undo, /vaken-undo <number>, /vaken-undo last, /vaken-undo name <checkpoint>. Add yes to restore.'
+const USE = 'Use: /vaken-undo, /vaken-undo <number>, /vaken-undo last, /vaken-undo name <checkpoint>. Add yes to restore.' // en-only: the key; said with tr() where it is returned (usedWords)
+const usedWords = (): string => tr(USE)
 
 export function parseUndoAsk(args: string): UndoAsk {
   const w = args.trim().split(/\s+/).filter(x => x !== '')
   if (w.length === 0) return { kind: 'list' }
   if (w[0].toLowerCase() === 'last') {
     if (w.length === 1) return { kind: 'last', yes: false }
-    return w.length === 2 && w[1].toLowerCase() === 'yes' ? { kind: 'last', yes: true } : { kind: 'bad', why: USE }
+    return w.length === 2 && w[1].toLowerCase() === 'yes' ? { kind: 'last', yes: true } : { kind: 'bad', why: usedWords() }
   }
   if (w[0].toLowerCase() === 'name') {
     const name = cleanName(w[1] ?? '')
-    if (name === '') return { kind: 'bad', why: 'Say which checkpoint: /vaken-undo name <checkpoint>.' }
+    if (name === '') return { kind: 'bad', why: tr('Say which checkpoint: /vaken-undo name <checkpoint>.') }
     const rest = w.slice(2)
     if (rest.length === 0) return { kind: 'named', name, yes: false }
-    return rest.length === 1 && rest[0].toLowerCase() === 'yes' ? { kind: 'named', name, yes: true } : { kind: 'bad', why: USE }
+    return rest.length === 1 && rest[0].toLowerCase() === 'yes' ? { kind: 'named', name, yes: true } : { kind: 'bad', why: usedWords() }
   }
   if (/^\d+$/.test(w[0])) {
     const n = Number(w[0])
-    if (n < 1 || n > LIST_MAX) return { kind: 'bad', why: `Pick a number from 1 to ${LIST_MAX} (see /vaken-undo).` }
+    if (n < 1 || n > LIST_MAX) return { kind: 'bad', why: fillIn(tr('Pick a number from 1 to {max} (see /vaken-undo).'), { max: LIST_MAX }) }
     if (w.length === 1) return { kind: 'file', n, yes: false }
-    return w.length === 2 && w[1].toLowerCase() === 'yes' ? { kind: 'file', n, yes: true } : { kind: 'bad', why: USE }
+    return w.length === 2 && w[1].toLowerCase() === 'yes' ? { kind: 'file', n, yes: true } : { kind: 'bad', why: usedWords() }
   }
-  return { kind: 'bad', why: USE }
+  return { kind: 'bad', why: usedWords() }
 }
 
 type CheckpointAsk = { kind: 'list' } | { kind: 'make'; name: string } | { kind: 'bad'; why: string }
@@ -872,7 +889,7 @@ export function parseCheckpointAsk(args: string): CheckpointAsk {
   const raw = args.trim()
   if (raw === '' || raw.toLowerCase() === 'list') return { kind: 'list' }
   const name = cleanName(raw.split(/\s+/).join('-'))
-  if (!validName(name)) return { kind: 'bad', why: 'Pick a name with letters or numbers, for example /vaken-undo checkpoint before-refactor. "list", "yes", "name", "on" and "off" are taken.' }
+  if (!validName(name)) return { kind: 'bad', why: tr('Pick a name with letters or numbers, for example /vaken-undo checkpoint before-refactor. "list", "yes", "name", "on" and "off" are taken.') }
   return { kind: 'make', name }
 }
 

@@ -98,9 +98,13 @@ export function editDistance(a: string, b: string): number {
 export const POPULAR_NPM = ['react', 'react-dom', 'lodash', 'express', 'axios', 'next', 'typescript', 'vue', 'webpack', 'eslint', 'prettier', 'jest', 'moment', 'chalk', 'commander', 'dotenv', 'tailwindcss', 'vite', 'zod', 'jquery', 'underscore', 'request', 'debug', 'uuid', 'redux', 'mongoose', 'prisma', 'rxjs', 'socket.io', 'angular', 'svelte', 'esbuild', 'rollup', 'cors', 'body-parser', 'nodemon', 'semver', 'yargs', 'minimist', 'glob', 'inquirer', 'colors', 'bluebird', 'async', 'classnames', 'date-fns', 'dayjs']
 const POPULAR_PIP = ['requests', 'numpy', 'pandas', 'django', 'flask', 'boto3', 'urllib3', 'setuptools', 'pytest', 'scipy', 'matplotlib', 'pillow', 'sqlalchemy', 'fastapi', 'pydantic', 'tensorflow', 'torch', 'scikit-learn', 'beautifulsoup4', 'cryptography', 'pyyaml', 'jinja2', 'click', 'httpx', 'aiohttp', 'openai', 'anthropic', 'selenium', 'psycopg2', 'redis']
 
+// Well-known packages whose names sit close to a popular one; they are real, so never a look-alike.
+const KNOWN_REAL = new Set(['preact', 'nuxt', 'vuex', 'vitest', 'color', 'uid', 'args', 'jinja', 'boto', 'pandera', 'redis', 'chai'])
+
 // Short names need distance 1 to avoid noise.
 export function nearMiss(name: string, popular: readonly string[]): { target: string; distance: number } | undefined {
   const bare = name.replace(/^@[^/]+\//, '').toLowerCase()
+  if (KNOWN_REAL.has(bare) && !name.startsWith('@')) return undefined
   let best: { target: string; distance: number } | undefined
   for (const p of popular) {
     if (bare === p) return undefined

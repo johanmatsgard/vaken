@@ -5,7 +5,7 @@ import type { On } from 'claude-code'
 
 import { ASK_WHAT, AUTO_NOTE_WHAT, askNow, briefName, briefPath, lastNote, noteText, noteWords } from '../hooks/core/autosafe'
 import { WOULD_WHAT } from '../hooks/core/compactrest'
-import { REST_QUIET_MS } from '../hooks/core/compactrest'
+import { SIZE_LOOK_MS } from '../hooks/core/compactauto'
 import { setLang } from '../hooks/core/lang'
 import { SLOW, test } from './slow'
 
@@ -93,6 +93,7 @@ async function drive($: Dollar, on: On, mode: string, midSave?: ($: Dollar) => P
   on('session.cwd', () => ({ value: '/work/app' }) as never)
   on('command.register', () => ({ value: { command: 'x' } }))
   on('ui.invalidate', () => ({ value: undefined }))
+  on('prompt.read', () => ({ value: { text: '', cursor: 0 } }) as never)
   on('ui.panes', () => ({ value: [] }) as never)
   on('ui.open', () => ({ value: { isPlaced: true } }) as never)
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
@@ -118,7 +119,7 @@ async function drive($: Dollar, on: On, mode: string, midSave?: ($: Dollar) => P
   })
   await $.session.start({ cwd: '/work/app', surface: 'desktop', isInteractive: true } as never)
   await $.turn.complete({ answer: 'Done.', durationMs: 30_000, isAborted: false, turnId: 't1', reason: 'answer' } as never)
-  await clock.advance(REST_QUIET_MS + 10_000)
+  await clock.advance(SIZE_LOOK_MS + 10_000)
   await clock.settle()
   return { mem, seen }
 }
@@ -157,9 +158,9 @@ test('Watch and Suggest save and send nothing; Watch only notes the moment', SLO
 
 test('Suggest writes nothing', SLOW, async ($, on) => {
   const suggest = await drive($, on, 'suggest')
-  expect(suggest.seen.writes.length).toBe(0)
+  expect(suggest.seen.writes.map(w => w.path)).toEqual([])
   expect(suggest.seen.events).toEqual([])
-  expect(ledgerOf(suggest.mem).length).toBe(0)
+  expect(ledgerOf(suggest.mem)).toEqual([])
 })
 
 test('the ask-once row shows after 3 would-have notes in Watch; Yes sets Auto, and the row is gone', SLOW, async ($, on) => {

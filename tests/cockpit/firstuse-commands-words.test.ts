@@ -6,7 +6,7 @@ import { batchText } from '../hooks/core/attention'
 import { gapToast } from '../hooks/core/proofclaims'
 import { POPOUT_RETRY_MS, popMem } from '../hooks/core/popout'
 import { FRONT_DOOR } from '../hooks/core/menu'
-import { COMMAND_GROUPS, EVERYDAY_COMMANDS, GROUP_ABOUT } from '../hooks/core/registry'
+import { COMMAND_GROUPS, EVERYDAY_COMMANDS } from '../hooks/core/registry'
 import { SETTINGS, defaults, parseAsk, settingPath, settingsText } from '../hooks/core/settings'
 import { settingIn } from '../hooks/core/whatis'
 import { heldToast, warnToast } from '../hooks/core/guard'
@@ -19,7 +19,7 @@ import { flags } from '../hooks/features/home/state'
 
 const same = (s: string): string => s
 
-test('U46: Throw away asks in place first; Keep drops the question and changes nothing', () => {
+test('Throw away asks in place first; Keep drops the question and changes nothing', () => {
   const calls: string[] = []
   const act = { runSteer: (a: string) => calls.push(`steer ${a}`), askThrow: (n: number | undefined) => calls.push(`ask ${n}`) } as never
   const task = { n: 2, text: 'x', path: '/w/x', state: 'done' } as never
@@ -42,7 +42,7 @@ test('U46: Throw away asks in place first; Keep drops the question and changes n
   flags.throwAsk = undefined
 })
 
-test('U50: /vaken-help leads with the 15 commands, each with a few words, then the words that can follow them', () => {
+test('/vaken-help names the 15 commands once each, by job, with a few words and the words that can follow them', () => {
   const listed = COMMAND_GROUPS.flatMap(g => g.commands)
   expect(EVERYDAY_COMMANDS.map(e => e.command)).toEqual(FRONT_DOOR)
   for (const e of EVERYDAY_COMMANDS) {
@@ -50,17 +50,16 @@ test('U50: /vaken-help leads with the 15 commands, each with a few words, then t
     expect(e.words.split(/\s+/).length, e.command).toBeLessThanOrEqual(10)
   }
   expect(listed.slice().sort()).toEqual(FRONT_DOOR.slice().sort())
-  for (const g of COMMAND_GROUPS) expect(GROUP_ABOUT[g.group], g.group).toBeDefined()
   const text = helpText('')
   const lines = text.split('\n')
-  expect(lines.indexOf('Every day:')).toBeGreaterThan(0)
-  expect(text).toMatch(/\/vaken-settings {2}see or change a setting/)
-  expect(lines.some(l => l.startsWith('Usage and cost') && l.includes('/vaken-usage [cost | budget | limits | fit | why]'))).toBe(true)
-  expect(lines.filter(l => l.includes('/vaken-help run <name>'))).toHaveLength(1)
-  expect(text).toContain('/vaken-help <word> to find a topic')
+  expect(lines.indexOf('Usage and cost')).toBeGreaterThan(0)
+  expect(text).toContain('- `/vaken-settings`: see or change a setting')
+  expect(text).toContain('- `/vaken-usage`: your plan limits, cost and budget (cost, budget, limits, fit, why)')
+  expect(text).toContain('`/vaken-help run` lists the parts in the pane')
+  expect(text).toContain('`/vaken-help <word>` finds one')
 })
 
-test('U49: /vaken-settings prints the name and the one-line note of a row, then its key, value and choices', () => {
+test('/vaken-settings prints the name and the one-line note of a row, then its key, value and choices', () => {
   const text = settingsText(defaults(), false, [], true)
   const lines = text.split('\n')
   const at = lines.findIndex(l => l.startsWith('    detail: '))
@@ -70,12 +69,12 @@ test('U49: /vaken-settings prints the name and the one-line note of a row, then 
   expect(lines[at]).toMatch(/^ {4}detail: Glance \(glance \/ simple \/ explained\)$/)
 })
 
-test('U51: a typed reset needs a yes, as the pane asks first', () => {
+test('a typed reset needs a yes, as the pane asks first', () => {
   expect(parseAsk('reset')).toEqual({ kind: 'reset' })
   expect(parseAsk('reset yes')).toEqual({ kind: 'reset', yes: true })
 })
 
-test('U69: a sentence names a row by its Settings section, and settingIn finds the row again', () => {
+test('a sentence names a row by its Settings section, and settingIn finds the row again', () => {
   const guard = SETTINGS.find(s => s.key === 'guard.destructive')
   expect(guard).toBeDefined()
   expect(settingPath(guard as never)).toBe('Settings > Safety > Risky commands')
@@ -86,7 +85,7 @@ test('U69: a sentence names a row by its Settings section, and settingIn finds t
   for (const s of SETTINGS) if (s.hidden !== true) expect(titles.some(t => settingPath(s).startsWith(`Settings > ${t} > `)), settingPath(s)).toBe(true)
 })
 
-test('U60: many notices tell who asks and who finished', () => {
+test('many notices tell who asks and who finished', () => {
   const list = [
     { id: 'a', marker: 'needs:1', text: '"Fix login" needs you.' },
     { id: 'b', marker: 'needs:2', text: '"Docs" needs you: a question.' },
@@ -95,22 +94,22 @@ test('U60: many notices tell who asks and who finished', () => {
   expect(batchText(list)).toBe('Waiting for you: Fix login, Docs. Finished: Build.')
 })
 
-test('U61: the unproven claim is shown in quotes, as what Claude said', () => {
+test('the unproven claim is shown in quotes, as what Claude said', () => {
   expect(gapToast([{ kind: 'generic', why: 'missing' } as never])).toBe('An unproven claim: "verified"')
 })
 
-test('U59: the guard toast says what happened and the press that lets it through', () => {
+test('the guard toast says what happened and the press that lets it through', () => {
   const toast = heldToast([{ block: 'destructive', words: 'Deletes.' }] as never)
   expect(toast).toBe('Stopped a risky command. Press Allow once in Needs you to let it through.')
   expect(warnToast([{ block: 'packages', words: 'x' }] as never)).toBe('Claude was told about a package that looks odd.')
 })
 
-test('U81: the verb follows the number', () => {
+test('the verb follows the number', () => {
   expect(needsChip(1, same)).toBe('1 needs you')
   expect(needsChip(3, same)).toBe('3 need you')
 })
 
-test('U58: a failed pop out is tried again after ten minutes', async () => {
+test('a failed pop out is tried again after ten minutes', async () => {
   let n = 0
   const eng = { mcpCall: async () => { n += 1; return { content: [{ type: 'text', text: 'ok' }] } } } as unknown as HomeEngine
   popMem.failed = true

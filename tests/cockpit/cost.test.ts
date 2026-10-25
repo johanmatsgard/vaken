@@ -100,7 +100,7 @@ test('the cost text calls every dollar an estimate and shows the source and the 
   expect(text).toMatch(/estimates/)
   expect(text).toMatch(/This session: \$3\.10 so far\. Source: the engine's own total, read 2 min ago/)
   expect(text).toMatch(/Burn: not enough readings/)
-  expect(text).toMatch(/Last answer: .* \(estimate\)|Last answer: about \$/)
+  expect(text).toMatch(/Last answer: .* \(estimate\)|Last answer: about\s\$/)
   expect(text).toMatch(/Today: \$9\.10 over 3 sessions/)
   expect(text).toMatch(/list price of Sonnet 5, table of 9 Oct 2026/)
   expect(text).toMatch(/not billed per token/)
@@ -174,6 +174,8 @@ test('the notes and the refusal call the figures estimates and tell Claude to as
   expect(stopReason('Agent', r)).toMatch(/\/vaken-usage budget extend/)
   const w = readings({ mode: 'warn', source: 'engine', session: { usd: 20, limit: 25 } })[0]!
   expect(noteText(w, 'warn')).toMatch(/80% of the session cost budget/)
+  expect(noteText(w, 'warn')).toMatch(/Do not change your work/)
+  expect(noteText(r, 'warn')).not.toMatch(/ask if you should go on|start no agents/)
 })
 
 test('the command is parsed: status, extend, extend of one budget; anything else is told how', () => {
@@ -208,7 +210,7 @@ test('a kept option counts only when it is one of the options; the day is the lo
 })
 
 test('the settings rows: keys, defaults and choices', () => {
-  expect(COST_SETTINGS.map(s => [s.key, s.default])).toEqual([['cost.budget', 'warn'], ['cost.session', '25'], ['cost.day', '50'], ['cost.why', 'on']])
+  expect(COST_SETTINGS.map(s => [s.key, s.default])).toEqual([['cost.budget', 'off'], ['cost.session', '25'], ['cost.day', '50'], ['cost.why', 'on']])
   expect(COST_SETTINGS.find(s => s.key === 'cost.session')?.options.map(o => o.value)).toEqual(['5', '10', '25', '50', '100'])
   expect(COST_SETTINGS.find(s => s.key === 'cost.day')?.options.map(o => o.value)).toEqual(['10', '25', '50', '100', '200'])
 })
@@ -219,7 +221,7 @@ test('a limit text says the percent left, the reset, how many sessions stall and
   const text = limitsText({ usage: usage(62, '2026-10-10T14:00:00Z'), history: {}, running: { count: 3, source: 'vaken' }, spenders: [['App', 4.2], ['Docs', 1.1]], now: NOW })
   expect(text).toMatch(/Source: the app usage card, read 3 min ago/)
   expect(text).toMatch(/5-hour: 62% used, 38% left\. It resets .* \(in 2 h 0 min\)/)
-  expect(text).toMatch(/At the pace so far/)
+  expect(text).toMatch(/At this pace: /)
   expect(text).toMatch(/3 sessions running now/)
   expect(text).toMatch(/Spending most, by the engine's totals: App \$4\.20, Docs \$1\.10/)
   expect(text).toMatch(/To share what is left/)
@@ -238,7 +240,7 @@ test('with plenty left nothing needs sharing; with no reading the text says so',
 
 test('a fast pace says when the limit is reached, before the reset, as an estimate', () => {
   const text = limitsText({ usage: usage(90, '2026-10-10T13:00:00Z'), history: {}, running: { count: 2, source: 'vaken' }, spenders: [], now: NOW })
-  expect(text).toMatch(/runs out about \d\d:\d\d, before the reset \(estimate\)/)
+  expect(text).toMatch(/At this pace: runs out at \d\d:\d\d\./)
   expect(text).toMatch(/the 2 sessions that run stop until the reset/)
 })
 
@@ -272,7 +274,7 @@ function memStore(on: On, seed: Record<string, unknown> = {}): Map<string, unkno
   return mem
 }
 
-function world(on: On, seed: Record<string, unknown> = {}): Map<string, unknown> {
+function world(on: On, seed: Record<string, unknown> = {}, toasts?: string[]): Map<string, unknown> {
   mock.clock(on, { now: NOW })
   const mem = memStore(on, seed)
   mock.session(on)
@@ -282,7 +284,10 @@ function world(on: On, seed: Record<string, unknown> = {}): Map<string, unknown>
   on('session.usage', () => ({ value: { startedAt: NOW - 5 * MIN, context: { window: 1_000_000 }, rateLimits: [], cost: { usd: 0 } } }) as never)
   on('command.register', () => ({ value: { command: 'x' } }))
   on('ui.invalidate', () => ({ value: undefined }))
-  on('ui.toast', () => ({ value: undefined }) as never)
+  on('ui.toast', (_$, e) => {
+    toasts?.push(String((e as unknown as { text?: unknown }).text))
+    return { value: undefined } as never
+  })
   on('session.start', (_$, e) => ({ cwd: e.cwd }))
   on('session.measure', (_$, e) => ({ changed: e.changed }))
   on('turn.complete', (_$, e) => ({ text: e.answer }))
@@ -295,13 +300,14 @@ const measure = (usd: number) => ({ context: { window: 1_000_000, tokens: 100_00
 const agentCall = { tool: 'Agent', prompt: 'p', description: 'd', subagent_type: 'general-purpose' } as never
 
 test('/vaken-usage cost shows the engine total after a reading and an estimated turn', SLOW, async ($, on) => {
-  world(on)
+  // The budget is Off by default; this one warns
+  world(on, { 'cockpit:setting:cost.budget': 'warn' })
   await $.session.start({ cwd: '/work/app', surface: 'desktop', isInteractive: true })
   await $.session.measure(measure(1.5))
   await $.turn.complete(turnEvent())
   const r = (await $.command.run(viaParent('vaken-cost', '') as never)) as { text: string }
   expect(r.text).toMatch(/This session: \$1\.50 so far\. Source: the engine's own total, read just now/)
-  expect(r.text).toMatch(/Last answer: about \$0\.0\d+/)
+  expect(r.text).toMatch(/Last answer: about\s\$0\.0\d+/)
   expect(r.text).toMatch(/Today: \$1\.50 over 1 session/)
   expect(r.text).toMatch(/Budget: warn\. At 80% and at 100% you are warned/)
 })
@@ -343,6 +349,15 @@ test('Warn: at 80% one toast and one ledger line, and Claude hears nothing; the 
   expect(JSON.stringify(agent)).not.toMatch(/blocked/)
   const ledger = mem.get('cockpit:ledger:compact') as Array<{ what: string; did?: boolean }>
   expect(ledger.map(l => l.what)).toEqual(['Warned about the budget'])
+})
+
+test('Warn: the 100% toast still shows after the 80% one, though they differ only in numbers', async ($, on) => {
+  const shown: string[] = []
+  world(on, { 'cockpit:setting:cost.budget': 'warn', 'cockpit:setting:cost.session': '5' }, shown)
+  await $.session.start({ cwd: '/work/app', surface: 'desktop', isInteractive: true })
+  await $.session.measure(measure(4.2))
+  await $.session.measure(measure(5.3))
+  expect(shown.filter(t => /session budget/.test(t)).map(t => /(\d+)%/.exec(t)?.[1])).toEqual(['84', '106'])
 })
 
 test('Warn with All checks: at 80% one note for Claude on the next tool result, once', async ($, on) => {

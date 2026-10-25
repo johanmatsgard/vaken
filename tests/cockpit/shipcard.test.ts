@@ -12,12 +12,12 @@ import type { PrSession } from '../hooks/core/prcard'
 import { emptyState } from '../hooks/core/proof'
 import type { ProofState } from '../hooks/core/proof'
 import { ship } from '../hooks/core/ship'
-import { shipBlocks, shipCardText, shipLoud, shipVerdict } from '../hooks/core/shipcard'
+import { SHIP_PR_CI_NEXT, shipBlocks, shipCardText, shipLoud, shipVerdict } from '../hooks/core/shipcard'
 import type { ShipFacts } from '../hooks/core/shipcard'
 import { lineCard } from '../hooks/features/home/linecards'
 import { CARD_IDS, LINE_CARD_IDS, homeText } from '../hooks/features/home/logic'
 import type { View } from '../hooks/features/home/logic'
-import { PR_FIX, checkClaims, fixCheck, prShip } from '../hooks/features/home/rowact'
+import { checkClaims, fixCheck, prShip } from '../hooks/features/home/rowact'
 import { byEnglish, englishOf } from '../hooks/i18n/table'
 const SV = byEnglish('sv')
 
@@ -56,11 +56,13 @@ test('nothing changed and no pull request: nothing to ship, calm; a changed sess
   expect(v.groups).toHaveLength(1)
   const ok = facts({ proof: proofWith([['tests', true, 8]]) })
   expect(shipVerdict(ok)).toBe('ready')
-  expect(lineCard('ship', { now: NOW, ledger: [], halted: false, modes: {}, proof: ok.proof, t: id }).short).toBe('Ready')
+  // With the PR check off vaken cannot know the pull request, so it is ready here; with it on and nothing to ask, Ready
+  expect(lineCard('ship', { now: NOW, ledger: [], halted: false, modes: {}, proof: ok.proof, t: id }).short).toBe('Ready here')
+  expect(lineCard('ship', { now: NOW, ledger: [], halted: false, modes: {}, proof: ok.proof, prs: { on: true, rows: [], look: false }, t: id }).short).toBe('Ready')
   expect([shipLoud(facts()), shipLoud(ok)]).toEqual(['none', 'ready'])
 })
 
-test('a failed check, a stale check, claims with no check, stopped steps and unseen changes each block it; the verdict counts them all and the card lists 4', () => {
+test('a failed check, a stale check, claims with no check, stopped steps and unseen changes each block it; the verdict counts them all and the card shows 4, the fifth behind Show 1 more', () => {
   const bad = facts({
     proof: proofWith(
       [
@@ -76,7 +78,7 @@ test('a failed check, a stale check, claims with no check, stopped steps and uns
     ['Lint', 'not run since the last edit · See'],
     ['Claims with no check behind them', '1 claim · Check'],
     ['1 step stopped today', 'Verdict'],
-    ['Changes not looked at', 'Verdict'],
+    ['Changes to look at', 'Verdict'],
   ])
   const v = lineCard('ship', { now: NOW, ledger: bad.ledger, halted: false, modes: {}, proof: bad.proof, t: id })
   expect(v.short).toBe('5 things block it')
@@ -86,25 +88,28 @@ test('a failed check, a stale check, claims with no check, stopped steps and uns
   const verdict = v.groups?.[0]?.rows[0]
   expect(verdict).toMatchObject({ key: 'verdict', title: '5 things block it', right: 'See', action: prShip('ship:verdict') })
   const rows = v.groups?.[1]?.rows ?? []
-  expect(rows).toHaveLength(4)
-  expect(rows.map(r => r.action)).toEqual([fixCheck('tests'), prShip('ship:check-lint'), checkClaims(1), prShip('ship:held')])
-  expect(verdict?.what.facts).toContain('Changes not looked at: Verdict')
+  expect(rows).toHaveLength(5)
+  expect(v.groups?.[1]?.fold).toEqual({ id: 'blocks', shown: 4, more: 1 })
+  expect(rows.slice(0, 4).map(r => r.action)).toEqual([fixCheck('tests'), prShip('ship:check-lint'), checkClaims(1), prShip('ship:held')])
+  // Opened, the verdict does not repeat the rows below it
+  expect(verdict?.what.facts ?? []).not.toContain('Changes to look at: Verdict')
   expect(ship({ proof: bad.proof as ProofState, confidence: { items: [] }, ledger: bad.ledger, now: NOW, doneOn: true }).ready).toBe(false)
-  expect(titles(facts({ proof: proofWith([['tests', true, 8]], { debt: 1 }), ledger: [{ at: NOW - 30 * 3_600_000, what: 'Held a risky command', did: true }] }))).toEqual([['Changes not looked at', 'Verdict']])
+  expect(titles(facts({ proof: proofWith([['tests', true, 8]], { debt: 1 }), ledger: [{ at: NOW - 30 * 3_600_000, what: 'Held a risky command', did: true }] }))).toEqual([['Changes to look at', 'Verdict']])
   expect(titles(facts({ proof: { ...emptyState(), debt: 1 }, ledger: [{ at: NOW - MIN, what: 'Refused a step', did: true }] }))).toEqual([])
 })
 
-test('only this session\'s own pull request blocks it: a failing check presses as Fix; running, conflicts, behind, draft and needs-review also block; another session\'s does not (T21, T36)', () => {
+test('only this session\'s own pull request blocks it: a failing check blocks with no Fix press (the app\'s PR panel offers Auto-fix); running, conflicts, behind, draft and needs-review also block; another session\'s does not', () => {
   const prs = prsOf({
     '/work/app/.git\nfeat-x': pr('feat-x', 12, [run('unit', 'FAILURE')]),
     '/work/app/.git\nfix-y': pr('fix-y', 9, [run('unit', 'FAILURE')]),
     '/work/site/.git\nmain-x': pr('main-x', 3, [run('e2e', null)]),
   })
   const f = facts({ prs })
-  expect(titles(f)).toEqual([['2. #12 feat-x', 'failing · Fix']])
+  expect(titles(f)).toEqual([['#12 feat-x', 'failing']])
   const v = lineCard('ship', { now: NOW, ledger: [], halted: false, modes: {}, prs, t: id })
   expect(v.short).toBe('1 thing blocks it')
-  expect((v.groups?.[1]?.rows ?? []).map(r => r.action)).toEqual([PR_FIX])
+  expect((v.groups?.[1]?.rows ?? []).map(r => r.action)).toEqual([undefined])
+  expect(shipBlocks(f, id)[0]?.what.next).toBe(SHIP_PR_CI_NEXT)
   const passing = facts({ prs: prsOf({ '/work/app/.git\nfeat-x': pr('feat-x', 12, [run('unit', 'SUCCESS')]) }) })
   expect(titles(passing)).toEqual([])
   expect(shipVerdict(passing)).toBe('ready')
@@ -117,11 +122,19 @@ test('only this session\'s own pull request blocks it: a failing check presses a
   expect(shipVerdict(one({ mergeable: 'CONFLICTING' }))).toBe('blocked')
 })
 
-test('stopped steps are counted the way the Safety card counts them: from the counts store as well as the ledger, and any title that says it stopped (T20)', () => {
+test('stopped steps are counted the way the Safety card counts them: from the counts store as well as the ledger, and any title that says it stopped', () => {
   const p = proofWith([['tests', true, 8]])
   const counts = { 'Held a risky command': 4, 'Held a package install': 2, 'Warned about a risky command': 9, 'Paused all changes': 1 }
   expect(titles(facts({ proof: p, ledger: [], counts }))).toEqual([['6 steps stopped today', 'Verdict']])
   expect(titles(facts({ proof: p, ledger: [{ at: NOW - MIN, what: 'Held a risky command', did: true }], counts }))).toEqual([['6 steps stopped today', 'Verdict']])
+})
+
+test('opened, the stopped-steps and unseen-changes rows say the verdict as plain facts: no headings, no indented lines, no row repeated', () => {
+  const shown = ['Not ready yet:', '  - Changes not looked at: 1 answer', '  - 1 step stopped today', 'Blocking:', '  - Nothing was pushed', '  - nothing was pushed']
+  const f = facts({ proof: proofWith([['tests', true, 8]], { debt: 1 }), ledger: [{ at: NOW - MIN, what: 'Held a risky command', did: true }], shown })
+  const rows = shipBlocks(f, id)
+  expect(rows.map(r => r.key)).toEqual(['held', 'look'])
+  for (const r of rows) expect(r.what.facts).toEqual(['Nothing was pushed'])
 })
 
 test('the text twin names the verdict and each blocker with the command that says more', () => {
@@ -199,7 +212,8 @@ const mountPane = ($: Parameters<Parameters<typeof test>[1]>[0]) => $.ui.mount({
 test('the pane shows the Ship card; Fix on a failed check puts a fix prompt in the prompt box, See shows the verdict of /vaken-ship under the row; a draw runs no gh', { timeoutMs: 15_000 }, async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   mock.env(on, { HOME: '/home/test' })
-  const w = harness(on, world(NOW, proofWith([['tests', false, 8], ['lint', true, 3]])))
+  // With the Checks card hidden, the Ship card keeps the check rows and their Fix press
+  const w = harness(on, { ...world(NOW, proofWith([['tests', false, 8], ['lint', true, 3]])), 'cockpit:setting:cards.proof': 'hide' })
   const ui = await mountPane($)
   expect(await textOf(ui, /^Ship$/)).toBe(true)
   expect(await textOf(ui, /^2 things block it$/)).toBe(true)
@@ -212,14 +226,30 @@ test('the pane shows the Ship card; Fix on a failed check puts a fix prompt in t
   await ui.press({ key: 'press-ol-ship:check-lint-0' })
   await clock.settle()
   await ui.redraw()
-  expect(await textOf(ui, /^Ship it: not yet\.$/)).toBe(true)
+  // Opened, the verdict says only what the rows do not: no "Ship it" line (the title says it), no score, no command lines
+  expect(await textOf(ui, /^Vaken does not merge or push\. Shipping is your press\.$/)).toBe(true)
+  expect(await textOf(ui, /^Ship it:/)).toBe(false)
+  expect(await textOf(ui, /^Confidence/)).toBe(false)
   expect(w.sent).toEqual([])
   expect(w.filled).toHaveLength(1)
   await ui.press({ key: 'press-ol-ship:check-lint-0' })
   await clock.settle()
   await ui.redraw()
-  expect(await textOf(ui, /^Ship it:/)).toBe(false)
+  expect(await textOf(ui, /^Vaken does not merge or push/)).toBe(false)
   expect(w.ran.filter(a => a[0] === 'gh')).toEqual([])
+  await ui.unmount()
+})
+
+test('one fact, one place: with the Checks card shown, the Ship card says the checks in one line that points there; Fix stays on the Checks card', { timeoutMs: 15_000 }, async ($, on) => {
+  mock.clock(on, { now: NOW })
+  mock.env(on, { HOME: '/home/test' })
+  harness(on, world(NOW, proofWith([['tests', false, 8], ['lint', true, 3]])))
+  const ui = await mountPane($)
+  expect(await textOf(ui, /^1 thing blocks it$/)).toBe(true)
+  expect(await ui.find({ key: 'press-ol-ship:check-tests-0' })).toBeUndefined()
+  expect(await ui.find({ key: 'press-ol-ship:checks-0' })).toBeDefined()
+  expect(await textOf(ui, /^1 failed$/)).toBe(true)
+  expect(await ui.find({ key: 'press-ol-proof:check-tests-0' })).toBeDefined()
   await ui.unmount()
 })
 

@@ -10,8 +10,8 @@ export const shapeOf = (raw: unknown): Shape => (raw === 'short' || raw === 'rep
 
 export const SHAPE_TEXT: Record<Shape, string> = {
   default: '',
-  short: 'Vaken rule: lead with the result in one sentence. Then at most 8 lines. No preamble, no recap of the question.',
-  report: 'Vaken rule: answer in three short parts: Done, Evidence (what you ran or read), Next (one step).',
+  short: 'Vaken rule: lead with the result in one sentence. Then at most 8 lines. No preamble, no recap of the question.', // en-only: the text added to Claude's system prompt
+  report: 'Vaken rule: answer in three short parts: Done, Evidence (what you ran or read), Next (one step).', // en-only: the text added to Claude's system prompt
 }
 const LABEL: Record<Shape, string> = { default: 'Default', short: 'Short', report: 'Report' }
 export const shapeLabel = (s: Shape): string => LABEL[s]
@@ -47,8 +47,8 @@ export function parseAsk(args: string): Ask {
 
 export function shapeLines(shape: Shape): string {
   return shape === 'default'
-    ? 'Answer shape: Default. Claude is told nothing extra.\nChange it: /vaken-settings shape short, report or default.'
+    ? 'Answer shape: Default. Claude is told nothing extra.\nChange it: /vaken-settings shape short, report or default.' // en-only: the text of /vaken-settings shape, English by rule (the allow file rule of /vaken-settings)
     : `Answer shape: ${LABEL[shape]}. Claude is told:\n${SHAPE_TEXT[shape]}\nChange it: /vaken-settings shape short, report or default.`
 }
 export const changedLine = (shape: Shape): string =>
-  shape === 'default' ? 'Answer shape: Default. Claude is told nothing extra from the next message.' : `Answer shape: ${LABEL[shape]}. Claude is told this from the next message:\n${SHAPE_TEXT[shape]}`
+  shape === 'default' ? 'Answer shape: Default. Claude is told nothing extra from the next message.' : `Answer shape: ${LABEL[shape]}. Claude is told this from the next message:\n${SHAPE_TEXT[shape]}` // en-only: the text of /vaken-settings shape, English by rule

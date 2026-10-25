@@ -3,7 +3,7 @@ import { expect, mock } from 'claude-code/testing'
 import { test } from './slow'
 import type { On } from 'claude-code'
 
-import { COL_PT, ROW_PT } from '../hooks/ui/tokens'
+import { columnPt, ROW_PT } from '../hooks/ui/tokens'
 import { clientKey as fcKey } from '../hooks/ui/firstclick'
 
 const NOW = Date.parse('2026-10-11T12:00:00Z')
@@ -29,7 +29,7 @@ function engine(on: On, mem: Map<string, unknown>) {
   on('session.measure', (_$, e) => ({ changed: e.changed }))
   on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
 }
-const propsAt = (wPt: number) => ({ title: 'Vaken', isFocused: false, bodyColumns: wPt / COL_PT, placement: 'dock' as const, scroll: { bodyRows: Math.round(1400 / ROW_PT), offset: 0, total: 200 }, view: {} })
+const propsAt = (wPt: number) => ({ title: 'Vaken', isFocused: false, bodyColumns: wPt / columnPt(), placement: 'dock' as const, scroll: { bodyRows: Math.round(1400 / ROW_PT), offset: 0, total: 200 }, view: {} })
 type Node = { type?: string; key?: string; props?: Record<string, unknown>; children?: unknown[] }
 type Pane = { pointer: (q: unknown) => Promise<void>; drawn: () => Promise<Node>; redraw: (p?: unknown) => Promise<void>; press: (q: unknown) => Promise<void>; unmount: () => Promise<void>; find: (q: unknown) => Promise<unknown> }
 const walk = (n: Node, out: Node[] = []): Node[] => {
@@ -117,7 +117,7 @@ test('the Back of Settings has autoFocus, and no row cover clips the focus ring'
 })
 
 // A Client's key is its address in the app and what the host sends back at ui.message.
-test('P-6: every first-click Client key is plain (letters, digits, - and _) and unique, in the board and in Settings with sections open', { timeoutMs: 60_000 }, async ($, on) => {
+test('every first-click Client key is plain (letters, digits, - and _) and unique, in the board and in Settings with sections open', { timeoutMs: 60_000 }, async ($, on) => {
   const mem = new Map<string, unknown>()
   mock.clock(on, { now: NOW })
   mock.env(on, { HOME: '/home/test' })

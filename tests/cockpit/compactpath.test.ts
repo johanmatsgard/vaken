@@ -17,12 +17,14 @@ import { viaParent } from './viaparent'
 
 const NOW = Date.parse('2026-10-13T12:00:00Z')
 const MIN = 60_000
-// Each case runs two hours after the one before, so the 30-minute gap one case sets never stands in the next.
+// Each case runs two hours after the one before, so the 20-minute gap one case sets never stands in the next.
 let slot = 0
 const nextNow = (): number => NOW + ++slot * 120 * MIN
 
 const SHOWN = '~/.claude/cockpit/briefs/brief-x.md'
-const briefLine = BRIEF_LINE.replace('{where}', SHOWN)
+// What every vaken compaction asks of Claude's summary, then the handoff note's place
+const summaryLine = tEn('cardcompact.keep_summary')
+const briefLine = `${summaryLine}\n${BRIEF_LINE.replace('{where}', SHOWN)}`
 
 const goodRecord = (sid: string, now: number, over: Record<string, unknown> = {}): Record<string, unknown> => ({
   sessionId: sid,
@@ -153,12 +155,12 @@ test('the button and Auto at once: only one runs, and only its owner lets the fl
   expect(compacting.pending).toBe(false)
 })
 
-test('a press sets the 30-minute gap, so Auto does not compact soon after it', async () => {
+test('a press sets the 20-minute gap, so Auto does not compact soon after it', async () => {
   const w = world()
   expect(await compactCheckLines(w.eng, tEn)).toEqual([])
   await compactAnyway(w.eng)
   expect(w.sent.length).toBe(1)
-  expect(await compactCheckLines(w.eng, tEn)).toContain('Compacted by vaken 0 min ago')
+  expect(await compactCheckLines(w.eng, tEn)).toContain('Compacted 0 min ago')
 })
 
 test('with What Claude keeps off, the button sends a plain /compact with the brief line only', async () => {
@@ -205,7 +207,7 @@ test('every keep-list line is cut to a short line', () => {
 test('/vaken-compact now compacts anyway, and its reply names the checks that fail', async ($, on) => {
   const now = nextNow()
   const clock = mock.clock(on, { now })
-  const mem = new Map<string, unknown>([['cockpit:session:test-session', goodRecord('test-session', now, { cache: undefined })]])
+  const mem = new Map<string, unknown>([['cockpit:session:test-session', goodRecord('test-session', now, { contextPercent: 20 })]])
   on('store.get', (_$, e) => ({ value: mem.get(e.key) }) as never)
   on('store.set', (_$, e) => {
     mem.set(e.key, e.value)
@@ -227,7 +229,7 @@ test('/vaken-compact now compacts anyway, and its reply names the checks that fa
   const reply = (await $.command.run({ ...viaParent('vaken-compact', 'now'), origin: { kind: 'composer' } } as never)) as { text: string }
   expect(reply.text).toMatch(/^Compacting the session in a moment/)
   expect(reply.text).toContain('Not a good moment by the checks; compacting anyway because you asked:')
-  expect(reply.text).toContain('  The cache is not warm')
+  expect(reply.text).toContain('  Not time yet: the session is not full and no break is near its end')
   await clock.advance(2000)
   await clock.settle()
   expect(ran.length).toBe(1)

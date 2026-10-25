@@ -28,9 +28,19 @@ import { ROWS as context } from './rows/context'
 import { ROWS as preview } from './rows/preview'
 import { ROWS as setup } from './rows/setup'
 import { ROWS as doRows } from './rows/do'
+import { ROWS as nextRows } from './rows/next'
+import { ROWS as welcomeRows } from './rows/welcome'
+import { ROWS as nightRows } from './rows/night'
+import { ROWS as tellRows } from './rows/tell'
+import { ROWS as leanRows } from './rows/lean'
+import { ROWS as bigRows } from './rows/big'
+import { ROWS as selectedRows } from './rows/selected'
+import { ROWS as teachRows } from './rows/teach'
+import { ROWS as allowRows } from './rows/allow'
 import { ROWS as shipstep } from './rows/shipstep'
 import { ROWS as settings } from './rows/settings'
 import { ROWS as cards } from './rows/cards'
+import { ROWS as firstsetup } from './rows/firstsetup'
 import { ROWS as guide } from './rows/guide'
 import { ROWS as runcost } from './rows/runcost'
 import { ROWS as fit } from './rows/fit'
@@ -49,6 +59,14 @@ import { ROWS as truth } from './rows/truth'
 import { ROWS as fmtRows } from './rows/fmt'
 import { ROWS as words } from './rows/words'
 import { ROWS as common } from './rows/common'
+import { ROWS as chat } from './rows/chat'
+import { ROWS as cmd } from './rows/cmd'
+import { ROWS as cmda } from './rows/cmda'
+import { ROWS as cmdb } from './rows/cmdb'
+import { ROWS as cmdc } from './rows/cmdc'
+import { ROWS as cmdd } from './rows/cmdd'
+import { ROWS as cmde } from './rows/cmde'
+import { ROWS as cmdf } from './rows/cmdf'
 
 // Every area, in lookup order: when two areas hold the same English line
 export const AREAS: ReadonlyArray<readonly [string, Rows]> = [
@@ -79,9 +97,19 @@ export const AREAS: ReadonlyArray<readonly [string, Rows]> = [
   ['preview', preview],
   ['setup', setup],
   ['do', doRows],
+  ['next', nextRows],
+  ['welcome', welcomeRows],
+  ['night', nightRows],
+  ['tell', tellRows],
+  ['lean', leanRows],
+  ['big', bigRows],
+  ['selected', selectedRows],
+  ['teach', teachRows],
+  ['allow', allowRows],
   ['shipstep', shipstep],
   ['settings', settings],
   ['cards', cards],
+  ['firstsetup', firstsetup],
   ['guide', guide],
   ['runcost', runcost],
   ['fit', fit],
@@ -100,6 +128,14 @@ export const AREAS: ReadonlyArray<readonly [string, Rows]> = [
   ['fmt', fmtRows],
   ['words', words],
   ['common', common],
+  ['chat', chat],
+  ['cmd', cmd],
+  ['cmda', cmda],
+  ['cmdb', cmdb],
+  ['cmdc', cmdc],
+  ['cmdd', cmdd],
+  ['cmde', cmde],
+  ['cmdf', cmdf],
 ]
 
 // Every row by its name: the lookup `t(name)` is one read of this map

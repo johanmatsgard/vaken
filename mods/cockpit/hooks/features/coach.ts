@@ -4,7 +4,9 @@ import type { EngineInterface, On } from 'claude-code'
 import { COACH_AFTER, COACH_WHAT, addDecision, addStated, cleanDecision, decisionFrom, coachKey, count, decisionsFile, decisionsKey, decisionsText, normalize, offerToast, parseDecisions, parseSeen, skillFile, skillName } from '../core/coach'
 import { postBand } from '../core/band'
 import { freePath } from '../core/fileops'
-import { tr } from '../core/lang'
+import { t, tr } from '../core/lang'
+import { fillIn } from '../core/fillin'
+import { sayIn } from './saylang'
 import { refusedWords, safeWrite, takenProbe } from '../core/safewrite'
 import type { SafeFs } from '../core/safewrite'
 import { withToastGate } from '../core/io'
@@ -14,6 +16,7 @@ import { hashOf, isPersonMessage } from '../core/proof'
 import { readSetting } from '../core/settings'
 import { LEDGER_KEY, pushLog } from './compaction'
 import { subArgs } from '../core/menu'
+import { noteRule } from './teach'
 
 // IO-BLOCK-START
 function io($: EngineInterface): Io {
@@ -66,6 +69,11 @@ export function registerCoach(on: On): void {
     } catch {
     }
     try {
+      const root = await $.session.root()
+      await noteRule(io($), root, e.text, e.origin)
+    } catch {
+    }
+    try {
       const i = io($)
       const key = normalize(e.text)
       if (key !== undefined && (await readSetting(i, 'coach.mode')) === 'on') {
@@ -89,18 +97,19 @@ export function registerCoach(on: On): void {
     const rest0 = subArgs(e.args, 'run', 'coach')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i).catch(() => undefined)
     const m = /^make\s+([\w-]{1,40})(?:\s+(yes))?$/i.exec(rest0.trim())
-    if (m === null) return { text: pending === undefined ? 'No repeated request yet. After you ask for the same kind of thing 3 times, vaken offers to save it as a skill.' : `A request you repeated:\n  ${pending.slice(0, 160)}\nSave it as a skill: /vaken-help run coach make ${skillName(pending)}` } // en-only: plain answer of a slash command (text twin)
-    if (pending === undefined) return { text: 'There is no repeated request to save yet.' } // en-only: plain answer of a slash command (text twin)
+    if (m === null) return { text: pending === undefined ? tr('No repeated request yet. After you ask for the same kind of thing 3 times, vaken offers to save it as a skill.') : `${tr('A request you repeated:')}\n  ${pending.slice(0, 160)}\n${fillIn(tr('Save it as a skill: /vaken-help run coach make {name}'), { name: skillName(pending) })}` }
+    if (pending === undefined) return { text: tr('There is no repeated request to save yet.') }
     const name = skillName(m[1])
     const root = await $.session.root()
     const path = `${root}/.claude/skills/${name}/SKILL.md`
-    if (m[2] === undefined) return { text: `This would write ${path}:\n\n${skillFile(name, pending).slice(0, 400)}\nTo write it: /vaken-help run coach make ${name} yes` }
+    if (m[2] === undefined) return { text: `${fillIn(tr('This would write {path}:'), { path })}\n\n${skillFile(name, pending).slice(0, 400)}\n${fillIn(tr('To write it: /vaken-help run coach make {name} yes'), { name })}` }
     const taken = await $.fs.exists(path)
-    if (taken) return { text: `${path} already exists. Pick another name.` }
+    if (taken) return { text: fillIn(tr('{path} already exists. Pick another name.'), { path }) }
     await i.write(path, skillFile(name, pending))
     pending = undefined
-    return { text: `Wrote ${path}. Claude can use it by the name "${name}" in a new session.` }
+    return { text: fillIn(tr('Wrote {path}. Claude can use it by the name "{name}" in a new session.'), { path, name }) }
   })
 
   on('tool.call', { tool: /(?<coach>)/ }, async ($, e, next) => {
@@ -124,28 +133,30 @@ export function registerCoach(on: On): void {
     const rest0 = subArgs(e.args, 'decide')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i).catch(() => undefined)
     const text = cleanDecision(rest0)
-    if (text === '') return { text: 'Say the decision: /vaken-memory decide We use the blue theme.' } // en-only: plain answer of a slash command (text twin)
+    if (text === '') return { text: tr('Say the decision: /vaken-memory decide We use the blue theme.') }
     const root = await $.session.root()
     const key = decisionsKey(hashOf(root))
     await i.set(key, addDecision(parseDecisions(await i.get(key)), { at: await i.now(), text, how: 'typed' }))
-    return { text: `Written down: ${text}` }
+    return { text: fillIn(tr('Written down: {text}'), { text }) }
   })
 
   on('command.run', { command: 'vaken-memory' }, async ($, e, next) => {
     const rest0 = subArgs(e.args, 'decisions')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i).catch(() => undefined)
     const root = await $.session.root()
     const list = parseDecisions(await i.get(decisionsKey(hashOf(root))))
     if (rest0.trim().toLowerCase() === 'export') {
-      if (list.length === 0) return { text: 'Nothing to export yet.' } // en-only: plain answer of a slash command (text twin)
+      if (list.length === 0) return { text: tr('Nothing to export yet.') }
       // An export never overwrites a file that is there: it takes the next free name (cockpit-decisions-2.md).
       const fs = safeFs($)
       const path = await freePath(takenProbe(fs), `${root}/.claude/cockpit-decisions.md`)
-      if (path === undefined) return { text: 'Too many exports are in the .claude folder already. Remove an old .claude/cockpit-decisions*.md file and try again.' } // en-only: plain answer of a slash command (text twin)
+      if (path === undefined) return { text: tr('Too many exports are in the .claude folder already. Remove an old .claude/cockpit-decisions*.md file and try again.') }
       if (!(await safeWrite(fs, (p, x) => i.write(p, x), root, path, decisionsFile(list))).ok) return { text: refusedWords(path, tr) }
-      return { text: `Wrote ${path} (${list.length} decisions).` }
+      return { text: t('cmdd.wrote_path_n_decisions', { path, n: list.length }) }
     }
     return { text: decisionsText(list, (await readSetting(i, 'decisions.mode')) === 'on') }
   })

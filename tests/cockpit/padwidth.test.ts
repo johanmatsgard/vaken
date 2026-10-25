@@ -4,7 +4,8 @@ import { test } from './slow'
 import type { On } from 'claude-code'
 
 import { APPEARS } from '../hooks/core/cardrules'
-import { BORDER_X_PT, COL_PT, ROW_PT, TEXT_CHAR_PT } from '../hooks/ui/tokens'
+import { BUNDLE_TTL_MS } from '../hooks/core/io'
+import { BORDER_X_PT, columnPt, ROW_PT, TEXT_CHAR_PT } from '../hooks/ui/tokens'
 import { PAD_LANG, padded } from '../hooks/i18n/langs'
 import { viaParent } from './viaparent'
 
@@ -15,7 +16,10 @@ const CLOSE = 0.01
 const HEIGHT_PT = 1400
 const rec = (id: string, over: Record<string, unknown> = {}) => ({ sessionId: id, cwd: `/work/${id}`, model: 'claude-opus-5', state: 'working', startedAt: NOW - 20 * MIN, updatedAt: NOW - 2000, lastEventAt: NOW - 2000, stateSince: NOW - 3 * MIN, ...over })
 function fill(mem: Map<string, unknown>) {
+  // The language chosen (English for the second sweep) stays
+  const lang = mem.get('cockpit:setting:look.language') ?? (mem.get('cockpit:settings:v1') as Record<string, unknown> | undefined)?.['look.language']
   mem.clear()
+  if (lang !== undefined) mem.set('cockpit:setting:look.language', lang)
   mem.set('cockpit:setting:look.view', 'custom')
   mem.set('cockpit:firstrun', 'done')
   for (const id of Object.keys(APPEARS)) mem.set(`cockpit:setting:cards.${id}`, 'show')
@@ -59,7 +63,7 @@ function engine(on: On, mem: Map<string, unknown>) {
   on('session.measure', (_$, e) => ({ changed: e.changed }))
   on('session.end', (_$, e) => ({ sessionId: e.sessionId }))
 }
-const propsAt = (wPt: number) => ({ title: 'Vaken', isFocused: false, bodyColumns: wPt / COL_PT, placement: 'dock' as const, scroll: { bodyRows: Math.round(HEIGHT_PT / ROW_PT), offset: 0, total: 200 }, view: {} })
+const propsAt = (wPt: number) => ({ title: 'Vaken', isFocused: false, bodyColumns: wPt / columnPt(), placement: 'dock' as const, scroll: { bodyRows: Math.round(HEIGHT_PT / ROW_PT), offset: 0, total: 200 }, view: {} })
 
 type Node = { type?: string; key?: string; text?: string; props?: Record<string, unknown>; children?: unknown[] }
 type Pane = { drawn: () => Promise<Node>; redraw: (p?: unknown) => Promise<void>; press: (q: unknown) => Promise<void>; find: (q: unknown) => Promise<unknown>; unmount: () => Promise<void> }
@@ -87,17 +91,18 @@ const pathTo = (t: Node, target: Node, path: Node[] = []): Node[] | undefined =>
   }
   return undefined
 }
-const widestPart = (n: Node): number => Math.max(0, ...walk(n).slice(1).map(x => (x.type === 'Svg' ? num(x.props?.width) : num(x.props?.width) * COL_PT)))
+const widestPart = (n: Node): number => Math.max(0, ...walk(n).slice(1).map(x => (x.type === 'Svg' ? num(x.props?.width) : num(x.props?.width) * columnPt())))
 function widthOf(n: Node): number {
   const p = n.props ?? {}
   if (n.type === 'Svg') return num(p.width)
-  if (n.type === 'Button') return (String(p.label ?? '').length + 2) * COL_PT
+  // A label's letters by the average letter (a text cell, columnPt(), is wider than a letter), and a cell each side
+  if (n.type === 'Button') return String(p.label ?? '').length * TEXT_CHAR_PT + 2 * columnPt()
   if (n.type === 'Text') return 0
-  if (n.type === 'Box' && typeof p.width === 'number' && String((n as { key?: unknown }).key ?? p.key ?? '').startsWith('fcw-')) return p.width * COL_PT
+  if (n.type === 'Box' && typeof p.width === 'number' && String((n as { key?: unknown }).key ?? p.key ?? '').startsWith('fcw-')) return p.width * columnPt()
   const parts = kids(n).filter(k => k.props?.position !== 'absolute').map(widthOf)
-  const gap = num(p.columnGap) * COL_PT
+  const gap = num(p.columnGap) * columnPt()
   const inner = parts.length === 0 ? 0 : p.flexDirection === 'row' && p.flexWrap !== 'wrap' ? parts.reduce((a, b) => a + b, 0) + gap * (parts.length - 1) : Math.max(...parts)
-  return Math.max(inner + (num(p.marginLeft) + num(p.marginRight)) * COL_PT, num(p.minWidth) * COL_PT)
+  return Math.max(inner + (num(p.marginLeft) + num(p.marginRight)) * columnPt(), num(p.minWidth) * columnPt())
 }
 function widthProblems(root: Node, w: number): Array<[string, string]> {
   const out: Array<[string, string]> = []
@@ -132,11 +137,13 @@ const VIEWS: Record<string, { prep: (ui: Pane) => Promise<void>; leave: (ui: Pan
   Help: { prep: async () => void (await helpCommand()), leave: done('help-done') },
 }
 
+// The test clock: a sweep moves it past the held bundles' time, so each fill is read afresh (setup done: the first screen shows only Start here until then)
+let clock: { advance: (ms: number) => Promise<unknown> } | undefined
 type Rig = { mem: Map<string, unknown>; mount: (w: number) => Promise<Pane>; chooseEnglish: () => Promise<void> }
 // The engine of the pane test: the clock, a home folder, the store and the system language "pad", set once per test.
 async function rig($: Parameters<Parameters<typeof test>[2]>[0], on: On): Promise<Rig> {
   const mem = new Map<string, unknown>()
-  mock.clock(on, { now: NOW })
+  clock = mock.clock(on, { now: NOW })
   mock.env(on, { HOME: '/home/test', LANG: PAD_LANG })
   engine(on, mem)
   helpCommand = () => $.command.run(viaParent('vaken-help', ''))
@@ -155,6 +162,7 @@ type Found = { found: Array<[string, string]>; bracketed: number; buttons: numbe
 async function sweep({ mem, mount }: Rig, width = NARROW_PT): Promise<Found> {
   const out: Found = { found: [], bracketed: 0, buttons: 0 }
   for (const [name, view] of Object.entries(VIEWS)) {
+    await clock?.advance(BUNDLE_TTL_MS + 1)
     fill(mem)
     const first = await mount(1100)
     await view.prep(first)

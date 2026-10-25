@@ -1,4 +1,4 @@
-// Clear session names: the key words of the first message that is not a slash command, never its first words.
+// Clear session names: the first message that is not a slash command, from its first key word, with no greeting or filler before it, its small words kept.
 
 export const TITLE_WORDS = 4
 export const TITLE_CHARS = 500
@@ -67,23 +67,28 @@ export function keyTitle(text: string): string | undefined {
   const trimmed = text.replace(/<([a-z][a-z0-9-]*)(?:\s[^>]*)?>[\s\S]*?<\/\1>/gi, ' ').trim()
   if (trimmed === '' || trimmed.startsWith('/') || trimmed.startsWith('<')) return undefined
   const list = tokens(trimmed)
+  // The name starts at the first key word and keeps the small words between key words as typed ("Write the release notes"), so it reads like the session's own title
   const kept: string[] = []
+  let keys = 0
   let n = 0
-  while (n < list.length && kept.length < TITLE_WORDS) {
+  while (n < list.length && keys < TITLE_WORDS) {
     const t = list[n]
     const phrase = FILLER_PHRASES.find(p => p.every((w, k) => list[n + k]?.low === w && (k === p.length - 1 || !list[n + k].ends)))
     if (phrase !== undefined) {
       n += phrase.length
       continue
     }
-    if (kept.length >= 2 && CLAUSE.has(t.low)) break
-    if (kept.length >= 3 && PREPOSITIONS.has(t.low)) break
+    if (keys >= 2 && CLAUSE.has(t.low)) break
+    if (keys >= 3 && PREPOSITIONS.has(t.low)) break
     const isNumber = /^\p{N}+$/u.test(t.word)
-    const keep = !DROP.has(t.low) && !(isNumber && (kept.length === 0 || t.ends))
-    if (keep) kept.push(t.word)
+    const key = !DROP.has(t.low) && !(isNumber && (keys === 0 || t.ends))
+    if (key) keys += 1
+    if (key || (keys > 0 && !(isNumber && t.ends))) kept.push(t.word)
     n += 1
-    if (t.ends && kept.length >= 2) break
+    if (t.ends && keys >= 2) break
   }
+  // Small words after the last key word go
+  while (kept.length > 0 && DROP.has(kept[kept.length - 1].toLowerCase().replace(/’/g, "'"))) kept.pop()
   if (kept.length === 0) return undefined
   let out = ''
   for (const word of kept) {

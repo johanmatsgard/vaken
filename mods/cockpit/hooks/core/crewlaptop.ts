@@ -1,4 +1,5 @@
-import { langNow, tr } from '../i18n/t'
+import { langNow, t as tCount, tr } from '../i18n/t'
+import { fillIn } from './fillin'
 import { fmt } from './fmt'
 // Computer load: memory pressure, swap, battery, heat and Claude session memory. Pure parsers that give back nothing for text they cannot read; only counts and total memory are kept.
 
@@ -51,12 +52,12 @@ export function splitSysctl(text: string): Partial<Record<keyof typeof SYSCTL_NA
 // Windows: one fixed PowerShell program prints one JSON object. No load average or pressure level exists, so free memory and processor percent stand in. Heat needs an administrator and is not read.
 const WIN_SCRIPT = [
   "$ErrorActionPreference='SilentlyContinue'",
-  '$b=@(Get-CimInstance Win32_Battery|Select-Object EstimatedChargeRemaining,BatteryStatus,EstimatedRunTime)',
-  '$o=Get-CimInstance Win32_OperatingSystem -Property TotalVisibleMemorySize,FreePhysicalMemory',
-  '$f=@(Get-CimInstance Win32_PageFileUsage)',
-  '$c=@(Get-CimInstance Win32_Processor -Property LoadPercentage,NumberOfLogicalProcessors)',
-  "$p=@(Get-Process -Name claude|Where-Object{$_.Path -and $_.Path -notmatch 'WindowsApps|AnthropicClaude'})",
-  '[pscustomobject]@{battery=$b;memTotalKb=$o.TotalVisibleMemorySize;memFreeKb=$o.FreePhysicalMemory;swapUsedMb=($f|Measure-Object CurrentUsage -Sum).Sum;swapTotalMb=($f|Measure-Object AllocatedBaseSize -Sum).Sum;cpu=($c|Measure-Object LoadPercentage -Average).Average;cores=($c|Measure-Object NumberOfLogicalProcessors -Sum).Sum;claudeCount=$p.Count;claudeKb=[long](($p|Measure-Object WorkingSet64 -Sum).Sum/1KB)}|ConvertTo-Json -Compress -Depth 3',
+  '$b=@(Get-CimInstance Win32_Battery|Select-Object EstimatedChargeRemaining,BatteryStatus,EstimatedRunTime)', // en-only: PowerShell program that reads the computer
+  '$o=Get-CimInstance Win32_OperatingSystem -Property TotalVisibleMemorySize,FreePhysicalMemory', // en-only: PowerShell program that reads the computer
+  '$f=@(Get-CimInstance Win32_PageFileUsage)', // en-only: PowerShell program that reads the computer
+  '$c=@(Get-CimInstance Win32_Processor -Property LoadPercentage,NumberOfLogicalProcessors)', // en-only: PowerShell program that reads the computer
+  "$p=@(Get-Process -Name claude|Where-Object{$_.Path -and $_.Path -notmatch 'WindowsApps|AnthropicClaude'})", // en-only: PowerShell program that reads the computer
+  '[pscustomobject]@{battery=$b;memTotalKb=$o.TotalVisibleMemorySize;memFreeKb=$o.FreePhysicalMemory;swapUsedMb=($f|Measure-Object CurrentUsage -Sum).Sum;swapTotalMb=($f|Measure-Object AllocatedBaseSize -Sum).Sum;cpu=($c|Measure-Object LoadPercentage -Average).Average;cores=($c|Measure-Object NumberOfLogicalProcessors -Sum).Sum;claudeCount=$p.Count;claudeKb=[long](($p|Measure-Object WorkingSet64 -Sum).Sum/1KB)}|ConvertTo-Json -Compress -Depth 3', // en-only: PowerShell program that reads the computer
 ].join(';')
 export const winGaugeArgv = (): string[] => [resolveProgram('powershell', 'win32'), '-NoProfile', '-NonInteractive', '-Command', WIN_SCRIPT]
 
@@ -105,17 +106,17 @@ export function parseFreeShare(text: string): number | undefined {
     const m = new RegExp(`^${name}:\\s*(\\d+)\\.?\\s*$`, 'im').exec(text)
     return m === null ? undefined : Number(m[1])
   }
-  const free = pages('Pages free')
-  const active = pages('Pages active')
+  const free = pages('Pages free') // en-only: the name of a line of vm_stat output
+  const active = pages('Pages active') // en-only: the name of a line of vm_stat output
   if (free === undefined || active === undefined) return undefined
-  const inactive = pages('Pages inactive') ?? 0
-  const speculative = pages('Pages speculative') ?? 0
-  const wired = pages('Pages wired down') ?? 0
-  const compressed = pages('Pages occupied by compressor') ?? 0
-  const purgeable = pages('Pages purgeable') ?? 0
+  const inactive = pages('Pages inactive') ?? 0 // en-only: the name of a line of vm_stat output
+  const speculative = pages('Pages speculative') ?? 0 // en-only: the name of a line of vm_stat output
+  const wired = pages('Pages wired down') ?? 0 // en-only: the name of a line of vm_stat output
+  const compressed = pages('Pages occupied by compressor') ?? 0 // en-only: the name of a line of vm_stat output
+  const purgeable = pages('Pages purgeable') ?? 0 // en-only: the name of a line of vm_stat output
   const total = free + active + inactive + speculative + wired + compressed
   if (total <= 0) return undefined
-  const anonymous = pages('Anonymous pages')
+  const anonymous = pages('Anonymous pages') // en-only: the name of a line of vm_stat output
   if (anonymous !== undefined) return Math.min(1, Math.max(0, 1 - (Math.max(0, anonymous - purgeable) + wired + compressed) / total))
   return Math.min(1, (free + inactive + speculative + purgeable) / total)
 }
@@ -168,7 +169,7 @@ const AC_STATUS = new Set([2, 3, 6, 7, 8, 9, 11])
 const RUNTIME_UNKNOWN = 71_582_788
 const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined)
 
-function winBattery(raw: unknown): Battery {
+export function winBattery(raw: unknown): Battery {
   const list = (Array.isArray(raw) ? raw : raw === null || raw === undefined ? [] : [raw]).filter((x): x is Record<string, unknown> => typeof x === 'object' && x !== null)
   const cells = list.map(b => ({ pct: num(b.EstimatedChargeRemaining), status: num(b.BatteryStatus), run: num(b.EstimatedRunTime) }))
   if (cells.length === 0) return { hasBattery: false, onAc: true }
@@ -277,24 +278,24 @@ export function laptopWords(l: Laptop, previous?: Laptop): string[] {
   const out: string[] = []
   const sys: WordSystem = l.win === true ? 'win32' : 'posix'
   const readable = l.pressure !== undefined || l.freeShare !== undefined
-  if (memoryTight(l, previous)) out.push(tightWords(l, s => s), l.pressure === undefined ? sysWord('(An estimate from vm_stat: the system level could not be read.)', sys) : 'Close a session or wait for one to finish. Nothing is closed for you.')
-  else if (readable) out.push(`Memory is fine: ${procsWords(l.procs, s => s)}.`)
-  else out.push('Memory could not be read.', l.procs === undefined ? 'The Claude sessions could not be counted.' : `${procsWords(l.procs, s => s).replace(/^./, c => c.toUpperCase())}.`)
-  if (l.swap !== undefined) out.push(`Swap: ${gb(l.swap.usedMb)} used of ${gb(l.swap.totalMb)}.`)
+  if (memoryTight(l, previous)) out.push(tightWords(l), l.pressure === undefined ? tr(sysWord('(An estimate from vm_stat: the system level could not be read.)', sys)) : tr('Close a session or wait for one to finish. Nothing is closed for you.'))
+  else if (readable) out.push(fillIn(tr('Memory is fine: {procs}.'), { procs: procsWords(l.procs) }))
+  else out.push(tr('Memory could not be read.'), l.procs === undefined ? tr('The Claude sessions could not be counted.') : `${procsWords(l.procs).replace(/^./, c => c.toUpperCase())}.`)
+  if (l.swap !== undefined) out.push(fillIn(tr('Swap: {used} used of {total}.'), { used: gb(l.swap.usedMb), total: gb(l.swap.totalMb) }))
   const b = l.battery
   if (b !== undefined) {
-    if (!b.hasBattery) out.push('No battery: this machine runs on power.')
-    else if (b.onAc) out.push(`Battery ${b.percent ?? '?'}%, plugged in.`)
-    else out.push(`Battery ${b.percent ?? '?'}%, not plugged in${b.remaining === undefined ? '' : `, about ${b.remaining} left`}.${batteryLow(l) ? ' It is low: plug in.' : ''}`)
+    if (!b.hasBattery) out.push(tr('No battery: this machine runs on power.'))
+    else if (b.onAc) out.push(fillIn(tr('Battery {p}%, plugged in.'), { p: b.percent ?? '?' }))
+    else out.push(`${batteryBand(l)}${b.remaining === undefined ? '' : `, ${fillIn(tr('about {time} left'), { time: b.remaining })}`}.${batteryLow(l) ? ` ${tr('It is low: plug in.')}` : ''}`)
   }
-  if (l.thermal !== undefined) out.push(l.thermal.state === 'slowed' ? `The processor is slowed to ${l.thermal.speedLimit}% by heat.` : 'Heat is fine.')
+  if (l.thermal !== undefined) out.push(l.thermal.state === 'slowed' ? fillIn(tr('The processor is slowed to {n}% by heat.'), { n: l.thermal.speedLimit ?? 0 }) : tr('Heat is fine.'))
   return out
 }
 
 export function laptopText(mode: string, l: Laptop | undefined, now: number, sys: WordSystem = l?.win === true ? 'win32' : 'posix', previous?: Laptop): string {
-  if (mode !== 'on') return 'Computer load: off. It runs short programs to read memory, battery and heat, so it waits until you turn it on: Settings > Agents.'
-  if (l === undefined) return 'Computer load: on. Nothing read yet; the first reading comes within a minute.'
-  if (!isReadable(l)) return sysWord('Computer load: on, but none of the programs gave an answer. It works on a Mac only.', sys)
+  if (mode !== 'on') return tr('Computer load: off. It runs short programs to read memory, battery and heat, so it waits until you turn it on: Settings > Agents.')
+  if (l === undefined) return tr('Computer load: on. Nothing read yet; the first reading comes within a minute.')
+  if (!isReadable(l)) return tr(sysWord('Computer load: on, but none of the programs gave an answer. It works on a Mac only.', sys))
   const age = Math.max(0, Math.floor((now - l.at) / 1000))
-  return ['Computer load: on.', ...laptopWords(l, previous), '', `Read ${age < 60 ? `${age} seconds` : `${Math.floor(age / 60)} min`} ago. It reads every 3 minutes, and every minute while agents run.`].join('\n')
+  return [tr('Computer load: on.'), ...laptopWords(l, previous), '', fillIn(tr('Read {age} ago. It reads every 3 minutes, and every minute while agents run.'), { age: age < 60 ? tCount('cmda.n_seconds', { n: age }) : `${Math.floor(age / 60)} min` })].join('\n')
 }

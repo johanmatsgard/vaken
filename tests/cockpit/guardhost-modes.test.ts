@@ -86,7 +86,9 @@ async function setup(_$: EngineInterface, on: On, answer: Answer, defaultMode?: 
     return { value: { exitCode: host.exit, stdout: host.exit === 0 ? '{"time.created":"2015-01-01T00:00:00.000Z","dist.unpacked-size":2048,"license":"MIT"}' : '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } } as never
   })
   on('tool.call', { tool: /^(?:Bash|Write|Edit|Read|Grep)$/ }, OK)
-  on('tool.check', () => {
+  // Since Claude Code 2.1.307 a test's tool call also meets the engine's own permission check: that one is the person's Allow, answered yes here. Only vaken's own asks get the host's answer.
+  on('tool.check', (_$, _e, next) => {
+    if ((next as unknown as { origin?: { plugin?: string } }).origin?.plugin === 'engine') return { decision: 'allow' } as never
     host.asked += 1
     if (host.check.throws === true) throw new Error('cannot ask')
     return { decision: host.check.decision } as never

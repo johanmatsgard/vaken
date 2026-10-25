@@ -4,7 +4,7 @@ import { test } from './slow'
 
 import { AUTO_AT, AUTO_GAP_MS, COMPACT_FROM_PCT, MIN_TOKENS, SUGGEST_AT, autoReady, score, suggests, workSaved } from '../hooks/core/compactscore'
 import type { ScoreFacts } from '../hooks/core/compactscore'
-import { becauseWords, notYetWords, reasonWords, skippedWords } from '../hooks/core/compactwords'
+import { becauseWords, reasonWords, skippedWords } from '../hooks/core/compactwords'
 import { emptyState } from '../hooks/core/proof'
 import type { ProofState } from '../hooks/core/proof'
 import { tr, setLang } from '../hooks/core/lang'
@@ -17,7 +17,7 @@ const finished = (): ProofState => ({ ...emptyState(), seq: 2, lastEditSeq: 1, e
 const calm = (over: Partial<ScoreFacts> = {}): ScoreFacts => ({ working: false, waits: false, helpers: 0, background: 0, guardHeld: false, tokens: 300_000, percent: 70, saved: false, quietMs: 2 * MIN, cacheLeftMs: 40 * MIN, payback: 3, ...over })
 
 test('the thresholds are the named constants', () => {
-  expect([SUGGEST_AT, AUTO_AT, COMPACT_FROM_PCT, AUTO_GAP_MS, MIN_TOKENS]).toEqual([50, 70, 30, 30 * MIN, 150_000])
+  expect([SUGGEST_AT, AUTO_AT, COMPACT_FROM_PCT, AUTO_GAP_MS, MIN_TOKENS]).toEqual([50, 70, 60, 30 * MIN, 150_000])
 })
 
 test('a calm moment scores its points and has no hard stop', () => {
@@ -36,9 +36,9 @@ test('each hard stop alone blocks, by name', () => {
   expect(stops({ guardHeld: true })).toEqual(['guard'])
   expect(stops({ sinceCompactMs: 9 * MIN })).toEqual(['recent'])
   expect(stops({ sinceCompactMs: 10 * MIN })).toEqual([])
-  expect(stops({ percent: 29 })).toEqual(['small'])
-  expect(stops({ percent: 30 })).toEqual([])
-  expect(stops({ percent: 30, tokens: 60_000 })).toEqual([])
+  expect(stops({ percent: 59 })).toEqual(['small'])
+  expect(stops({ percent: 60 })).toEqual([])
+  expect(stops({ percent: 60, tokens: 60_000 })).toEqual([])
   expect(stops({ percent: 40, from: 50 })).toEqual(['small'])
   expect(stops({ percent: undefined, tokens: MIN_TOKENS - 1 })).toEqual(['small'])
   expect(stops({ tokens: undefined, percent: undefined })).toEqual(['small'])
@@ -55,7 +55,7 @@ test('open work is a hard stop: a failed check, an edit after the last check, an
 })
 
 test('points: checks passed 30, task list done 10, work saved 15, context 10 / 20 / 30, cache 10, quiet 5, payback 10', () => {
-  const pts = (over: Partial<ScoreFacts>): number => score(calm({ percent: 50, cacheLeftMs: 0, quietMs: 0, payback: undefined, proof: finished(), ...over })).score
+  const pts = (over: Partial<ScoreFacts>): number => score(calm({ percent: 60, cacheLeftMs: 0, quietMs: 0, payback: undefined, proof: finished(), ...over })).score
   expect(pts({})).toBe(30 + 10)
   expect(pts({ proof: { ...finished(), todo: { done: 2, total: 2 } } })).toBe(30 + 10 + 10)
   expect(pts({ saved: true })).toBe(30 + 10 + 15)
@@ -78,32 +78,32 @@ test('a cold cache is neither a hard stop nor a bonus', () => {
   expect(cold.reasons.map(r => r.id)).not.toContain('cache')
 })
 
-test('Suggest shows from 50 points; Auto needs 70 points, no hard stop and the chat at 30 % of its window', () => {
-  expect(suggests(score(calm({ percent: 50, cacheLeftMs: 0, quietMs: 0, payback: undefined, saved: true })))).toBe(true)
-  expect(suggests(score(calm({ percent: 50, cacheLeftMs: 0, quietMs: 0, payback: undefined })))).toBe(false)
-  expect(suggests(score(calm({ percent: 55, cacheLeftMs: 0, quietMs: 0, payback: undefined, proof: { ...emptyState(), edits: 1, seq: 1, lastEditSeq: 1 } })))).toBe(false)
+test('Suggest shows from 50 points; Auto needs 70 points, no hard stop and the chat at 60 % of its window', () => {
+  expect(suggests(score(calm({ percent: 60, cacheLeftMs: 0, quietMs: 0, payback: undefined, saved: true })))).toBe(true)
+  expect(suggests(score(calm({ percent: 60, cacheLeftMs: 0, quietMs: 0, payback: undefined })))).toBe(false)
+  expect(suggests(score(calm({ percent: 60, cacheLeftMs: 0, quietMs: 0, payback: undefined, proof: { ...emptyState(), edits: 1, seq: 1, lastEditSeq: 1 } })))).toBe(false)
   const ok = score(calm())
   expect(autoReady(ok, 70)).toBe(true)
   expect(autoReady(score(calm({ helpers: 1 })), 70)).toBe(false)
   expect(autoReady(ok, undefined)).toBe(false)
 })
 
-const at30 = (over: Partial<ScoreFacts> = {}): ScoreFacts => calm({ percent: 30, tokens: 60_000, saved: true, ...over })
+const at60 = (over: Partial<ScoreFacts> = {}): ScoreFacts => calm({ percent: 60, tokens: 60_000, saved: true, ...over })
 
-test('Auto considers a compaction at 30 % of the window and not at 29 %', () => {
-  const ready = (over: Partial<ScoreFacts>): boolean => autoReady(score(at30(over)), over.percent ?? 30, over.from)
+test('Auto considers a compaction at 60 % of the window and not at 59 %', () => {
+  const ready = (over: Partial<ScoreFacts>): boolean => autoReady(score(at60(over)), over.percent ?? 60, over.from)
   expect(ready({})).toBe(true)
-  expect(ready({ percent: 29 })).toBe(false)
-  expect(score(at30({ percent: 29 })).hardStops).toEqual(['small'])
-  expect(suggests(score(at30()))).toBe(true)
-  expect(suggests(score(at30({ percent: 29 })))).toBe(false)
-  expect(ready({ percent: 40, from: 50 })).toBe(false)
-  expect(ready({ percent: 50, from: 50 })).toBe(true)
-  expect(COMPACT_FROM_PCT).toBe(30)
+  expect(ready({ percent: 59 })).toBe(false)
+  expect(score(at60({ percent: 59 })).hardStops).toEqual(['small'])
+  expect(suggests(score(at60()))).toBe(true)
+  expect(suggests(score(at60({ percent: 59 })))).toBe(false)
+  expect(ready({ percent: 55, from: 70 })).toBe(false)
+  expect(ready({ percent: 70, from: 70 })).toBe(true)
+  expect(COMPACT_FROM_PCT).toBe(60)
 })
 
-test('at 30 % every safeguard still blocks Auto', () => {
-  const blocked = (over: Partial<ScoreFacts>): string[] => score(at30(over)).hardStops
+test('at 60 % every safeguard still blocks Auto', () => {
+  const blocked = (over: Partial<ScoreFacts>): string[] => score(at60(over)).hardStops
   expect(blocked({ working: true })).toEqual(['working'])
   expect(blocked({ waits: true })).toEqual(['waiting'])
   expect(blocked({ helpers: 1 })).toEqual(['running'])
@@ -113,10 +113,10 @@ test('at 30 % every safeguard still blocks Auto', () => {
   expect(blocked({ proof: { ...finished(), lastEditSeq: 3 } })).toEqual(['open'])
   expect(blocked({ proof: { ...finished(), receipts: [{ kind: 'tests', ok: false, seq: 2, at: NOW } as never] } })).toEqual(['open'])
   // The points still gate it: a cold cache and no payback on a small window leave Auto waiting.
-  expect(autoReady(score(at30({ saved: false, cacheLeftMs: 0, payback: undefined })), 30)).toBe(false)
-  // The cache stays a point, never a bypass: with 30 % alone the score is 70 at most without the payback (30 + 15 + 10 + 5 + 10).
-  expect(score(at30({ payback: undefined })).score).toBe(70)
-  expect(score(at30()).score).toBe(80)
+  expect(autoReady(score(at60({ saved: false, cacheLeftMs: 0, payback: undefined })), 60)).toBe(false)
+  // The cache stays a point, never a bypass: with 60 % alone the score is 70 at most without the payback (30 + 15 + 10 + 5 + 10).
+  expect(score(at60({ payback: undefined })).score).toBe(70)
+  expect(score(at60()).score).toBe(80)
 })
 
 test('work saved: git is clean after the last answer, or a checkpoint was made during it', () => {
@@ -128,17 +128,11 @@ test('work saved: git is clean after the last answer, or a checkpoint was made d
   expect(workSaved(undefined, NOW)).toBe(false)
 })
 
-test('the words: the because line, the not-yet line, the skipped line', () => {
+test('the words: the because line, the skipped line', () => {
   const s = score(calm({ saved: true, proof: { ...finished(), todo: { done: 2, total: 2 } } }))
   expect(becauseWords(s.reasons)).toBe('Compacting now because: checks passed, context 70%, work saved, task finished, cache warm')
   expect(becauseWords(s.reasons, undefined, false)).toMatch(/^Good moment because: checks passed/)
   expect(reasonWords([])).toBe('')
-  const at = { auto: AUTO_AT, minPct: COMPACT_FROM_PCT }
-  const busy = score(calm({ working: true, percent: 30 }))
-  expect(notYetWords(busy, at, 30)).toBe(`Not yet: Claude is working. Score ${busy.score} of 70.`)
-  expect(notYetWords(score(calm({ percent: 55, cacheLeftMs: 0, payback: undefined })), at, 55)).toMatch(/^Not yet: not enough reasons yet\. Score \d+ of 70\.$/)
-  expect(notYetWords(score(calm({ percent: 25, saved: true })), at, 25)).toBe('Not yet: the session is still small. Score 70 of 70.')
-  expect(notYetWords(score(calm()), at, 70)).toMatch(/^Now is a good moment: /)
   expect(skippedWords('a new answer started')).toBe('Skipped: a new answer started')
 })
 
@@ -146,7 +140,7 @@ test('the words have Swedish lines with the same keys', () => {
   setLang('sv')
   try {
     expect(tr('Claude is working')).toBe('Claude arbetar')
-    expect(tr('Compacting now because: {why}')).toBe('Komprimera nu eftersom: {why}')
+    expect(tr('Compacting now because: {why}')).toBe('Komprimerar nu eftersom: {why}')
   } finally {
     setLang('en')
   }

@@ -78,9 +78,9 @@ export function projectText(root: string | undefined, set: Values): string[] {
   const keys = Object.keys(set)
   return [
     '',
-    `This project (${projectName(root)}): ${keys.length === 0 ? 'follows All projects.' : `${keys.length} of its own:`}`,
+    `This project (${projectName(root)}): ${keys.length === 0 ? 'follows All projects.' : `${keys.length} of its own:`}`, // en-only: /vaken-settings answer stays English by rule
     ...keys.map(k => `  ${k}: ${labelOf(k, set[k])}`),
-    'For this project only: /vaken-settings here <key> <value>. Follow All projects again: /vaken-settings here reset',
+    'For this project only: /vaken-settings here <key> <value>. Follow All projects again: /vaken-settings here reset', // en-only: /vaken-settings answer stays English by rule
   ]
 }
 
@@ -111,9 +111,9 @@ export function sessionText(set: Values): string[] {
   const keys = Object.keys(set)
   return [
     '',
-    `This session: ${keys.length === 0 ? 'follows the project.' : `${keys.length} of its own:`}`,
+    `This session: ${keys.length === 0 ? 'follows the project.' : `${keys.length} of its own:`}`, // en-only: /vaken-settings answer stays English by rule
     ...keys.map(k => `  ${k}: ${labelOf(k, set[k])}`),
-    'For this session only (the models and Routing): /vaken-settings session <key> <value>. Follow the project again: /vaken-settings session reset',
+    'For this session only (the models and Routing): /vaken-settings session <key> <value>. Follow the project again: /vaken-settings session reset', // en-only: /vaken-settings answer stays English by rule
   ]
 }
 

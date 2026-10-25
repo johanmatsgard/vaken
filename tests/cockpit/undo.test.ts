@@ -103,7 +103,7 @@ test('the Settings row sits in group Guard and defaults to On', () => {
   expect(UNDO_SETTINGS[0].options.map(o => o.value)).toEqual(['off', 'on'])
 })
 
-test('the limits are the owner\'s numbers', () => {
+test('the limits are the set numbers', () => {
   expect([MAX_COPIES, MAX_TOTAL_BYTES, MAX_FILE_BYTES, LIST_MAX]).toEqual([200, 20 * 1024 * 1024, 1024 * 1024, 10])
 })
 
@@ -807,6 +807,24 @@ test('nothing changed since the message: "last" says so and restores nothing', a
   expect(await text($, 'vaken-undo', 'last yes')).toMatch(/Nothing has been changed since your last message/)
   expect(FILES.get(A)).toBe('a1\n')
   expect(whats(mem)).toEqual([])
+})
+
+test('a change vaken could not keep a copy of since the message: "last" says so and does not say nothing changed', async ($, on) => {
+  setup(on)
+  on('prompt.submit', (_$, e) => ({ text: e.text, context: e.context }) as never)
+  FILES.set(A, 'a0\n')
+  FILES.set('/home/user/app/.env', 'X=1\n')
+  await $.tool.call({ tool: 'Write', file_path: A, content: 'a1\n' })
+  await CLOCK.advance(1000)
+  await $.prompt.submit({ text: 'thanks' } as never)
+  await CLOCK.advance(1000)
+  await $.tool.call({ tool: 'Write', file_path: '/home/user/app/.env', content: 'X=2\n' })
+  for (const ask of ['last', 'last yes']) {
+    const said = await text($, 'vaken-undo', ask)
+    expect(said).not.toMatch(/Nothing has been changed/)
+    expect(said).toMatch(/1 file or folder was changed that vaken could not keep a copy of/)
+  }
+  expect(FILES.get(A)).toBe('a1\n')
 })
 
 test('a slash command is not a message: the mark stays; "last yes" needs the same preview first', async ($, on) => {

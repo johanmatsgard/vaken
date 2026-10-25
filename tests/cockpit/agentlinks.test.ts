@@ -4,7 +4,7 @@ import { test } from './slow'
 import { BASE_SEEDS, HOME, STATES, engine, getNow, kids, nameOf, propsAt, setNow, walk } from './statefixtures'
 import type { Node, Pane, World } from './statefixtures'
 import { setSetupExists } from '../hooks/features/setupfiles'
-import { COL_PT } from '../hooks/ui/tokens'
+import { columnPt } from '../hooks/ui/tokens'
 
 const stateNamed = (name: string) => {
   const s = STATES.find(x => x.name === name)
@@ -12,7 +12,7 @@ const stateNamed = (name: string) => {
   return s
 }
 
-test('Agents card at Glance: the task lines stand the body\'s half row apart, and Task runs and the Computer pointer are chevron rows at full strength', async ($, on) => {
+test('Agents card at Glance: the task lines stand the body\'s half row apart, and Past runs and the Computer pointer are dim chevron rows (pointers to another place are dim)', async ($, on) => {
   const w: World = { mem: new Map<string, unknown>(), files: new Map(), listening: {}, procs: [] }
   const clock = mock.clock(on, { now: getNow() })
   mock.env(on, { HOME })
@@ -34,14 +34,18 @@ test('Agents card at Glance: the task lines stand the body\'s half row apart, an
   expect(list?.props?.rowGap).toBe(1)
   const lines = kids(list as Node).filter(k => /^ol-task:/.test(nameOf(k)))
   expect(lines.length).toBe(3)
-  for (const l of lines.slice(0, -1)) expect(Number(l.props?.minHeight) - Number(l.props?.paddingBottom ?? 0) / 2).toBe(1)
-  for (const [key, words] of [['runner-open', 'Task runs'], ['pointer-computer-open', 'Is there room? (Computer)']]) {
+  // A line is whole text rows tall (a long task wraps to two, never cut) plus the half row apart
+  for (const l of lines.slice(0, -1)) {
+    const textRows = Number(l.props?.minHeight) - Number(l.props?.paddingBottom ?? 0) / 2
+    expect(Number.isInteger(textRows) && textRows >= 1).toBe(true)
+  }
+  for (const [key, words] of [['runner-open', 'Past runs'], ['pointer-computer-open', 'Is there room? (Computer)']]) {
     const row = all.find(n => nameOf(n) === `linkrow-${key}`)
     expect(row, key).toBeDefined()
     expect(row?.props?.justifyContent).toBe('space-between')
     const button = walk(row as Node).find(n => n.type === 'Button' && nameOf(n) === key)
     expect(button?.props?.label).toBe(words)
-    expect(button?.props?.dimColor).toBeUndefined()
+    expect(button?.props?.dimColor).toBe(true)
     const chevron = walk(row as Node).find(n => n.type === 'Svg')
     expect(chevron?.props?.alt).toBe(`Open ${words}`)
   }
@@ -57,7 +61,7 @@ test('the band: its buttons are the host\'s plain Button with no fill at rest, p
   setNow(clock.now())
   BASE_SEEDS(w.mem)
   stateNamed('posted band lines (one risk and what vaken did)').seed(w.mem, w)
-  const bandProps = { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 760 / COL_PT, scroll: { bodyRows: 5, offset: 0, total: 5 }, view: {} }
+  const bandProps = { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 760 / columnPt(), scroll: { bodyRows: 5, offset: 0, total: 5 }, view: {} }
   const ui = (await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'AbovePrompt', props: bandProps })) as unknown as Pane
   await clock.settle()
   await ui.redraw(bandProps)

@@ -4,7 +4,7 @@ import { tr } from '../../core/lang'
 import { projectOf } from '../../core/projects'
 import { fillIn } from '../../core/fillin'
 import { PREVIEW_FAILED, PREVIEW_NO_SERVER, PREVIEW_SAID, PREVIEW_SAVED } from '../../core/previewwords'
-import { PREVIEW_SIZES, frontEdits } from '../../core/previewcard'
+import { PREVIEW_SIZES, frontEdits, lastPicture } from '../../core/previewcard'
 import type { DevFact, PreviewFacts } from '../../core/previewcard'
 import { devFound, paneLook } from '../eyes'
 import type { HomeEngine } from './engine'
@@ -44,11 +44,16 @@ export async function loadPreview(i: Io, hidden: boolean, now: number, root?: st
 }
 export const forgetPreview = (): void => {
   kept = undefined
+  lastPicture.now = undefined
 }
 
-export function previewFactsOf(prefs: Prefs): PreviewFacts {
-  return { ...(prefs.devServer === undefined ? {} : { dev: prefs.devServer }), edits: frontEdits.n, changed: frontEdits.n > frontEdits.looked, auto: prefs.values['preview.auto'] === 'on' }
+// `now`: the picture row says its age from it (none without it)
+export function previewFactsOf(prefs: Prefs, now?: number): PreviewFacts {
+  return { ...(prefs.devServer === undefined ? {} : { dev: prefs.devServer }), edits: frontEdits.n, changed: frontEdits.n > frontEdits.looked, auto: prefs.values['preview.auto'] === 'on', ...(now === undefined || lastPicture.now === undefined ? {} : { picture: lastPicture.now, now }) }
 }
+
+// The prompt that asks Claude to look at a picture the card took (en-only: a prompt sent to Claude)
+export const picturePrompt = (path: string, width: number): string => `Look at the picture ${path} (the page at ${width} points wide, taken just now) and tell me in short lines what looks wrong or broken.`
 
 // Never throws.
 export async function runPreview(eng: HomeEngine, width: 390 | 768 | 1280 | 'all'): Promise<void> {
@@ -63,7 +68,9 @@ export async function runPreview(eng: HomeEngine, width: 390 | 768 | 1280 | 'all
     frontEdits.looked = frontEdits.n
     i.invalidate()
     const root = (await projectOf(i)) ?? (await eng.cwd())
-    const { said, saved } = await paneLook(i, root, dev.port, width === 'all' ? PREVIEW_SIZES.map(z => z.width) : [width])
+    const { said, saved, paths } = await paneLook(i, root, dev.port, width === 'all' ? PREVIEW_SIZES.map(z => z.width) : [width])
+    const first = paths[0]
+    if (first !== undefined) lastPicture.now = { width: first.width, path: first.path, at: await i.now() }
     if (said === '') i.toast(tr(PREVIEW_FAILED), true)
     else i.toast(saved ? fillIn(tr(PREVIEW_SAVED), { said }) : said, true)
   } catch {

@@ -228,8 +228,10 @@ test('/vaken-ship pr words cover off, blocked, not asked, a PR with failures, no
   expect(prText('on', undefined, {}, NOW, 'The gh program was not found')).toBe('The gh program was not found')
   expect(prText('on', undefined, {}, NOW, undefined)).toMatch(/Not checked on GitHub yet/)
   expect(prText('on', { at: NOW, branch: 'feat-x', none: true, mainRed: false }, {}, NOW, undefined)).toMatch(/no pull request for feat-x\.\nMain is green\./)
-  expect(prText('on', { at: NOW - 5 * MIN, view: v, error: 'HTTP 502' }, {}, NOW, undefined)).toMatch(/The last ask failed \(HTTP 502\)\. This is from 5 min ago\./)
-  expect(prText('on', { at: NOW, error: 'HTTP 502' }, {}, NOW, undefined)).toMatch(/gh did not answer/)
+  expect(prText('on', { at: NOW - 5 * MIN, view: v, error: 'HTTP 502' }, {}, NOW, undefined)).toMatch(/The last ask failed: GitHub's answer could not be read\. .* This is from 5 min ago\./)
+  // gh's own text is never echoed: each failure is said as its kind
+  expect(prText('on', { at: NOW, error: 'To get started with GitHub CLI, please run:  gh auth login' }, {}, NOW, undefined)).toMatch(/The last ask failed: gh is not signed in to GitHub\. Type gh auth login/)
+  expect(prText('on', { at: NOW, error: 'error connecting to api.github.com' }, {}, NOW, undefined)).not.toMatch(/api\.github\.com/)
 })
 
 test('memory pressure level', () => {
@@ -466,7 +468,7 @@ test('3 minutes later gh is asked again: failed checks put a line in the band an
   const band = JSON.stringify(w.mem.get('cockpit:band:me'))
   expect(band).toMatch(/PR 123: 2 checks failed/)
   expect(band).not.toMatch(/Main is red/)
-  expect(w.toasts).toContain('Pull request 123: 2 checks failed. Press Fix in Needs you or on the Pull requests card.')
+  expect(w.toasts).toContain('Pull request 123: 2 checks failed. Open it in the pane.')
 })
 
 test('a branch with no PR is an answer, not a failure', async ($, on) => {

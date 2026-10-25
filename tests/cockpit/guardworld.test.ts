@@ -269,6 +269,7 @@ test('the away words: the switch, and the policy in plain words', () => {
   expect(parseAwayAsk('OFF')).toEqual({ kind: 'off' })
   expect(parseAwayAsk('maybe')).toMatchObject({ kind: 'bad' })
   expect(awayText({ away: true, policy: 'careful', refused: [] })).toMatch(/Away is ON[\s\S]*Careful[\s\S]*Safe steps keep running/)
+  expect(awayText({ away: true, policy: 'careful', refused: [] })).toMatch(/edits to protected files or outside your folders, odd new packages, weakened tests/)
   expect(awayText({ away: true, policy: 'off', refused: [] })).toMatch(/nothing is stopped/)
   expect(awayText({ away: false, policy: 'off', refused: ['x'] })).toMatch(/Last stopped:\nx/)
 })
@@ -476,10 +477,11 @@ test('Away policy: while away and Careful, a step the guard would flag is refuse
   expect(denied(await $.tool.call({ tool: 'Bash', command: 'gh pr merge 4' }))).toBe(true)
   expect(denied(await $.tool.call({ tool: 'Read', file_path: '/home/user/app/.env' }))).toBe(true)
   expect(denied(await $.tool.call({ tool: 'Bash', command: 'git reset --hard HEAD~2' }))).toBe(true)
-  for (const call of [{ tool: 'Bash', command: 'ls' }, { tool: 'Read', file_path: '/home/user/app/a.ts' }, { tool: 'Bash', command: 'curl https://api.example.com/x' }, { tool: 'mcp__srv__slack_read_channel', channel: 'x' }] as const) {
+  expect(denied(await $.tool.call({ tool: 'Edit', file_path: '/home/user/.zshrc', old_string: 'a', new_string: 'b' }))).toBe(true)
+  for (const call of [{ tool: 'Bash', command: 'ls' }, { tool: 'Read', file_path: '/home/user/app/a.ts' }, { tool: 'Edit', file_path: '/home/user/app/a.ts', old_string: 'a', new_string: 'b' }, { tool: 'Bash', command: 'npm test' }, { tool: 'Bash', command: 'curl https://api.example.com/x' }, { tool: 'mcp__srv__slack_read_channel', channel: 'x' }] as const) {
     expect(denied(await $.tool.call(call)), JSON.stringify(call)).toBe(false)
   }
-  expect(whats(mem).filter(w => w === 'Refused a risky step while away').length).toBe(4)
+  expect(whats(mem).filter(w => w === 'Refused a risky step while away').length).toBe(5)
   await change($, 'guard.world', 'hold')
   await text($, 'vaken-guard', 'allow once')
   expect(denied(await $.tool.call(SLACK))).toBe(true)

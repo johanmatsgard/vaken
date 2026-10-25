@@ -37,36 +37,36 @@ test('before a gap: compacting while warm beats rewriting when you return, from 
   expect(paysBeforeGap(25_000, 15_000, 5_000, HOUR)).toBe(false)
 })
 
-test('advice appears from 30% of the window when the score is high enough, and says how many turns it pays back', () => {
-  const m = compactMoment({ percent: 55, tokens: 150_000, compactAt: 97, atBreak: true, quietMs: MIN, ttlMs: HOUR })
+test('advice appears from 60% of the window when the score is high enough, and says how many turns it pays back', () => {
+  const m = compactMoment({ percent: 65, tokens: 150_000, compactAt: 97, atBreak: true, quietMs: MIN, ttlMs: HOUR })
   expect(m.level).toBe('good')
   expect(m.lines[0]).toBe('This session is long. Compacting it saves usage.')
   expect(m.lines[1]).toBe('Claude re-reads 150k tokens every answer. A summary usually cuts that to about 15k.')
   expect(m.why).toMatch(/pays back after about 4 more answers/)
   expect(m.why).toMatch(/Good moment because: checks? passed|Good moment because: no file changed/)
-  // Under 30% of the window nothing is said, even when the model would pay back.
-  expect(compactMoment({ percent: 29, tokens: 150_000, compactAt: 97, atBreak: true, quietMs: MIN, ttlMs: HOUR }).level).toBe('none')
-  expect(compactMoment({ percent: 40, tokens: 150_000, compactAt: 97, atBreak: true, quietMs: MIN, ttlMs: HOUR, extra: { from: 50 } }).level).toBe('none')
-  // At 30% on a 200k window the summary costs more than it saves (about 9 turns): the advice still shows.
-  expect(compactMoment({ percent: 30, tokens: 60_000, compactAt: 97, atBreak: true, quietMs: MIN, ttlMs: HOUR, extra: { saved: true } }).level).toBe('good')
+  // Under 60% of the window nothing is said, even when the model would pay back.
+  expect(compactMoment({ percent: 59, tokens: 150_000, compactAt: 97, atBreak: true, quietMs: MIN, ttlMs: HOUR }).level).toBe('none')
+  expect(compactMoment({ percent: 65, tokens: 150_000, compactAt: 97, atBreak: true, quietMs: MIN, ttlMs: HOUR, extra: { from: 70 } }).level).toBe('none')
+  // At 60% on a 200k window the summary costs more than it saves (about 9 turns): the advice still shows.
+  expect(compactMoment({ percent: 60, tokens: 60_000, compactAt: 97, atBreak: true, quietMs: MIN, ttlMs: HOUR, extra: { saved: true } }).level).toBe('good')
 })
 
 test('the measured summary changes the score: a long summary does not pay back, so it earns no payback points', () => {
-  const base = { percent: 55, tokens: 160_000, compactAt: 97, atBreak: true, quietMs: MIN, ttlMs: HOUR }
+  const base = { percent: 65, tokens: 160_000, compactAt: 97, atBreak: true, quietMs: MIN, ttlMs: HOUR }
   expect(scoreOf({ ...base, summaryOut: 1_000 }).reasons.map(r => r.id)).toContain('payback')
   expect(scoreOf({ ...base, summaryOut: 60_000 }).reasons.map(r => r.id)).not.toContain('payback')
   expect(compactMoment({ ...base, summaryOut: 1_000 }).level).toBe('good')
 })
 
 test('away with a warm cache: compact now, before the cache lapses', () => {
-  const m = compactMoment({ percent: 55, tokens: 150_000, compactAt: 97, atBreak: true, quietMs: 30 * MIN, ttlMs: HOUR })
+  const m = compactMoment({ percent: 65, tokens: 150_000, compactAt: 97, atBreak: true, quietMs: 30 * MIN, ttlMs: HOUR })
   expect(m.level).toBe('good')
   expect(m.lines[0]).toBe('You are away. Compact now, while it is cheap.')
   expect(m.lines[1]).toMatch(/The cache runs out in about 30 min/)
 })
 
 test('a lapsed cache is worded as a rewrite', () => {
-  const m = compactMoment({ percent: 55, tokens: 200_000, compactAt: 97, atBreak: true, quietMs: 90 * MIN, ttlMs: HOUR })
+  const m = compactMoment({ percent: 65, tokens: 200_000, compactAt: 97, atBreak: true, quietMs: 90 * MIN, ttlMs: HOUR })
   expect(m.lines[1]).toMatch(/at full price/)
   expect(m.why).toMatch(/lapsed/)
   expect(m.why).toMatch(/at once/)
@@ -79,7 +79,7 @@ test('the cache word follows the cache lifetime: an hour on a subscription, five
 })
 
 test('in the middle of work a fuller window waits for the break, unless auto-compact is close', () => {
-  expect(compactMoment({ percent: 55, compactAt: 97, atBreak: false, quietMs: 0 }).level).toBe('none')
+  expect(compactMoment({ percent: 65, compactAt: 97, atBreak: false, quietMs: 0 }).level).toBe('none')
   expect(compactMoment({ percent: 90, compactAt: 97, atBreak: false, quietMs: 0 }).lines[0]).toBe('Claude compacts the session by itself soon.')
   expect(compactMoment({ percent: 90, compactAt: 97, atBreak: true, quietMs: 0 }).lines[0]).toBe('Claude compacts the session by itself soon. Compact now.')
   expect(compactMoment({ percent: 98, compactAt: 97, atBreak: false, quietMs: 0 }).level).toBe('now')
@@ -127,12 +127,12 @@ test('anything running, waiting, held or just compacted stops the advice, and th
   expect(scoreOf({ ...base, atBreak: false }).hardStops).toEqual(['working'])
 })
 
-test('payback at 30 % of the window: a 200k window earns no payback points with the default guesses, a 1M window does', () => {
+test('payback at 60 % of the window: a 200k window earns no payback points with the default guesses, a 1M window does', () => {
   const warm = (tokens: number, ttlMs: number): number => paybackTurns({ tokens, after: 15_000, out: 5_000, warm: true, ttlMs }) ?? Infinity
   expect(Math.round(warm(60_000, HOUR) * 10) / 10).toBe(9.1)
   expect(Math.round(warm(60_000, 5 * MIN) * 10) / 10).toBe(8.3)
   expect(Math.round(warm(300_000, HOUR) * 10) / 10).toBe(2.3)
-  const f = { percent: 30, compactAt: 97, atBreak: true, quietMs: MIN, ttlMs: HOUR, extra: { saved: true } }
+  const f = { percent: 60, compactAt: 97, atBreak: true, quietMs: MIN, ttlMs: HOUR, extra: { saved: true } }
   expect(scoreOf({ ...f, tokens: 60_000 }).reasons.map(r => r.id)).not.toContain('payback')
   expect(scoreOf({ ...f, tokens: 300_000 }).reasons.map(r => r.id)).toContain('payback')
 })

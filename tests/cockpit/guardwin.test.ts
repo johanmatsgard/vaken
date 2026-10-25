@@ -550,7 +550,7 @@ test('a .NET call that replaces a whole file is a > for the outside-the-project 
   expect(truncationTargets('echo hi > out.txt', P)).toEqual(['/home/user/app/out.txt'])
 })
 
-test('PowerShell: a bare variable statement only writes its value; the call operators, iex and Start-Process still run a dynamic name (J5)', () => {
+test('PowerShell: a bare variable statement only writes its value; the call operators, iex and Start-Process still run a dynamic name', () => {
   const ps = (cmd: string): string[] => checkCommand(cmd, W, 'powershell').map(f => f.id)
   const viaBash = (cmd: string): string[] => ids(`powershell -NoProfile -Command "${cmd}"`)
   for (const cmd of ['$out = Get-Date -Format yyyy; $out', '$out', '$x.Name', '"$a"', '${a}', '$env:PATH', '$a; $b', 'Get-Date\n$out']) {

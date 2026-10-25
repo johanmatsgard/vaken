@@ -1,5 +1,5 @@
 // The daily share of the week: what is left of the weekly window spread over the days until reset. Pure.
-import { tr } from './lang'
+import { langNow, tr } from './lang'
 import type { UsageWindow } from './appusage'
 import type { Sample } from './pace'
 import { hhmm, ymd } from './time'
@@ -56,13 +56,13 @@ export function dayShare(w: { percent: number; resetsAt?: string }, now: number,
   return { left, days, perDay: left / days, ...(today === undefined ? {} : { today }), ...(since === undefined ? {} : { since }), ...(share === undefined ? {} : { share }), usedUp: today !== undefined && share !== undefined && today > 0 && today >= share, resetAt: reset }
 }
 
-const pct = (n: number): string => (n >= 10 ? String(Math.floor(n)) : String(Math.round(n * 10) / 10))
+const pct = (n: number): string => fmt.figureDown(n, langNow())
 
 // Says "until it resets" and no count of days, so it cannot contradict the reset time beside it.
 export function dayShareWords(d: DayShare, t: (s: string) => string = s => s): string {
   if (d.left <= 0 && d.resetAt !== undefined) {
     const when = new Date(d.resetAt)
-    return t('Your weekly limit is used up. It resets {when}.').replace('{when}', `${t(fmt.day(when.getDay()))} ${hhmm(d.resetAt)}`)
+    return t('Your weekly limit is used up. It resets {when}.').replace('{when}', `${t(fmt.day(when.getDay()))} ${t('{time}').replace('{time}', hhmm(d.resetAt))}`)
   }
   const head =
     d.days <= 1
@@ -75,6 +75,7 @@ export function dayShareWords(d: DayShare, t: (s: string) => string = s => s): s
 }
 
 export const dayShareBand = (): string => "Today's share of the week is used up"
-export const dayShareToast = (d: DayShare): string => tr("Today's share of the week is used up: {today}% used today, and today's share was about {share}%. {left}% of the week is left.").replace('{today}', pct(d.today ?? 0)).replace('{share}', pct(d.share ?? 0)).replace('{left}', pct(d.left))
+// The Mac notice for today's share: short, the figure said as used like the band
+export const dayShareToast = (d: DayShare): string => tr("Today's share of the week is used up: {today} used today.").replace('{today}', fmt.usedIn(d.today ?? 0))
 
 export const dayShareDue = (d: DayShare | undefined, said: unknown, now: number): boolean => d !== undefined && d.usedUp && said !== ymd(now)

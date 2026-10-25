@@ -12,11 +12,13 @@ const MIN = 60_000
 
 const row = (over: Partial<FactRow> = {}): FactRow => ({ kind: 'working', reason: '', sinceMs: 2 * MIN, cwd: '/work/other', ...over })
 
-test('one fact per row, in order: needs you, context over 80%, same folder, cost over $2, then what got done when quiet long', () => {
+test('one fact per row, in order: needs you, context from 80%, same folder, cost over $2, then what got done when quiet long', () => {
   const all = row({ kind: 'needs', reason: 'asks you a question', contextPercent: 92, costUsd: 4.1, cwd: '/work/app' })
   expect(rowFact(all, '/work/app')).toEqual({ what: 'needs', text: 'asks you a question' })
   expect(rowFact({ ...all, kind: 'working' }, '/work/app')).toEqual({ what: 'context', text: 'context 92%' })
-  expect(rowFact({ ...all, kind: 'working', contextPercent: 80 }, '/work/app')).toEqual({ what: 'folder', text: 'same folder as you' })
+  // From 80% full, the same rule as the status line
+  expect(rowFact({ ...all, kind: 'working', contextPercent: 80 }, '/work/app')).toEqual({ what: 'context', text: 'context 80%' })
+  expect(rowFact({ ...all, kind: 'working', contextPercent: 79.4 }, '/work/app')).toEqual({ what: 'folder', text: 'same folder as you' })
   expect(rowFact({ ...all, kind: 'working', contextPercent: 40 }, '/work/elsewhere')).toEqual({ what: 'cost', text: '$4.10' })
   expect(rowFact(row({ costUsd: COST_FACT_USD }), '/work/app')).toBeUndefined()
   expect(rowFact(row({ cwd: '/work/app/' }), '/work/app')?.what).toBe('folder')
@@ -73,4 +75,10 @@ test('a long list is grouped by the app sidebar group, else the repository: a wo
     { head: 'b', rows: [rows[1]] },
     { head: 'c', rows: [rows[3]] },
   ])
+})
+
+test('groups follow their best row: a group with a Your-turn row is above a group of only working rows, whatever was seen first', () => {
+  const rows = [{ n: 1, g: 'a', yours: false }, { n: 2, g: 'b', yours: true }, { n: 3, g: 'a', yours: false }, { n: 4, g: 'c', yours: true }]
+  expect(groupRows(rows, r => r.g, r => (r.yours ? 0 : 1)).map(g => g.head)).toEqual(['b', 'c', 'a'])
+  expect(groupRows(rows, r => r.g).map(g => g.head)).toEqual(['a', 'b', 'c'])
 })

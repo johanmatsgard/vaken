@@ -1,7 +1,8 @@
 // Watches rules written in CLAUDE.md as 'Never `pkill`...': when a shell command starts with the named command it counts it, tells Claude and shows it in the band. Only command words are looked at, so a file name in a rule never gives a false hit.
 import type { HelpEntry } from './registry'
 import type { Setting } from './settings'
-import { tEn, tLine } from '../i18n/t'
+import { t, tLine, tr } from '../i18n/t'
+import { fillIn } from './fillin'
 
 export const RULES_SETTINGS: Setting[] = [
   {
@@ -62,11 +63,12 @@ export const hitsOf = (rules: Rule[], command: string): Rule[] => rules.filter(r
 export type Counts = Record<string, number>
 export const rulesKey = (sessionId: string): string => `cockpit:rules:${sessionId}`
 
+// en-only: a note to Claude
 export const noteFor = (rules: Rule[]): string => `Vaken saw a step that your own rules forbid: ${rules.map(r => `"${r.text.slice(0, 100)}" (${r.source})`).join('; ')} Tell the person, and do not do it again unless they say so.`
 export const bandText = (rules: Rule[]): string => tLine('band.rule_broken_command', { command: rules[0].command })
 
 export function rulesText(rules: Rule[], counts: Counts): string {
-  if (rules.length === 0) return 'No rule with a command in backticks was found in your CLAUDE.md files. Write one like: Never run `pkill`.'
-  const lines = rules.map(r => `  ${r.command}: ${tEn('words.time', { n: counts[r.id] ?? 0 })} this session (${r.source})`)
-  return [`Rules vaken watches (${rules.length}):`, ...lines, '', 'It checks the start of each shell command. A rule it cannot read as a command is left out.'].join('\n')
+  if (rules.length === 0) return tr('No rule with a command in backticks was found in your CLAUDE.md files. Write one like: Never run `pkill`.')
+  const lines = rules.map(r => `  ${fillIn(tr('{command}: {times} this session ({source})'), { command: r.command, times: t('words.time', { n: counts[r.id] ?? 0 }), source: r.source })}`)
+  return [fillIn(tr('Rules vaken watches ({n}):'), { n: rules.length }), ...lines, '', tr('It checks the start of each shell command. A rule it cannot read as a command is left out.')].join('\n')
 }

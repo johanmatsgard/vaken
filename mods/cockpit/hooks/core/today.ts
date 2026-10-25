@@ -2,10 +2,11 @@
 import { BAND_SHORT_CHARS } from './band'
 import { ymd } from './time'
 import { startOfDay } from './ledger'
-import { moneyEn as money } from './prices'
+import { money } from './prices'
+import { fillIn } from './fillin'
 import type { HelpEntry } from './registry'
 import type { Setting } from './settings'
-import { tEn } from '../i18n/t'
+import { t, tEn, tr } from '../i18n/t'
 
 export const TODAY_SETTINGS: Setting[] = [
   {
@@ -47,16 +48,16 @@ export function bandBrief(f: TodayFacts): string | undefined {
   const base = [...(f.waiting > 0 ? [waitPart(f.waiting)] : []), ...(f.yesterdayUsd !== undefined && f.yesterdayUsd > 0 ? [costPart(f.yesterdayUsd)] : [])]
   if (f.didYesterday <= 0) return base.length === 0 ? undefined : `Today: ${base.join(', ')}.`
   const tails = [`vaken did ${tEn('words.thing', { n: f.didYesterday })}`, `vaken did ${tEn('words.thing', { n: f.didYesterday })}`, `${f.didYesterday} done`]
-  const lines = tails.map(t => `Today: ${[...base, t].join(', ')}.`)
+  const lines = tails.map(tail => `Today: ${[...base, tail].join(', ')}.`)
   return lines.find(l => l.length <= BAND_SHORT_CHARS) ?? lines[lines.length - 1]
 }
 
 export function todayLines(f: TodayFacts, briefOn: boolean): string[] {
   return [
-    'Today:',
-    f.waiting > 0 ? `${tEn('words.other_session_waits', { n: f.waiting })} for you.` : 'No other session waits for you.',
-    f.yesterdayUsd !== undefined && f.yesterdayUsd > 0 ? `Yesterday cost about ${money(f.yesterdayUsd)}, as vaken counted it.` : 'Yesterday cost: not counted.',
-    f.didYesterday > 0 ? `Vaken did ${tEn('words.thing', { n: f.didYesterday })} yesterday. /vaken-today value shows what.` : 'Vaken wrote nothing down yesterday.',
-    briefOn ? 'The line above the chat box shows this on your first prompt of a day.' : 'The brief above the chat box is off. Turn it on: Settings > Prompts and memory.',
+    tr('Today:'),
+    f.waiting > 0 ? fillIn(tr('{what} for you.'), { what: t('words.other_session_waits', { n: f.waiting }) }) : tr('No other session waits for you.'),
+    f.yesterdayUsd !== undefined && f.yesterdayUsd > 0 ? fillIn(tr('Yesterday cost about {usd}, as vaken counted it.'), { usd: money(f.yesterdayUsd) }) : tr('Yesterday cost: not counted.'),
+    f.didYesterday > 0 ? fillIn(tr('Vaken did {what} yesterday. /vaken-today value shows what.'), { what: t('words.thing', { n: f.didYesterday }) }) : tr('Vaken wrote nothing down yesterday.'),
+    briefOn ? tr('The line above the chat box shows this on your first prompt of a day.') : tr('The brief above the chat box is off. Turn it on: Settings > Prompts and memory.'),
   ]
 }

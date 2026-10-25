@@ -25,7 +25,8 @@ export function parseCounts(raw: unknown): Counts {
 // Sums stored beside the lines because the ledger keeps only the last 60; a session on an older cockpit keeps them as they are.
 export const SHORTENED_TITLE = '(count) chats shortened'
 export const FREED_TITLE = '(count) tokens freed'
-export const isSumTitle = (what: string): boolean => what === SHORTENED_TITLE || what === FREED_TITLE
+export const LEAN_TOKENS_TITLE = '(count) lean tokens saved'
+export const isSumTitle = (what: string): boolean => what === SHORTENED_TITLE || what === FREED_TITLE || what === LEAN_TOKENS_TITLE
 export const ACTED_MARK = 'acted:'
 
 export function addCount(raw: unknown, at: number, what: string, by = 1): Counts {

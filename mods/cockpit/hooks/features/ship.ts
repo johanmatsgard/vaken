@@ -17,6 +17,7 @@ import { DO_T_TELL_FAILED } from '../core/dowords'
 import { shipStepText } from './shipsteps'
 import { isFolded } from '../core/menu'
 import { byPerson } from '../core/origin'
+import { sayIn } from './saylang'
 
 // IO-BLOCK-START
 function io($: EngineInterface): Io {
@@ -78,11 +79,12 @@ export function registerShip(on: On): void {
   on('command.run', { command: 'vaken-ship' }, async ($, e, next) => {
     if (isFolded(e.command, e.args)) return next(e)
     const i = io($)
+    await sayIn(i)
     const home = await homeFrom({ HOME: () => $.env.get('HOME'), USERPROFILE: () => $.env.get('USERPROFILE'), HOMEDRIVE: () => $.env.get('HOMEDRIVE'), HOMEPATH: () => $.env.get('HOMEPATH') })
     const cwd = await $.session.cwd()
     const root = await $.session.root()
     const env = { home, cwd, root }
-    const said = await shipStepText(i, env, e.args, { tell: note => tellClaude($, note), shipLine: async () => (await shipNow(i)).split('\n')[0] ?? '', byPerson: byPerson(e.origin) })
-    return { text: said ?? (await shipNow(i)) }
+    const said = await shipStepText(i, env, e.args, { tell: note => tellClaude($, note), shipLine: async () => (await shipNow(i, tr)).split('\n')[0] ?? '', byPerson: byPerson(e.origin) })
+    return { text: said ?? (await shipNow(i, tr)) }
   })
 }

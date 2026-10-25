@@ -51,7 +51,7 @@ export const GUARDWORLD_SETTINGS: Setting[] = [
 export const GUARDWORLD_HELP: HelpEntry[] = [
   {
     title: 'Why did it stop a step that reaches outside?',
-    text: 'It watches steps that reach outside this computer, such as messages, payments, pull requests and cloud changes, and secrets read or sent. In Warn it tells Claude after the step, and in Stop it stops the step until you allow it. Left on its own setting, a secret step stops only when Claude Code would not ask you first (if vaken cannot tell, it warns).',
+    text: 'It watches steps that reach outside this computer, such as messages, payments, pull requests and cloud changes, and secrets read or sent. In Warn it tells Claude after the step, and in Stop it stops the step until you allow it. Left unchosen, Warn reads "Warn (stops in auto mode)": it stops a secret step where Claude Code would not ask you first, and warns where it asks or vaken cannot tell; a Warn you pick yourself only warns.',
   },
   {
     title: 'Held messages and away',
@@ -148,14 +148,14 @@ export function outboxBand(box: Outbox): string {
 
 export function outboxText(box: Outbox | undefined, on: boolean): string {
   const lines: string[] = []
-  if (!on) lines.push('The outbox is off. Turn it on: Settings > Safety.', '')
-  if (box === undefined || box.items.length === 0) lines.push(box?.open === false ? 'Last answer: nothing left this computer that vaken saw.' : 'This answer: nothing has left this computer that vaken saw.')
+  if (!on) lines.push(tr('The outbox is off. Turn it on: Settings > Safety.'), '')
+  if (box === undefined || box.items.length === 0) lines.push(box?.open === false ? tr('Last answer: nothing left this computer that vaken saw.') : tr('This answer: nothing has left this computer that vaken saw.'))
   else {
-    lines.push(`${box.open ? 'This answer' : 'Last answer'}: ${outboxLine(box.items)}.`)
+    lines.push(`${box.open ? tr('This answer') : tr('Last answer')}: ${outboxLine(box.items)}.`)
     const w = outboxWrites(box)
-    if (w.length > 0) lines.push(`These change something outside: ${outboxLine(w)}.`)
+    if (w.length > 0) lines.push(`${tr('These change something outside')}: ${outboxLine(w)}.`)
   }
-  lines.push('', 'The list shows the kind and the place, never what was in it. It reads commands and outside tools by name, so it can miss a step hidden in a script file.')
+  lines.push('', tr('The list shows the kind and the place, never what was in it. It reads commands and outside tools by name, so it can miss a step hidden in a script file.'))
   return lines.join('\n')
 }
 
@@ -173,14 +173,14 @@ export function parseAwayAsk(args: string): AwayAsk {
   const w = args.trim().toLowerCase()
   if (w === '' || w === 'status') return { kind: 'status' }
   if (w === 'on' || w === 'off') return { kind: w }
-  return { kind: 'bad', why: 'Use: /vaken-away on, /vaken-away off, or /vaken-away to look.' }
+  return { kind: 'bad', why: tr('Use: /vaken-away on, /vaken-away off, or /vaken-away to look.') }
 }
 
 type AwayFacts = { away: boolean; policy: string; refused: string[] }
 export function awayText(f: AwayFacts): string {
-  const lines: string[] = [f.away ? 'Away is ON. Lift it with /vaken-away off when you are back.' : 'Away is off. /vaken-away on tells vaken you are gone.']
-  if (f.policy === 'careful') lines.push('While away: Careful. While away, a step that the safety check would flag (risky commands, edits, outside actions, secrets) is stopped by itself, with no popup. Safe steps keep running. Allow once does not work while away.')
-  else lines.push(f.away ? 'While away: Off, so nothing is stopped. Set it to Careful in Settings > Safety to stop risky steps while you are gone.' : 'While away: Off. Set it to Careful in Settings > Safety to stop risky steps while you are gone.')
-  if (f.refused.length > 0) lines.push('', 'Last stopped:', ...f.refused)
+  const lines: string[] = [f.away ? tr('Away is ON. Lift it with /vaken-away off when you are back.') : tr('Away is off. /vaken-away on tells vaken you are gone.')]
+  if (f.policy === 'careful') lines.push(tr('While away: Careful. While away, a step that the safety check would flag (risky commands, edits to protected files or outside your folders, odd new packages, weakened tests, outside actions, secrets) is stopped by itself, with no popup. Safe steps keep running. Allow once does not work while away.'))
+  else lines.push(f.away ? tr('While away: Off, so nothing is stopped. Set it to Careful in Settings > Safety to stop risky steps while you are gone.') : tr('While away: Off. Set it to Careful in Settings > Safety to stop risky steps while you are gone.'))
+  if (f.refused.length > 0) lines.push('', tr('Last stopped:'), ...f.refused)
   return lines.join('\n')
 }

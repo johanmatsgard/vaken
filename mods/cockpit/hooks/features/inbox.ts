@@ -17,7 +17,7 @@ import { withToastGate } from '../core/io'
 import { saidYes } from '../core/confirm'
 import { homeFrom } from '../core/platform'
 import type { Io } from '../core/io'
-import { alivePids, listRecords, listRecordsLight } from '../core/record'
+import { alivePids, listRecords, listRecordsLight, recordsStamp, stampRecord } from '../core/record'
 import { readState, stateKey } from '../core/proof'
 import { readSetting } from '../core/settings'
 import { LEDGER_KEY, pushLog, readLog } from './compaction'
@@ -25,6 +25,7 @@ import { buildView } from './home/logic'
 import type { Row } from './home/logic'
 import { armOnce } from './everyonce'
 import { subArgs } from '../core/menu'
+import { sayIn } from './saylang'
 
 
 // IO-BLOCK-START
@@ -112,7 +113,10 @@ export const forgetPaneInbox = (): void => {
   paneInbox = undefined
 }
 
+// The count this session's band last showed, so a prompt knows with no store read whether a stopped step may wait.
+let bandHeld = 0
 async function bandNow(i: Io, held: number): Promise<void> {
+  bandHeld = held
   const sid = await i.sessionId()
   if (held === 0) return clearBand(i, INBOX_BAND_ID, sid)
   const text = inboxBandWords(held)
@@ -138,22 +142,36 @@ async function offerQueued(i: Io, suggest: Suggest): Promise<void> {
 
 const INBOX_SHARED_KEY = 'cockpit:inbox:held'
 const SHARED_FRESH_MS = CHECK_MS / 2
+// The count keeps the records stamp it was made from: a record that moved since (a typed message clears a hold) makes any session count again. An old count without a stamp is read as before.
 async function heldNow(i: Io): Promise<number> {
   const now = await i.now()
-  const raw = (await i.get(INBOX_SHARED_KEY)) as { at?: unknown; held?: unknown } | undefined
-  if (typeof raw?.at === 'number' && typeof raw.held === 'number' && now - raw.at >= 0 && now - raw.at < SHARED_FRESH_MS) return raw.held
+  const stamp = await recordsStamp(i)
+  const raw = (await i.get(INBOX_SHARED_KEY)) as { at?: unknown; held?: unknown; stamp?: unknown } | undefined
+  const same = raw === undefined || !('stamp' in raw) || raw.stamp === stamp
+  if (same && typeof raw?.at === 'number' && typeof raw.held === 'number' && now - raw.at >= 0 && now - raw.at < SHARED_FRESH_MS) return raw.held
   // Older: the leader session looks again (core/leader.ts)
-  if (typeof raw?.at === 'number' && typeof raw.held === 'number' && !(await mayScan(i, raw.at, CHECK_MS))) return raw.held
+  if (same && typeof raw?.at === 'number' && typeof raw.held === 'number' && !(await mayScan(i, raw.at, CHECK_MS))) return raw.held
   const held = heldCount((await collectInbox(i, true)).items)
-  await i.set(INBOX_SHARED_KEY, { at: now, held })
+  await i.set(INBOX_SHARED_KEY, { at: now, held, stamp })
   return held
+}
+
+async function bandCheck(i: Io): Promise<void> {
+  if ((await readSetting(i, 'inbox.mode')) === 'off') await clearBand(i, INBOX_BAND_ID)
+  else await bandNow(i, await heldNow(i))
+}
+
+// A typed message clears this session's stopped steps. Only while the band shows a held step: the record is saved and the stamp moves, so every session counts again, and this band looks at once. Nothing otherwise.
+async function afterPrompt(i: Io): Promise<void> {
+  if (bandHeld === 0) return
+  await stampRecord(i, await i.sessionId())
+  await bandCheck(i)
 }
 
 // Exported so that a test can run it by hand (a test clock does not drive a timer made at the start of the session).
 export async function inboxCheck(i: Io, suggest: Suggest): Promise<void> {
   try {
-    if ((await readSetting(i, 'inbox.mode')) === 'off') await clearBand(i, INBOX_BAND_ID)
-    else await bandNow(i, await heldNow(i))
+    await bandCheck(i)
   } catch {
   }
   try {
@@ -179,7 +197,7 @@ async function suggestText($: EngineInterface, text: string): Promise<boolean> {
   }
 }
 
-const stateWord = (r: Row): string => (r.kind === 'needs' ? 'needs you' : r.kind === 'working' ? 'working' : r.kind === 'waiting' ? 'finished, waits for you' : 'idle')
+const stateWord = (r: Row): string => (r.kind === 'needs' ? tr('needs you') : r.kind === 'working' ? tr('working') : r.kind === 'waiting' ? tr('finished, waits for you') : tr('idle'))
 
 async function othersOf(i: Io): Promise<{ sid: string; name: string; row: Row }[]> {
   const { sid, rows } = await liveRows(i)
@@ -223,8 +241,9 @@ export function registerInbox(on: On): void {
   }).catch(($, e, next) => next(e))
 
   on('prompt.submit', { text: /(?<inbox>)/ }, async ($, e, next) => {
+    const typed = !e.text.trimStart().startsWith('/')
     try {
-      if (!e.text.trimStart().startsWith('/')) {
+      if (typed) {
         const i = io($)
         const sid = await i.sessionId()
         const queue = parseQueue(await i.get(steerKey(sid)))
@@ -235,13 +254,22 @@ export function registerInbox(on: On): void {
       }
     } catch {
     }
-    return next(e)
+    try {
+      return await next(e)
+    } finally {
+      // The typed message is in the record now; not awaited, so the prompt never waits.
+      try {
+        if (typed) void afterPrompt(io($)).catch(() => undefined)
+      } catch {
+      }
+    }
   }).catch(($, e, next) => next(e))
 
   on('command.run', { command: 'vaken' }, async ($, e, next) => {
     const rest0 = subArgs(e.args, 'inbox')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i)
     const { items, now } = await collectInbox(i)
     return { text: inboxText(items, now, (await readSetting(i, 'inbox.mode')) !== 'off') }
   })
@@ -250,6 +278,7 @@ export function registerInbox(on: On): void {
     const rest0 = subArgs(e.args, 'steer')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i)
     const sid = await i.sessionId()
     const now = await i.now()
     const ask = parseSteerAsk(rest0)
@@ -260,12 +289,12 @@ export function registerInbox(on: On): void {
       const here = rows.find(r => r.rec.sessionId === sid)
       const others: SteerOther[] = []
       for (const [k, o] of (await othersOf(i)).entries()) others.push({ n: k + 1, name: o.name, state: stateWord(o.row), queued: parseQueue(await i.get(steerKey(o.sid))).length })
-      return { text: steerText({ name: here?.name ?? 'this session', queue: parseQueue(await i.get(steerKey(sid))), halted: parseHalt(await i.get(haltKey(sid))) !== undefined, others, now }) }
+      return { text: steerText({ name: here?.name ?? tr('this session'), queue: parseQueue(await i.get(steerKey(sid))), halted: parseHalt(await i.get(haltKey(sid))) !== undefined, others, now }) }
     }
 
     if (ask.kind === 'clear') {
       await i.set(steerKey(sid), [])
-      return { text: 'The queue of this session is empty.' }
+      return { text: tr('The queue of this session is empty.') }
     }
 
     if (ask.kind === 'stop') {
@@ -282,7 +311,7 @@ export function registerInbox(on: On): void {
         }
       }
       await ledger(i, sid, STEER_STOP_WHAT, stopped === true ? 'Paused all changes and cancelled the running answer.' : 'Paused all changes.', 'typed')
-      i.toast(tr('Paused for safety. Resume with /vaken-pause off.'), true)
+      i.toast(tr('This session is paused for safety. Resume with /vaken-pause off.'), true)
       i.invalidate()
       return { text: stopWords(stopped) }
     }
@@ -302,7 +331,7 @@ export function registerInbox(on: On): void {
         const offerSuggest: Suggest = text => suggestText($, text)
         $.clock.after(OFFER_DELAY_MS, () => void offerQueued(offerIo, offerSuggest).catch(() => undefined))
       }
-      return { text: queuedWords(target === undefined ? 'this session' : `"${target.name}"`, cleanQueued(ask.text)) }
+      return { text: queuedWords(target === undefined ? tr('this session') : `"${target.name}"`, cleanQueued(ask.text)) }
     }
 
     const to = target as { sid: string; name: string }
@@ -312,14 +341,14 @@ export function registerInbox(on: On): void {
     try {
       answer = await i.ask(sendQuestion(to.name), [buttons.yes, buttons.no])
     } catch {
-      return { text: notSentWords('The question was dismissed.') }
+      return { text: notSentWords(tr('The question was dismissed.')) }
     }
-    if (!saidYes(answer, buttons)) return { text: notSentWords('You said no.') }
+    if (!saidYes(answer, buttons)) return { text: notSentWords(tr('You said no.')) }
     try {
       const r = await $.session.send({ to: { sessionId: to.sid }, text })
       if (!r.isDelivered) return { text: notSentWords(r.reason) }
     } catch (err) {
-      return { text: notSentWords(err instanceof Error ? err.message.slice(0, 160) : 'The send failed.') }
+      return { text: notSentWords(err instanceof Error ? err.message.slice(0, 160) : tr('The send failed.')) }
     }
     await ledger(i, sid, STEER_SEND_WHAT, `Sent a message to "${to.name}".`, 'typed')
     return { text: sentWords(to.name) }

@@ -1,5 +1,7 @@
 // Starter agents runtime: /vaken-tasks agents lists two starter agent files; /vaken-tasks agents make yes writes the ones that are not there yet.
 import type { EngineInterface, On } from 'claude-code'
+import { tr } from '../core/lang'
+import { sayIn } from './saylang'
 
 import { withToastGate } from '../core/io'
 import { homeFrom } from '../core/platform'
@@ -9,6 +11,7 @@ import { LEGACY_STARTER, STARTERS, STARTERS_WHAT, agentPath, planStarters, start
 import { LEDGER_KEY, pushLog, why } from './compaction'
 import { subArgs } from '../core/menu'
 import { bindSafeFs, checkHomeWrite, safeFsOf } from '../core/safewrite'
+import { BY_PERSON_ONLY, byPerson } from '../core/origin'
 
 // IO-BLOCK-START
 function io($: EngineInterface): Io {
@@ -31,10 +34,13 @@ function io($: EngineInterface): Io {
 }
 // IO-BLOCK-END
 
+// Writing the agent files needs the person; the list stays open.
+export const startersWrites = (args: string): boolean => /^\s*make\s+yes\b/i.test(args)
+
 // A check that fails counts as "there", so a file is never overwritten by mistake.
 export async function startersRun(i: Io, exists: (path: string) => Promise<boolean>, args: string, project?: string): Promise<string> {
   const home = await i.home()
-  if (home === '') return 'Vaken cannot find your home folder, so it cannot say where the agents go.' // en-only: plain answer of a slash command (text twin)
+  if (home === '') return tr('Vaken cannot find your home folder, so it cannot say where the agents go.')
   const there = new Set<string>()
   for (const s of STARTERS) {
     try {
@@ -52,7 +58,7 @@ export async function startersRun(i: Io, exists: (path: string) => Promise<boole
   for (const s of write) {
     try {
       if (fs === undefined || !(await checkHomeWrite(fs, agentPath(home, s.name), project)).ok) {
-        failed.push({ name: s.name, why: 'it is a link that leads nowhere or into this project, and vaken does not write through it.' }) // en-only: plain answer of a slash command (text twin)
+        failed.push({ name: s.name, why: tr('it is a link that leads nowhere or into this project, and vaken does not write through it.') })
         continue
       }
       await i.write(agentPath(home, s.name), s.text)
@@ -82,6 +88,8 @@ export function registerStarters(on: On): void {
   on('command.run', { command: 'vaken-tasks' }, async ($, e, next) => {
     const rest0 = subArgs(e.args, 'agents')
     if (rest0 === undefined) return next(e)
+    await sayIn(io($)).catch(() => undefined)
+    if (!byPerson(e.origin) && startersWrites(rest0)) return { text: tr(BY_PERSON_ONLY) }
     const i = bindSafeFs(io($), { stat: (path, options) => $.fs.stat(path, options), list: path => $.fs.list(path) })
     let root: string | undefined
     try {

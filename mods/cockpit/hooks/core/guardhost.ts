@@ -36,6 +36,11 @@ export async function strongMode(i: Io, settingKey: string, mode: Mode, view: ()
   return (await view()) === 'unasked' ? 'hold' : mode
 }
 
+// The two rows whose unchosen Warn stops where Claude Code would not ask (strongMode). Their Warn says so while it is the default, and "Warn only" once the person chose it.
+export const STRONG_KEYS: readonly string[] = ['guard.destructive', 'guard.secrets']
+export const WARN_UNCHOSEN = 'Warn (stops in auto mode)'
+export const WARN_CHOSEN = 'Warn only'
+
 // The card may not call `$.tool.check` on a draw, so the view is noted when a real tool step asks it and kept in the pane's prefs bundle.
 export const HOST_NOTE_KEY = 'cockpit:pref:hostview'
 export type HostNote = { sid: string; view: HostView }

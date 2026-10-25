@@ -3,7 +3,7 @@ import { expect, mock } from 'claude-code/testing'
 import type { EngineInterface, On } from 'claude-code'
 
 import { helloLines } from '../hooks/core/phone'
-import { PHONECMDS_STRINGS, PHONE_ASK_LINE, PHONE_MODE_MAX_MS, PHONE_SECTION_ID, PHONE_SECTION_TEXT, PHONE_SETTINGS_MODE, phoneAskDue, phoneSectionOn } from '../hooks/core/phonecmds'
+import { PHONECMDS_STRINGS, PHONE_ASK_LINE, PHONE_MODE_MAX_MS, PHONE_SECTION_ID, PHONE_SECTION_TEXT, PHONE_SETTINGS_MODE, phoneAskDue, phoneModeLine, phoneSectionOn } from '../hooks/core/phonecmds'
 import { checkRegistry } from '../hooks/core/settings'
 import { forgetHello, forgetPhones } from '../hooks/features/phone'
 import { SLOW, test } from './slow'
@@ -43,9 +43,11 @@ test('the setting row is valid, in Attention, Ask by default; every word has a S
 test('the hello says what waits, in at most three lines, and names no command', () => {
   const week = { name: 'Week', percent: 72, withDay: true }
   const lines = helloLines({ needs: [{ name: 'app', kind: 'question' }], held: 1, finished: 1, plan: week }, en)
-  expect(lines[0]).toBe('Vaken · 1 step stopped · 1 session needs you · 1 finished')
+  // Needs you is said once, with the name; a finished session is "your turn", the Mac's word
+  expect(lines[0]).toBe('Vaken · 1 step stopped · 1 your turn')
+  expect(lines[1]).toBe('Needs you: app (asks a question)')
   expect(lines).toHaveLength(3)
-  expect(helloLines({ needs: [], held: 0, finished: 0, plan: week }, en)).toEqual(['Vaken · Plan: week 72%'])
+  expect(helloLines({ needs: [], held: 0, finished: 0, plan: week }, en)).toEqual(['Vaken · 72% of the weekly limit'])
 })
 
 // ---- through the engine
@@ -53,7 +55,8 @@ test('the hello says what waits, in at most three lines, and names no command', 
 function world(on: On, seed: Record<string, unknown>) {
   const clock = mock.clock(on, { now: NOW })
   mock.env(on, { HOME: '/home/test', LANG: 'en_US.UTF-8' })
-  const mem = new Map<string, unknown>(Object.entries(seed))
+  // Plain mode and the phone note are on by default; they are held off here so only the Phone mode section is seen.
+  const mem = new Map<string, unknown>(Object.entries({ 'cockpit:setting:plain.mode': 'off', 'cockpit:setting:phone.note': 'off', ...seed }))
   on('store.get', (_$, e) => ({ value: mem.get(e.key) }) as never)
   on('store.set', (_$, e) => {
     mem.set(e.key, e.value)
@@ -113,7 +116,7 @@ test('the first phone hello asks once: one line, not again, and not when the mod
   expect(appendedText(w)).toHaveLength(1)
   const lines = (appendedText(w)[0] as string).split('\n')
   expect(lines.length).toBeLessThanOrEqual(4)
-  expect(lines.at(-1)).toBe(PHONE_ASK_LINE)
+  expect(lines.at(-1)).toBe(`- ${PHONE_ASK_LINE}`)
   expect(lines[0]).not.toContain('/ok')
   expect(w.mem.get('cockpit:phone:asked')).toBe(NOW)
   await w.clock.advance(31 * MIN)
@@ -180,9 +183,10 @@ test('a desktop that joins does not turn the section on', async ($, on) => {
   expect(await sectionIds($)).toEqual(['intro'])
 })
 
-test('/vaken shows the phone mode line', async ($, on) => {
+test('the phone mode line is said on the phone only, not in the Mac /vaken answer', async ($, on) => {
   world(on, { 'cockpit:firstrun': 'done', 'cockpit:session:me': rec('me', NOW) })
   on('ui.open', () => ({ value: undefined }) as never)
   await start($)
-  expect(await say($, 'vaken')).toMatch(/\nPhone mode: asks once · Settings > Attention$/)
+  expect(await say($, 'vaken')).not.toMatch(/Phone mode/)
+  expect(phoneModeLine('ask', x => x)).toBe('Phone mode: asks once · Settings > Attention')
 })

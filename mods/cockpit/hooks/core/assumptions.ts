@@ -2,13 +2,18 @@
 import type { HelpEntry } from './registry'
 import type { Setting } from './settings'
 import { fmt } from './fmt'
-import { tEn } from '../i18n/t'
+import { t, tEn, tr } from '../i18n/t'
+import { fillIn } from './fillin'
+import { langNow } from './lang'
 
 export const ASSUME_KEY = 'assume.check'
 const ASSUME_MIN_WORDS = 25
 const ASSUME_MAX_LINES = 4
 const ASSUME_LINE_CHARS = 80
 export const ASSUME_BAND_MS = 10 * 60_000
+// The note stays in the chat once sent, so it is sent again only after this long in the same session
+export const ASSUME_AGAIN_MS = 60 * 60_000
+// en-only: a note to Claude
 export const ASSUME_NOTE = "Vaken note: before you change files, list your assumptions in at most 4 short lines starting with 'Assumed:'."
 
 export const ASSUME_SETTINGS: Setting[] = [
@@ -27,12 +32,12 @@ export const ASSUME_SETTINGS: Setting[] = [
 export const ASSUME_HELP: HelpEntry[] = [
   {
     title: 'What the assumption review does',
-    text: 'For a message of 25 words or more, this asks Claude to list its assumptions in at most 4 short lines that start with "Assumed:" before it changes files. After the answer the line above the chat box shows how many. /vaken-explain assumptions lists them.',
+    text: 'For a message of 25 words or more, at most once an hour in a session, this asks Claude to list its assumptions in at most 4 short lines that start with "Assumed:" before it changes files. After the answer the line above the chat box shows how many. /vaken-explain assumptions lists them.',
   },
 ]
 
 const wordCount = (text: string): number => text.trim().split(/\s+/).filter(w => w !== '').length
-export const wantsNote = (text: string): boolean => wordCount(text) >= ASSUME_MIN_WORDS
+export const wantsNote = (text: string, lastAt?: number, now = 0): boolean => wordCount(text) >= ASSUME_MIN_WORDS && (lastAt === undefined || now - lastAt >= ASSUME_AGAIN_MS)
 
 const LINE = /^\s*(?:[-*•]\s+)?Assumed:\s*(.*)$/
 type Found = { count: number; lines: string[] }
@@ -50,6 +55,8 @@ export function findAssumed(answer: string): Found {
 
 type Stored = { at: number; count: number; lines: string[] }
 export const storeKey = (sessionId: string): string => `cockpit:assume:last:${sessionId}`
+// When the note was last sent in a session
+export const sentKey = (sessionId: string): string => `cockpit:assume:sent:${sessionId}`
 export function parseStored(raw: unknown): Stored | undefined {
   const o = raw as Stored
   return typeof o === 'object' && o !== null && typeof o.at === 'number' && typeof o.count === 'number' && Array.isArray(o.lines) && o.lines.every(l => typeof l === 'string') ? o : undefined
@@ -57,10 +64,11 @@ export function parseStored(raw: unknown): Stored | undefined {
 
 export const bandText = (count: number): string => `Claude assumed ${tEn('words.thing', { n: count })}. /vaken-explain assumptions`
 
-const ago = (ms: number): string => fmt.ago(ms, 'plain')
+// Said in the language of this draw: only the text twin reads it
+const ago = (ms: number): string => fmt.ago(ms, 'plain', langNow())
 
 export function assumptionsText(stored: Stored | undefined, on: boolean, now: number): string {
-  if (stored === undefined || stored.count === 0) return on ? 'No assumptions listed yet in this session.' : 'No assumptions listed. The assumption review is off. Turn it on: Settings > Prompts and memory.'
-  const more = stored.count > stored.lines.length ? [`(${stored.count - stored.lines.length} more not kept.)`] : []
-  return [`Claude listed ${tEn('words.assumption', { n: stored.count })} ${ago(now - stored.at)}:`, ...stored.lines, ...more].join('\n')
+  if (stored === undefined || stored.count === 0) return on ? tr('No assumptions listed yet in this session.') : tr('No assumptions listed. The assumption review is off. Turn it on: Settings > Prompts and memory.')
+  const more = stored.count > stored.lines.length ? [fillIn(tr('({n} more not kept.)'), { n: stored.count - stored.lines.length })] : []
+  return [fillIn(tr('Claude listed {what} {ago}:'), { what: t('words.assumption', { n: stored.count }), ago: ago(now - stored.at) }), ...stored.lines, ...more].join('\n')
 }

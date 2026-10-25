@@ -16,8 +16,16 @@ test('every preset sets only real settings to real options', () => {
   }
 })
 
-test('no preset turns on a block that spends model usage by itself without saying so', () => {
-  expect(findPreset('careful')!.values['cache.keeper']).toBeUndefined()
+test('no preset turns on a block that spends model usage by itself: none sets the cache keeper', () => {
+  for (const p of PRESETS) expect(p.values['cache.keeper'], p.name).toBeUndefined()
+})
+
+test('Every check on turns on every check row of the three modes', () => {
+  const every = findPreset('everything')!.values
+  for (const k of [...MODE_CLASSES.alerts, ...MODE_CLASSES.helpers, ...MODE_CLASSES.sends]) {
+    expect(every[k], k).toBeDefined()
+    expect(every[k], k).not.toBe('off')
+  }
 })
 
 test('the modes sorted by cost: Recommended matches the registry defaults for the rows it names, and a fresh store reads as Recommended', () => {
@@ -25,10 +33,8 @@ test('the modes sorted by cost: Recommended matches the registry defaults for th
   for (const [key, value] of Object.entries(rec.values)) expect(SETTINGS.find(s => s.key === key)!.default, key).toBe(value)
   expect(modeNow(defaults())).toBe('balanced')
   expect(USUAL_MODE).toBe('balanced')
-  for (const m of ['quiet', 'balanced', 'full']) {
-    expect(findPreset(m)!.values['compact.mode'], m).toBeUndefined()
-    expect(presetSteps(findPreset(m)!).find(st => st.key === 'compact.mode'), m).toBeUndefined()
-  }
+  // Compacting: Recommended and Everything useful compact by themselves (Auto, the default); Only alerts only watches
+  expect(PRESETS.map(p => p.values['compact.mode'])).toEqual(PRESETS.map(() => undefined))
   expect(SETTINGS.find(s => s.key === 'compact.mode')!.default).toBe('watch')
   const [quiet, full] = [findPreset('quiet')!, findPreset('full')!]
   for (const k of MODE_CLASSES.alerts) expect([quiet.values[k], rec.values[k], full.values[k]], k).toEqual([rec.values[k], rec.values[k], rec.values[k]])
@@ -38,8 +44,10 @@ test('the modes sorted by cost: Recommended matches the registry defaults for th
   }
   for (const k of MODE_CLASSES.helpers.filter(x => !MODE_CLASSES.sends.includes(x))) expect(full.values[k], k).toBe(rec.values[k])
   expect([rec.values['prompt.check'], rec.values['plan.first'], rec.values['assume.check'], rec.values['claude.notes']]).toEqual(['tip', 'suggest', 'off', 'safety'])
+  // The budget is in no mode: a stored budget never makes a mode read as Custom
+  for (const m of ['quiet', 'balanced', 'full']) expect(findPreset(m)!.values['cost.budget'], m).toBeUndefined()
   expect([full.values['prompt.check'], full.values['plan.first'], full.values['assume.check'], full.values['claude.notes']]).toEqual(['ask', 'ask', 'on', 'all'])
-  expect(rec.values).toMatchObject({ 'decisions.mode': 'on', 'coach.mode': 'on', 'recap.mode': 'on', 'value.weekly': 'on', 'today.brief': 'on', 'proof.claims': 'warn', 'preview.auto': 'on', 'cost.budget': 'warn', 'resume.mode': 'remind', 'plan.first': 'suggest', 'fresh.nudge': 'on', 'compact.card': 'on' })
+  expect(rec.values).toMatchObject({ 'decisions.mode': 'on', 'coach.mode': 'on', 'recap.mode': 'on', 'value.weekly': 'on', 'today.brief': 'on', 'proof.claims': 'warn', 'preview.auto': 'on', 'resume.mode': 'remind', 'plan.first': 'suggest', 'fresh.nudge': 'on', 'compact.card': 'on' })
 })
 
 test('every preset has a plain title, and no title repeats a mode id, a view name or another title', () => {
@@ -55,7 +63,7 @@ test('a preset never stores Warn for the two worst kinds: it puts them back to t
     for (const st of presetSteps(p)) if (WORST_KEYS.includes(st.key)) expect(st.value, `${p.name}: ${st.key}`).toBe(p.values[st.key] === 'warn' ? undefined : p.values[st.key])
   }
   expect(presetSteps(findPreset('careful')!).find(st => st.key === 'guard.destructive')?.value).toBe('hold')
-  expect(presetSteps(findPreset('quiet')!).find(st => st.key === 'compact.mode')).toBeUndefined()
+  expect(presetSteps(findPreset('quiet')!).some(st => st.key === 'compact.mode')).toBe(false)
 })
 
 test('the change count: zero for the mode a store is on, the rows that differ for another', () => {
@@ -66,13 +74,14 @@ test('the change count: zero for the mode a store is on, the rows that differ fo
   expect(diffLines(findPreset('balanced')!, { ...defaults(), 'compact.mode': 'auto' }, k => k, (_k, v) => v, def)).toEqual([])
 })
 
-test('picking a mode keeps a Compact by itself the person chose: modes do not touch compact.mode', () => {
+test('no preset touches Compact by itself: a choice the person made stays, an unset row reads its default, Watch only', () => {
   const def = (k: string): string => SETTINGS.find(s => s.key === k)?.default ?? ''
   for (const m of ['quiet', 'balanced', 'full']) {
     const p = findPreset(m)!
     expect(presetSteps(p).some(st => st.key === 'compact.mode'), m).toBe(false)
-    expect(modeNow({ ...defaults(), ...p.values, 'compact.mode': 'auto' }), m).toBe(m)
-    expect(changeCount(p, { ...defaults(), ...p.values, 'compact.mode': 'auto' }, def), m).toBe(0)
+    expect(modeNow({ ...defaults(), ...p.values }), m).toBe(m)
+    expect(changeCount(p, { ...defaults(), ...p.values }, def), m).toBe(0)
+    expect(modeNow({ ...defaults(), ...p.values, 'compact.mode': 'suggest' }), m).toBe(m)
   }
 })
 

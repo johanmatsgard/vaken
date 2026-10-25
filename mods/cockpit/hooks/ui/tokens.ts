@@ -1,21 +1,32 @@
 // Every size and colour vaken draws, in points
 
-export const COL_PT = 7.9  // One text column, in points
-export const ROW_PT = 19  // One text row, in points: the line pitch of every card
-export const VSTEP_PT = 9.5  // Half a row: vertical padding and margins come in steps of it
+// One text column differs per system with the same app: the Windows pane's font is narrower than the Mac's
+export const COL_PT_MAC = 8.8  // One text column on a Mac (and every system but Windows), in points
+export const COL_PT_WIN = 7.9  // One text column on Windows, in points
+let columnSystem: 'posix' | 'win32' = 'posix'
+// The system is handed in once at session start (features/home.tsx, from the OS variable), before anything is drawn; never process.platform
+export const setColumnSystem = (sys: unknown): void => {
+  columnSystem = sys === 'win32' ? 'win32' : 'posix'
+}
+// One text column on this system, in points: every width in cells goes through it, so nothing freezes the Mac value at import
+export const columnPt = (): number => (columnSystem === 'win32' ? COL_PT_WIN : COL_PT_MAC)
+export const ROW_PT = 20  // One text row, in points: the line pitch of every card
+export const VSTEP_PT = ROW_PT / 2  // Half a row: vertical padding and margins come in steps of it
 export const BORDER_Y_PT = 0.5  // What the round border adds above and below a card, in points
-export const BORDER_X_PT = 13  // What the round border adds on each side of a card
+export const BORDER_X_PT = 13.5  // What the round border and the card's own side padding add on each side of a card (the app's 13.5 pt text inset)
+export const CARD_LINE_X_PT = 1  // The round border's own line on each side, before the side padding (measured: text sits 1 pt inside it with no padding)
+export const CARD_PAD_X_PT = BORDER_X_PT - CARD_LINE_X_PT  // A card's own side padding: set on every card, so the host's default (about 16 pt) never applies
 export const CARD_MIN_INNER_PT = 60  // The least inner width of a card, in points
 
 const two = (n: number): number => Math.round(n * 100) / 100
 // Points to cells, for the three kinds of vertical and horizontal measure a Box takes
-export const cols = (pt: number): number => two(pt / COL_PT)
+export const cols = (pt: number): number => two(pt / columnPt())
 export const rows = (pt: number): number => two(pt / ROW_PT)  // Points to rows (vertical, whole text rows)
 export const vstep = (pt: number): number => two(pt / VSTEP_PT)  // Points to half-rows: the unit of vertical padding and margin
 
 // Sizes: every vertical gap, padding
 export const CARD_GAP = VSTEP_PT  // Space between two cards, and between the blocks of a view, vertically
-export const CARD_GAP_X = COL_PT  // Space between two cards side by side (the board's columns) and between two buttons in a row
+export const cardGapX = (): number => columnPt()  // Space between two cards side by side (the board's columns) and between two buttons in a row
 export const CARD_PAD_Y_PT = VSTEP_PT - BORDER_Y_PT  // A card's own padding above and below
 export const CARD_INSET_Y_PT = BORDER_Y_PT + CARD_PAD_Y_PT  // Every card's top (and bottom) inset, outline to first text row
 export const CLOSED_CARD_H = 2 * CARD_INSET_Y_PT + ROW_PT  // A closed card's whole height, in points
@@ -26,33 +37,38 @@ export const BODY_ROW_GAP = VSTEP_PT  // Between two rows or blocks of a card bo
 export const BLOCK_RULE_PT = 2 * VSTEP_PT  // The box of a hairline between two groups of a card body
 export const LIST_ROW_GAP = VSTEP_PT  // Space between two list rows
 export const LIST_ROW_PAD_PT = LIST_ROW_H - ROW_PT  // A list row's room above and below its text together
+export const TRY_ROW_PT = 2 * ROW_PT + LIST_ROW_PAD_PT  // Help > Try these: a command row, the command over its plain line, one press
 // The least space between the left part of a row (mark, word, name) and its right part (a chip or an age)
 export const LIST_COL_GAP = 8
 // The Glance row: a card's closed form, one list row high
-export const GLANCE_ROW_H = LIST_ROW_H  // Glance row: its height, a list row's (26 pt)
+export const GLANCE_ROW_H = LIST_ROW_H  // Glance row: its height, a list row's (19 pt)
 export const GLANCE_VALUE_GAP = LIST_COL_GAP  // Glance row: the least space between the title and the headline value
 export const GLANCE_DOT_GAP = LIST_COL_GAP  // Glance row: space between the headline value and the status dot
 // The right column of a list (an age or a chip) has one fixed width, right-aligned
 export const LIST_RIGHT_COL = 76
 // The columns of every list, left to right: mark (6 pt dot plus 13 pt), word (this wide)
 export const LIST_WORD_COL = 71
+// The word column grows to the widest state word of the language in use (kit wordColPt), never past this, so the name keeps its room
+export const LIST_WORD_COL_MAX = 112
 // A pane narrower than this (inner width, points) stacks each row: dot and name on the first line
 export const STACK_BELOW_PT = 300
 
 // A wide pane (a big screen) puts the cards side by side, so rows do not stretch over a whole screen
-export const COLUMN_MIN_PT = 340
-export const COLUMNS_2_FROM_PT = 2 * COLUMN_MIN_PT  // Pane body width from which the cards sit in two columns (680 pt)
-export const COLUMNS_3_FROM_PT = 3 * COLUMN_MIN_PT  // Pane body width from which the cards sit in three columns (1020 pt)
-export const COLUMNS_4_FROM_PT = 4 * COLUMN_MIN_PT  // Pane body width from which the cards sit in four columns (1360 pt, a large screen)
-export const COLUMNS_5_FROM_PT = 5 * COLUMN_MIN_PT  // Pane body width from which the cards sit in five columns (1700 pt)
-export const COLUMNS_6_FROM_PT = 6 * COLUMN_MIN_PT  // Pane body width from which the cards sit in six columns (2040 pt, a very wide screen)
+export const COLUMN_MIN_PT = 348  // The least pane body width per card column: whole 8.8 pt cells keep every card at least STACK_BELOW_PT inside at every column count
+export const COLUMNS_2_FROM_PT = 2 * COLUMN_MIN_PT  // Pane body width from which the cards sit in two columns (696 pt)
+export const COLUMNS_3_FROM_PT = 3 * COLUMN_MIN_PT  // Pane body width from which the cards sit in three columns (1044 pt)
+export const COLUMNS_4_FROM_PT = 4 * COLUMN_MIN_PT  // Pane body width from which the cards sit in four columns (1392 pt, a large screen)
+export const COLUMNS_5_FROM_PT = 5 * COLUMN_MIN_PT  // Pane body width from which the cards sit in five columns (1740 pt)
+export const COLUMNS_6_FROM_PT = 6 * COLUMN_MIN_PT  // Pane body width from which the cards sit in six columns (2088 pt, a very wide screen)
 export const MAX_COLUMNS = 6  // The most columns the cards ever use, however wide the pane
+export const ONE_COLUMN_MAX_PT = 2 * COLUMN_MIN_PT  // One column (Columns 1) on a wide pane: its reading width at most, two card widths (696 pt), at the left
 // The arrange board (a `Client`, drawn in whole text cells): tiles one column apart
 export const ARRANGE_GAP = 1  // Arrange board: columns between tiles
 export const ARRANGE_PAD = 1  // Arrange board: columns between a tile's title and its zone tag
 export const ARRANGE_MIN_ROWS = 3  // Arrange board: the least rows a tile is high
 export const ARRANGE_TOP = 0  // Arrange board: rows above the first tile
-export const ARRANGE_MIN_CELLS = 18  // Arrange board: the least columns the pane lays the board out
+export const ARRANGE_ROW_GAP = Math.ceil(rows(CARD_GAP))  // Arrange board: rows between two tiles of a column: the pane's gap between cards, rounded up to the whole row a Client is laid on
+export const ARRANGE_CLOSED_ROWS = Math.ceil(rows(CLOSED_CARD_H))  // Arrange board: a closed card's tile (Glance), as high as the closed card
 export const ARRANGE_TILE_MIN_COLS = 6  // Arrange board: the least columns per tile when the board measures its own width
 export const ARRANGE_FALLBACK_COLS = 90  // Arrange board: the width in columns it assumes before its region reports one
 // How many columns fit a pane body this wide (Auto): the most N whose threshold the width reaches
@@ -62,9 +78,13 @@ export const columnsFor = (bodyPt: number): 1 | 2 | 3 | 4 | 5 | 6 => (1 + COLUMN
 // A list longer than this shows this many rows and a "show more" row (like the sidebar's "Mer")
 export const LIST_SHOW = 5
 // Big screens show more rows before "Show N more" (W, the rule is `listShowFor` in home/grid.ts)
-export const LIST_TALL_ROWS = 36  // Rows of pane body per LIST_SHOW rows of a list (one laptop screen, 684 pt)
+export const LIST_TALL_ROWS = 34  // Rows of pane body per LIST_SHOW rows of a list (one laptop screen, 680 pt)
 export const LIST_SHOW_MAX = 25  // The most rows a list shows before "Show N more"
+export const PAST_RUNS_SHOW = 3  // Agents view: the past runs shown before "Show N more" (the newest; the rest fold)
 export const AGENTS_DONE_SHOW = 5  // Agents card: the most finished helpers shown before "Show N older"
+export const AGENT_STEPS_SHOW = 5  // Agents card: an opened agent row lists its last this many steps
+export const SETTINGS_CHANGED_SHOW = 4  // Settings > Mode: the most "Changed by you" rows shown before "Show N more"
+export const HELP_TOPIC_SHOW = 5  // Help: the questions a topic card shows before "Show N more" (and the Try these rows)
 // The sidebar's fold control (measured on its project groups): a thin chevron after the label
 export const CHEVRON_LONG = 8  // Fold chevron: long side
 export const CHEVRON_SHORT = 4.5  // Fold chevron: short side
@@ -104,8 +124,7 @@ export const PULSE_SECONDS = 1.2  // Working dot pulse: seconds per cycle
 export const PULSE_LOW = 0.3  // Working dot pulse: lowest opacity
 export const DOT_TEXT_GAP = 13  // Space from the dot to the text after it
 // The dot shapes (state is never colour alone): needs you a diamond
-export const DOT_RING_W = 1.2  // Dot: line width of the ring (calm) and of the ring of the working dot
-export const DOT_CORE_R = 1.1  // Dot: radius of the core inside the working dot's ring
+export const DOT_RING_W = 1.2  // Dot: line width of the calm ring
 // The usage bar (Settings, Usage, measured in the app)
 export const BAR_H = 4  // Usage bar thickness
 export const BAR_R = 2  // Usage bar corner radius
@@ -115,7 +134,7 @@ export const BAR_BUSY_SECONDS = 1.5  // Busy bar: seconds per pass of the band (
 export const BAR_BUSY_COLOR = '#ffffff'  // Busy bar: colour of the overlay band (white, so it lightens any fill)
 export const BAR_BUSY_OPACITY = 0.3  // Busy bar: opacity of the white band over the fill
 // A bar sits in a slot one text row tall (BAR_SLOT), centred
-export const BUTTON_PAD = 4  // Padding of a plain Button on its left
+export const BUTTON_PAD = 6  // Padding of a plain Button on its left
 export const BAR_SLOT = ROW_PT  // Height of the slot a bar sits in: one text row
 // A bar's picture is at least this wide, in points
 export const BAR_CANVAS_PT = 1600
@@ -168,8 +187,8 @@ export const HOVER_FILL = '#80808029'  // Hover wash
 export const CARD_HOVER_FILL = '#8080803e'  // A closed card's own fill while the pointer is over it (it presses as a whole)
 export const HOVER_CLEAR = '#00000000'  // A pressable row's cover buttons draw no light of their own
 // A whole row presses: a see-through plain Button of blanks lies over each text line
-export const BLANK_PT = 2.81  // The width of one no-break blank in pane text (100 blanks measured 281 pt)
-export const PRESS_INSET = 4  // The plain Button's own left inset before its label
+export const BLANK_PT = 3.875  // The width of one no-break blank in pane text (20 blanks measure 77.5 pt)
+export const PRESS_INSET = BUTTON_PAD  // The plain Button's own left inset before its label
 export const PRESS_FILL = 0.97  // The share of the row the blanks fill
 // The hover wash of a pressable row (rounded, with room around the words)
 export const PRESS_WASH_OUT = 1  // Columns the wash reaches past the words on each side
@@ -187,7 +206,7 @@ export const SWITCH_SLOT = 34  // The slot the switch sits in at a row's right e
 export const SWITCH_BLANKS = 11  // The see-through press over the switch
 // Small pressable pictures and words: a chevron or icon slot is 8 to 16 pt
 export const HIT_ICON_W = 44  // The least width of the part that holds an icon, a chevron or the gear
-export const SWITCH_HIT_W = SWITCH_SLOT + PRESS_WASH_OUT * COL_PT  // The switch's own press, in points
+export const switchHitW = (): number => SWITCH_SLOT + PRESS_WASH_OUT * columnPt()  // The switch's own press, in points
 export const PRESS_END_PT = 56  // A second press laid at the right edge of every pressable row
 // Press sizes: every press is at least a sidebar row high, so it is easy to hit
 export const HIT_MIN_H = ROW_PT  // The least height of any press, in points: one text row (19)
@@ -196,6 +215,7 @@ export const PRESS_FRAME_H = ROW_PT + VSTEP_PT  // The height of a press that sh
 export const GEAR_SLOT = 44  // The slot of the gear that flips a card, in points
 export const WORD_FOOT_W = 44  // The least width a lone word takes in the layout, in points
 export const HEADER_SLACK_PT = 14  // Room kept free when a card header decides if its controls fit one row
+export const FRAMED_TITLE_GAP_PT = CHEVRON_GAP  // The least space from a card title to a framed control beside it: the frame's own side air adds the rest
 export const HIT_PAD_BLANKS = 2  // No-break blanks added each side of a small choice's or a More word's label
 // A lone word at a card's right edge (More, Less, a jump word)
 export const EDGE_WORD_OUT_PT = BUTTON_PAD + HIT_PAD_BLANKS * BLANK_PT
@@ -235,30 +255,36 @@ export const GROUND_DARK = '#141413'  // The app's dark ground (reference for th
 // The tile being dragged is solid, not see-through, so what it passes over does not show through
 export const ARRANGE_LIFT_FILL = seen('#3a3a38')  // Dragged tile: fill
 export const ARRANGE_LIFT_TEXT = seen('#f2f1ec')  // Dragged tile: text
-export const BLUE = seen('#4177d0')  // Finished dot, and bars below 70%
-export const AMBER = seen('#f0b544')  // Needs-you dot, and bars from 70%
+export const BLUE = seen('#4177d0')  // Finished dot, and bars below 80% (LEVEL_AMBER_PCT)
+export const AMBER = seen('#f0b544')  // Needs-you dot, and bars from 80%
 export const RED = seen('#d9534f')  // Bars from 90%
 // Text in the state colour uses the theme's own key, which adapts to light and dark
 export const WARNING = 'warning'
+export const DANGER = 'error'  // Text in the red state colour (a figure from LEVEL_RED_PCT), the theme's own key
 // The amber chip's word (light value measured on the app's own chip)
 export const CHIP_TEXT_LIGHT = seen('#6d4714')  // Amber chip text, light mode
 export const CHIP_TEXT_DARK = seen('#e8ad45')  // Amber chip text, dark mode
 // The On and Off chips (for contrast): the word is 11.5 pt text straight on the card
 export const CHIP_TEXT_OFF_LIGHT = '#5c5b57'  // Off chip text, light mode (about 6 on the light card)
 export const CHIP_TEXT_OFF_DARK = '#a3a19a'  // Off chip text, dark mode (about 6.6 on the dark card)
-export const CHIP_TEXT_ON_LIGHT: Record<string, string> = { native: '#1a56a8', violet: '#5a43ad', teal: '#00685e', rose: '#a8305a' }  // On chip text by theme id, light mode (4.7 to 5.3)
-export const CHIP_TEXT_ON_DARK: Record<string, string> = { native: '#8ab4f0', violet: '#b3a2f0', teal: '#3cc8b8', rose: '#f08aab' }  // On chip text by theme id, dark mode (5.9 to 6.6)
+export const CHIP_TEXT_ON_LIGHT: Record<string, string> = { native: '#1a56a8', violet: '#5a43ad', teal: '#00685e', rose: '#a8305a', green: '#2a6b35', ocean: '#1a5f86', slate: '#4a5666', plum: '#86377d' }  // On chip text by theme id, light mode (4.7 to 6.5)
+export const CHIP_TEXT_ON_DARK: Record<string, string> = { native: '#8ab4f0', violet: '#b3a2f0', teal: '#3cc8b8', rose: '#f08aab', green: '#7cc98a', ocean: '#7cc0e6', slate: '#a9b6c8', plum: '#e09ad6' }  // On chip text by theme id, dark mode (5.9 to 8.3)
 
-// Themes: a theme changes only the accent, the colour of the finished dot and of bars below 70%
+// Themes: a theme changes only the accent, the colour of the finished dot and of bars below 80% (LEVEL_AMBER_PCT)
 export const THEME_VIOLET = seen('#7a62c9')  // Accent of the Violet theme
 export const THEME_TEAL = seen('#2f9e92')  // Accent of the Teal theme
 export const THEME_ROSE = seen('#c9577a')  // Accent of the Rose theme
-export const THEME_ACCENTS: Record<string, string> = { native: BLUE, violet: THEME_VIOLET, teal: THEME_TEAL, rose: THEME_ROSE }  // Accent by theme id
+// Four more: each reads 3.3 or more as a mark on the light and the dark card, so none needs a light twin. No amber or red: those mean attention
+export const THEME_GREEN = '#3a8f49'  // Accent of the Green theme: 3.50 light, 4.09 dark
+export const THEME_OCEAN = '#2a83b2'  // Accent of the Ocean theme: 3.66 light, 3.92 dark
+export const THEME_SLATE = '#6b7a8f'  // Accent of the Slate theme: 3.80 light, 3.78 dark
+export const THEME_PLUM = '#a5509b'  // Accent of the Plum theme: 4.32 light, 3.32 dark
+export const THEME_ACCENTS: Record<string, string> = { native: BLUE, violet: THEME_VIOLET, teal: THEME_TEAL, rose: THEME_ROSE, green: THEME_GREEN, ocean: THEME_OCEAN, slate: THEME_SLATE, plum: THEME_PLUM }  // Accent by theme id
 // Marks in light mode: the Teal accent is 2.80 on the light card, so Teal has a darker twin for light
 export const THEME_TEAL_LIGHT = '#00867a'  // Teal accent as a mark in light mode: 3.89 on the light card
 export const AMBER_LIGHT = '#a86f00'  // Amber as a mark (dot, bar) in light mode: 3.69 on the light card
 export const RED_LIGHT = RED  // Red as a mark in light mode: 3.32 on the light card, passes 3 as it
-export const THEME_ACCENTS_LIGHT: Record<string, string> = { native: BLUE, violet: THEME_VIOLET, teal: THEME_TEAL_LIGHT, rose: THEME_ROSE }  // Accent by theme id, as a mark in light mode
+export const THEME_ACCENTS_LIGHT: Record<string, string> = { native: BLUE, violet: THEME_VIOLET, teal: THEME_TEAL_LIGHT, rose: THEME_ROSE, green: THEME_GREEN, ocean: THEME_OCEAN, slate: THEME_SLATE, plum: THEME_PLUM }  // Accent by theme id, as a mark in light mode
 // The theme id of an accent colour (what `look.accent` holds), 'native' when it is none of them
 export const themeOfAccent = (accent: string): string => Object.keys(THEME_ACCENTS).find(k => THEME_ACCENTS[k] === accent) ?? 'native'
 // The accent as a mark in light mode: the same accent, darker where the theme needs it
@@ -275,10 +301,12 @@ export const SWITCH_ANIM_WINDOW_MS = 600  // How long after a press a redraw sti
 // What the person chose in Settings > Cards and look
 export const look: { accent: string; motion: boolean } = { accent: BLUE, motion: true }
 
-// Bars change colour with the level: accent, amber from 70%, red from 90%
-export const levelColor = (pct: number): string => (pct >= 90 ? RED : pct >= 70 ? AMBER : look.accent)
+export const LEVEL_AMBER_PCT = 80  // A bar (and the band's figure beside it) turns amber from this much used: the same point as LIMIT_HOT_PCT, so the colour always has its word ("Near the limit")
+export const LEVEL_RED_PCT = 90  // A bar (and the band's figure beside it) turns red from this much used
+// Bars change colour with the level: accent, amber from 80%, red from 90%
+export const levelColor = (pct: number): string => (pct >= LEVEL_RED_PCT ? RED : pct >= LEVEL_AMBER_PCT ? AMBER : look.accent)
 // The same, as a mark in light mode: red as it is, the darker amber, the accent's light twin
-export const levelColorLight = (pct: number): string => (pct >= 90 ? RED_LIGHT : pct >= 70 ? AMBER_LIGHT : accentLight(look.accent))
+export const levelColorLight = (pct: number): string => (pct >= LEVEL_RED_PCT ? RED_LIGHT : pct >= LEVEL_AMBER_PCT ? AMBER_LIGHT : accentLight(look.accent))
 
 // The back face of a flipped card: compact
 export const FACE_ROW_PT = LIST_ROW_H + VSTEP_PT  // Flipped card: the pitch of one settings row on the face, in points
@@ -299,21 +327,23 @@ export const SECTION_GAP = VSTEP_PT  // Section label: air above it, in points (
 export const SECTION_COLOR_LIGHT = GREY_TEXT_LIGHT  // Section label: the dim text grey, light mode (5.51 on the card)
 export const SECTION_COLOR_DARK = GREY_TEXT_DARK  // Section label: the dim text grey, dark mode (5.70 on the card)
 // How wide a line of pane text really
-export const TEXT_CHAR_PT = 7  // Average width of one letter of normal pane text, in points
+export const TEXT_CHAR_PT = 7.8  // Average width of one letter of normal pane text, in points
 // For example, "Detail level, accent colour and which cards show." is one line in a 344 pt card
-export const TEXT_SPACE_PT = 3.6  // A space
-export const TEXT_NARROW_PT = 3.4  // I j l
-export const TEXT_THIN_PT = 4.8  // T f r I and ( ) - / (thin letters)
-export const TEXT_ROUND_PT = 7.2  // Every other lowercase letter and digit
-export const TEXT_CAP_PT = 8.6  // A capital letter
-export const TEXT_WIDE_PT = 10.5  // M w M W (wide letters)
+export const TEXT_SPACE_PT = 4.05  // A space
+export const TEXT_NARROW_PT = 3.5  // I j l
+export const TEXT_THIN_PT = 5.2  // T f r I and ( ) - / (thin letters)
+export const TEXT_ROUND_PT = 8  // Every other lowercase letter and digit
+export const TEXT_CAP_PT = 9.4  // A capital letter
+export const TEXT_WIDE_PT = 11.5  // M w M W (wide letters)
 export const NOTE_MIN_LETTERS = 12  // A header note that would keep fewer letters than this is dropped
+export const BAND_FIT_SLACK_PT = 4  // Band: room kept free when parts are fitted to the width, for the error of the letter estimate (measured within 4 pt per part)
+export const BAND_LINE_MIN_PT = NOTE_MIN_LETTERS * TEXT_CHAR_PT  // Band: a posted line keeps at least this much room, so a mark never stands without its words
 export const NOTE_MAX_LINES = 2  // A note line in a card
 export const CHOICE_NOTE_MIN_PT = 210  // A settings row's note beside its choices keeps at least this many points
-export const BOLD_CHAR_PT = 7.4  // Average width of one letter of bold pane text (card titles), in points
+export const BOLD_CHAR_PT = 8  // Average width of one letter of bold pane text (card titles), in points
 export const SETTING_ROW_GAP = VSTEP_PT  // The gap between two setting rows on a flipped card's face
 // Air in the Settings view
 export const SETTINGS_ROW_GAP = VSTEP_PT  // The gap between two settings in the Settings view: half a row
 export const CHOICE_NOTE_GAP = VSTEP_PT  // From a setting's words (label and note) to its choices when they sit under the words
-export const SETTINGS_SPAN_GAP = 2 * COL_PT  // The gap between the inner columns of an opened Settings section that spans several columns
+export const settingsSpanGap = (): number => 2 * columnPt()  // The gap between the inner columns of an opened Settings section that spans several columns
 export const SETTINGS_OPEN_ROWS_PER_COLUMN = 6  // An opened Settings section on a wide pane spans one column for each 6 rows it holds

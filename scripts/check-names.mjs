@@ -31,6 +31,7 @@ for (const root of ['mods/cockpit/hooks', 'tests/cockpit']) {
       const t = line.trim()
       if (t.startsWith('//') || t.startsWith('*') || t.startsWith('/*')) return
       if (/legacy/i.test(line)) return // names kept on purpose so that old files and runs are still found
+      if (f.startsWith(path.join('tests', 'cockpit')) && /\/\/ names-ok: \S/.test(line)) return // a test line that names the old product on purpose (a test that it is spotted), with its reason after the marker
       const rest = KEPT.reduce((s, re) => s.replace(re, ''), line)
       if (/cockpit/i.test(rest)) fails.push(`${f}:${i + 1}: ${line.trim().slice(0, 100)}`)
     })

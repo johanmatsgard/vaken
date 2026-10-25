@@ -8,11 +8,13 @@ import { shownTitle } from '../core/ledger'
 import type { Io } from '../core/io'
 import { EXPLAIN_TITLES, LINES_MAX, closestTitles, explainLines, matchTitles, recentKinds, titleFor } from '../core/explain'
 import { LEDGER_KEY, readLog } from './compaction'
-import { findSetting, settingPath } from '../core/settings'
+import { findSetting } from '../core/settings'
 import { SESSIONS_SETTING, TOPICS, TOPIC_NAMES, topicOf, topicWhatIs, whatIsLines } from '../core/whatis'
-import { timesWord } from '../core/words'
+import { fillIn } from '../core/fillin'
 import { isFolded } from '../core/menu'
-import { tEn } from '../i18n/t'
+import { t, tr } from '../core/lang'
+import { settingPathSaid } from '../core/settings'
+import { sayIn } from './saylang'
 
 // IO-BLOCK-START
 function io($: EngineInterface): Io {
@@ -59,32 +61,33 @@ export async function explainText(i: Io, args: string): Promise<string> {
   if (topic !== undefined) {
     const key = TOPICS[topic].setting
     const s = key === undefined || key === SESSIONS_SETTING ? undefined : findSetting(key)
-    const change = key === SESSIONS_SETTING ? 'Change it: Settings > Cards and look. The Sessions list there pins or hides a session.' : s === undefined ? undefined : `Change it: ${settingPath(s)}, or /vaken-settings ${s.key} <value>.`
-    return [TOPICS[topic].title, ...whatIsLines(topicWhatIs(topic)), ...(change === undefined ? [] : [change])].join('\n')
+    const change = key === SESSIONS_SETTING ? tr('Change it: Settings > Cards and look. The Sessions list there pins or hides a session.') : s === undefined ? undefined : fillIn(tr('Change it: {path}, or /vaken-settings {key} <value>.'), { path: settingPathSaid(s), key: s.key })
+    return [tr(TOPICS[topic].title), ...whatIsLines(topicWhatIs(topic), tr), ...(change === undefined ? [] : [change])].join('\n')
   }
 
   if (words === '') {
     const kinds = recentKinds(rows, now, 10)
-    const parts = `Parts of the pane: ${TOPIC_NAMES.join(', ')}.`
-    if (kinds.length === 0) return ['Vaken did nothing today that it wrote down.', 'Say /vaken-explain <words> to read about any line, for example /vaken-explain without proof.', parts].join('\n')
-    return [`Today vaken did ${tEn('words.different_thing', { n: kinds.length })}:`, ...kinds.map(k => `  ${shownTitle(titleOf(k.what))} (${timesWord(k.n)} today)`), 'Say /vaken-explain <words> for the reason.', parts].join('\n')
+    const parts = fillIn(tr('Parts of the pane: {list}.'), { list: TOPIC_NAMES.join(', ') })
+    if (kinds.length === 0) return [tr('Vaken did nothing today that it wrote down.'), tr('Say /vaken-explain <words> to read about any line, for example /vaken-explain without proof.'), parts].join('\n')
+    return [fillIn(tr('Today vaken did {things}:'), { things: t('words.different_thing', { n: kinds.length }) }), ...kinds.map(k => `  ${fillIn(tr('{title} ({times} today)'), { title: tr(shownTitle(titleOf(k.what))), times: t('words.times', { n: k.n }) })}`), tr('Say /vaken-explain <words> for the reason.'), parts].join('\n')
   }
 
   const known = [...new Set([...EXPLAIN_TITLES, ...rows.map(r => titleOf(r.what))])]
   const exact = titleFor(words)
   const matches = exact !== undefined ? [exact] : matchTitles(words, known, lastAt)
   if (matches.length === 0) {
-    return [`Nothing matches "${shown(words)}".`, 'The closest lines:', ...closestTitles(words, known, 5, lastAt).map(t => `  ${t}`), 'Say /vaken-explain alone to see what vaken did today.'].join('\n')
+    return [fillIn(tr('Nothing matches "{words}".'), { words: shown(words) }), tr('The closest lines:'), ...closestTitles(words, known, 5, lastAt).map(c => `  ${tr(shownTitle(c))}`), tr('Say /vaken-explain alone to see what vaken did today.')].join('\n')
   }
   const best = matches[0] as string
   const lines = explainLines(
     best,
     rows.filter(r => titleOf(r.what) === best),
     now,
+    tr,
   )
   if (matches.length > 1 && lines.length < LINES_MAX) {
-    const more = matches.slice(1, 3)
-    lines.push(`Also matches: ${more.join('; ')}${matches.length > 3 ? ` and ${matches.length - 3} more` : ''}.`)
+    const more = matches.slice(1, 3).map(m => tr(shownTitle(m))).join('; ')
+    lines.push(matches.length > 3 ? fillIn(tr('Also matches: {list} and {n} more.'), { list: more, n: matches.length - 3 }) : fillIn(tr('Also matches: {list}.'), { list: more }))
   }
   return lines.slice(0, LINES_MAX).join('\n')
 }
@@ -102,9 +105,10 @@ export function registerExplain(on: On): void {
   on('command.run', { command: 'vaken-explain' }, async ($, e, next) => {
     if (isFolded(e.command, e.args)) return next(e)
     try {
+      await sayIn(io($))
       return { text: await explainText(io($), e.args) }
     } catch {
-      return { text: 'Vaken could not read what it wrote down. Try again in a moment.' }
+      return { text: tr('Vaken could not read what it wrote down. Try again in a moment.') }
     }
   })
 }

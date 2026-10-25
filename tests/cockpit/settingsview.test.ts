@@ -54,10 +54,11 @@ test('the modes: defaults read as Recommended, each mode reads as itself, and a 
   expect(modeNow({ ...base, ...findPreset('thrifty')!.values })).toBe('custom')
 })
 
-test('no mode turns Auto compaction or a usage-spending block on', () => {
+test('no mode sets Compact by itself; none turns a usage-spending block on', () => {
   for (const m of MODES) {
     const v = findPreset(m)!.values
-    expect(v['compact.mode']).not.toBe('auto')
+    // No mode sets Compact by itself: a choice the person made stays, and an unset row reads Auto
+    expect(v['compact.mode']).toBeUndefined()
     for (const k of ['cache.keeper', 'laptop.mode', 'awake.mode', 'setup.apply']) expect(v[k] ?? defaults()[k], `${m}: ${k}`).toBe(defaults()[k])
     expect(v['resume.mode'] ?? defaults()['resume.mode'], `${m}: resume.mode`).not.toBe('resume')
     // The agent model row is a tip (Suggest only tells you): never Auto in a mode.
@@ -65,7 +66,7 @@ test('no mode turns Auto compaction or a usage-spending block on', () => {
   }
   const quiet = findPreset('quiet')!.values
   for (const k of ['guard.destructive', 'limits.warn', 'notify.mode']) expect(findPreset('balanced')!.values[k]).toBe(quiet[k])
-  const turnedOn = ['prompt.check', 'assume.check', 'plan.first', 'claude.notes']
+  const turnedOn = ['prompt.check', 'assume.check', 'plan.first', 'claude.notes', 'next.mode']
   for (const [k, v] of Object.entries(findPreset('balanced')!.values)) if (findPreset('full')!.values[k] !== undefined && !turnedOn.includes(k)) expect(findPreset('full')!.values[k], k).toBe(v)
   for (const n of ['careful', 'balanced', 'thrifty', 'everything', 'backoffice']) expect(PRESETS.some(p => p.name === n)).toBe(true)
 })
@@ -108,6 +109,9 @@ test('state words: a switch says On or Off, a choice says itself, Watch only rea
   expect(chipWord(by('compact.mode'), 'watch', false)).toBe('Watch')
   expect(toneOf(by('compact.mode'), 'suggest')).toBe('suggest')
   expect(toneOf(by('look.theme'), 'rose')).toBe('plain')
+  // An Ask row acts (it sends Claude a request), so the mode card counts it as on, not as only suggest
+  expect(toneOf(by('prompt.check'), 'ask')).toBe('on')
+  expect(toneOf(by('plan.first'), 'ask')).toBe('on')
 })
 
 test('the expert rows leave their sections for the Advanced fold, and stay in the registry and the text command', () => {
@@ -153,7 +157,7 @@ test('every setting has a section, a card\'s own setting sits in its card\'s zon
   expect(SETTINGS.filter(s => s.key.startsWith('ship.')).map(s => s.key), 'ship.* settings exist now: give Ship its own section (core/settingsmap.ts ZONE_SECTION)').toEqual([])
   expect(where('plain.mode')).toBe('Money and plan')
   expect(where('value.weekly')).toBe('Prompts and memory')
-  expect(where('phone.mode')).toBe('Agents')
+  expect(where('phone.mode')).toBe('Notices')
   expect(where('notify.mode')).toBe('Notices')
   expect(where('cards.guard')).toBe('Cards and look')
 })
@@ -207,7 +211,7 @@ test('Settings: the mode card, the counts line, a chip on every row and the hove
   expect(marks).toContain('Recommended, selected')
   expect(marks).toContain('Only alerts')
   expect(marks).toContain('Everything useful')
-  expect(await textOf(top, /^Tips, recaps, budget warnings, decision log\. No extra model calls, only short safety notes\.$/)).toBe(true)
+  expect(await textOf(top, /^Tips, recaps, cost tips, decision log\. This mode sends Claude only short safety notes\.$/)).toBe(true)
   expect(await textOf(top, /^Alerts when a session needs you/)).toBe(false)
   expect(await textOf(top, /^uses a little plan$/)).toBe(true)
   expect(await textOf(top, /^Picking a mode sets its settings\. Your own changes to them are replaced\.$/)).toBe(true)
@@ -223,10 +227,10 @@ test('Settings: the mode card, the counts line, a chip on every row and the hove
   expect(await safety.find({ key: 'count-settings-safety' }), 'count chip').toBeDefined()
   await safety.press({ key: 'mode-full' })
   await safety.unmount()
-  // Full was applied in one press: the weekly line goes on, notes go to Claude, compaction is not Auto.
+  // Full was applied in one press: the weekly line goes on, notes go to Claude, compaction is Auto.
   expect(mem.get('cockpit:setting:value.weekly')).toBe('on')
   expect(mem.get('cockpit:setting:claude.notes')).toBe('all')
-  expect(mem.has('cockpit:setting:compact.mode')).toBe(false)
+  expect(mem.get('cockpit:setting:compact.mode') ?? 'auto').toBe('auto')
   expect(mem.has('cockpit:setting:guard.destructive')).toBe(false)
   const after = await mount()
   expect(await after.find({ key: 'mode-full' })).toBeDefined()
@@ -324,14 +328,14 @@ test('a group split across sections: its focus shows the rows that sit in the on
   }
   expect(sectionOf('Attention').name).toBe('Notices')
   expect(keys('Attention')).toContain('notify.mode')
-  expect(keys('Attention')).not.toContain('phone.mode')
+  expect(keys('Attention')).toContain('phone.mode')
   expect(keys('Attention')).not.toContain('away.policy')
   // Routing: the agents card's row and the Chat card's hint row sit in two sections; the focus shows one part, never both.
   const routing = keys('Model choice')
   expect(routing.includes('route.mode') && routing.includes('hints.model')).toBe(false)
 })
 
-test('changed (U8): a row differs from the mode in use, or from its default when the values match no mode; the sections count them', () => {
+test('changed: a row differs from the mode in use, or from its default when the values match no mode; the sections count them', () => {
   const base = defaults()
   expect(changedBySection(SETTINGS, base, true).size, 'nothing changed on a fresh store').toBe(0)
   const notify = SETTINGS.find(s => s.key === 'notify.mode')!
@@ -346,7 +350,7 @@ test('changed (U8): a row differs from the mode in use, or from its default when
   expect([...changedBySection(SETTINGS, fullMoved, true).values()].reduce((a, b) => a + b, 0)).toBe(1)
 })
 
-test('the dollar rows of a card are told apart so the flipped Plan limits card can title them (U43)', () => {
+test('the dollar rows of a card are told apart so the flipped Plan limits card can title them', () => {
   const keys = faceOf('limit', true, 100).rows.map(r => r.key)
   expect(keys.filter(isSpending)).toEqual(['cost.budget', 'cost.session', 'cost.day'])
   expect(tr('Spending limits (estimates)')).toBe('Spending limits (estimates)')
@@ -355,7 +359,7 @@ test('the dollar rows of a card are told apart so the flipped Plan limits card c
   setLang('en')
 })
 
-test('Settings: Reset to defaults asks first, Keep leaves everything, Clear wipes and says so (U3); the counts line has a unit (U34)', SLOW, async ($, on) => {
+test('Settings: Reset to defaults asks first, Keep leaves everything, Clear wipes and says so; the counts line has a unit', SLOW, async ($, on) => {
   const { mem, mount } = await openSettings($, on)
   mem.set('cockpit:setting:notify.mode', 'all')
   const top = await mount()
@@ -381,7 +385,7 @@ test('Settings: Reset to defaults asks first, Keep leaves everything, Clear wipe
   await done.unmount()
 })
 
-test('Settings: Delete everything vaken stored only shows a preview on the first press, Keep leaves it all, the second press deletes (L3-10)', SLOW, async ($, on) => {
+test('Settings: Delete everything vaken stored only shows a preview on the first press, Keep leaves it all, the second press deletes', SLOW, async ($, on) => {
   const { mem, mount } = await openSettings($, on)
   mem.set('cockpit:setting:notify.mode', 'all')
   mem.set('cockpit:note:keep-me', 1)
@@ -414,14 +418,18 @@ test('Settings: Delete everything vaken stored only shows a preview on the first
   await done.unmount()
 })
 
-test('the Welcome card shows the sentence of the mode on now and marks Recommended (what a fresh store reads as) the usual choice (U1, D5, F11)', SLOW, async ($, on) => {
+test('the Start here card asks the first question with what a fresh store reads as (the mode Recommended) chosen and marked Recommended', SLOW, async ($, on) => {
   mock.clock(on, { now: NOW })
   mock.env(on, { HOME: '/home/test' })
   engine(on)
   const pane = await mountAt($ as never, 120)()
-  expect(await textOf(pane, /^Recommended \(the usual choice\): /)).toBe(true)
-  expect(await textOf(pane, /^Only alerts: /)).toBe(false)
-  expect(await textOf(pane, /^Everything useful: /)).toBe(false)
-  expect(await textOf(pane, /^Send your first message\./)).toBe(true)
+  expect(await textOf(pane, /^Step 1 of 5$/)).toBe(true)
+  // Every answer says what it means; the recommended one is named Recommended, said once (no chip repeats its name)
+  expect(await textOf(pane, /^A session waits for you, a limit is near, a risky step\.$/)).toBe(true)
+  expect(await textOf(pane, /^Plus recaps, cost tips and a check that Claude did what it said\. Free\. On from the start: vaken compacts the session by itself when it fills, and plain mode asks Claude for short, simple words\.$/)).toBe(true)
+  expect(await pane.find({ key: 'start-mode-balanced-chip' })).toBeUndefined()
+  expect(await pane.find({ key: 'start-mode-full-chip' })).toBeUndefined()
+  // The first-message line waits for the summary
+  expect(await textOf(pane, /^Send your first message\./)).toBe(false)
   await pane.unmount()
 })

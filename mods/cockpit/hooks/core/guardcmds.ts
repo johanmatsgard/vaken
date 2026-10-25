@@ -3,6 +3,8 @@ import { applyKind } from './guardmigrate'
 import { basename, commandsOf, flagsOf } from './guardshell'
 import type { Cmd } from './guardshell'
 import { hhmmss } from './time'
+import { fillIn } from './fillin'
+import { tr } from '../i18n/t'
 
 export const KEEP_COMMANDS = 50
 const LABEL_MAX = 60
@@ -17,6 +19,14 @@ const READ = new Set(['ls', 'cat', 'head', 'tail', 'less', 'more', 'grep', 'egre
 const EDIT = new Set(['mkdir', 'touch', 'cp', 'mv', 'ln', 'chmod', 'chown', 'tee', 'tar', 'zip', 'unzip', 'gzip', 'gunzip', 'open'])
 // Compared in lower case, as cmd and PowerShell do.
 const WIN_OPEN = new Set(['start', 'explorer', 'explorer.exe', 'start-process', 'saps', 'invoke-item', 'ii'])
+// cmd and PowerShell names (with their aliases), compared in lower case without .exe like WIN_OPEN.
+// Not `find` or `fc`: on a Mac `find -exec` runs commands and `fc` reruns old ones.
+const WIN_DELETE = new Set(['del', 'erase', 'rd', 'rmdir', 'rm', 'remove-item', 'ri', 'clear-recyclebin'])
+const WIN_READ = new Set(['dir', 'type', 'where', 'findstr', 'more', 'tree', 'get-childitem', 'gci', 'ls', 'get-content', 'gc', 'cat', 'select-string', 'sls', 'get-item', 'gi', 'get-location', 'gl', 'pwd', 'test-path', 'resolve-path', 'get-command', 'gcm', 'where-object', 'select-object', 'measure-object', 'sort-object', 'get-filehash', 'get-process', 'gps', 'tasklist', 'set-location', 'sl', 'cd', 'chdir', 'echo', 'write-output', 'write-host', 'hostname', 'whoami', 'ver'])
+const WIN_EDIT = new Set(['copy', 'move', 'ren', 'rename', 'md', 'mkdir', 'xcopy', 'robocopy', 'attrib', 'mklink', 'new-item', 'ni', 'copy-item', 'cpi', 'cp', 'move-item', 'mi', 'mv', 'rename-item', 'rni', 'set-content', 'add-content', 'ac', 'out-file', 'compress-archive', 'expand-archive'])
+const winName = (prog: string): string => prog.toLowerCase().replace(/\.exe$/, '')
+// A redirect to the null device writes no file: /dev/null, and NUL or $null on Windows.
+const NULL_TARGET = /^(?:\/dev\/null|nul|\$null)$/i
 const RUN = new Set(['node', 'python', 'python3', 'ruby', 'bash', 'sh', 'zsh', 'tsx', 'deno', 'go', 'cargo', 'make', 'source', '.'])
 const TEST = new Set(['pytest', 'vitest', 'jest', 'mocha', 'rspec', 'phpunit'])
 const BUILD = new Set(['tsc', 'webpack', 'vite', 'esbuild', 'rollup', 'gradle', 'mvn', 'xcodebuild', 'swift', 'dotnet', 'next', 'eslint', 'prettier', 'ruff', 'black', 'mypy'])
@@ -33,7 +43,9 @@ function kindOfCmd(c: Cmd): CmdKind {
   const [a, b] = pos
   const prog = basename(c.prog)
   if (applyKind(c) !== undefined) return 'migration'
-  if (['rm', 'rmdir', 'unlink', 'shred', 'trash'].includes(prog)) return 'delete'
+  const win = winName(prog)
+  if (['rm', 'rmdir', 'unlink', 'shred', 'trash'].includes(prog) || WIN_DELETE.has(win)) return 'delete'
+  if (win === 'robocopy' && c.args.some(t => /^[/-](?:mir|purge)$/i.test(t.t))) return 'delete'
   if (prog === 'find' && c.args.some(t => t.t === '-delete')) return 'delete'
   if (prog === 'git') return a === 'clean' ? 'delete' : 'git'
   if (prog === 'gh' && a === 'release') return 'deploy'
@@ -55,8 +67,8 @@ function kindOfCmd(c: Cmd): CmdKind {
   if (prog === 'sed' && short.has('i')) return 'edit'
   if (NETWORK.has(prog)) return 'network'
   if (BUILD.has(prog)) return 'build'
-  if (READ.has(prog)) return c.redirects.some(r => (r.op === '>' || r.op === '>>') && r.target !== '/dev/null' && !r.target.startsWith('&')) ? 'edit' : 'read'
-  if (EDIT.has(prog) || WIN_OPEN.has(prog.toLowerCase())) return 'edit'
+  if (READ.has(prog) || WIN_READ.has(win)) return c.redirects.some(r => (r.op === '>' || r.op === '>>') && !NULL_TARGET.test(r.target) && !r.target.startsWith('&')) ? 'edit' : 'read'
+  if (EDIT.has(prog) || WIN_OPEN.has(prog.toLowerCase()) || WIN_EDIT.has(win)) return 'edit'
   if (RUN.has(prog)) return 'run'
   return 'other'
 }
@@ -71,6 +83,8 @@ function bestOf(command: string): { kind: CmdKind; cmd?: Cmd } {
 }
 
 export const kindOf = (command: string): CmdKind => bestOf(command).kind
+// The text of the simple command that weighs most, such as the `git reset --hard` in `cd app && git reset --hard`.
+export const riskiestPiece = (command: string): string | undefined => bestOf(command).cmd?.raw
 
 
 const VERB_PROGRAMS = new Set(['git', 'npm', 'pnpm', 'yarn', 'bun', 'docker', 'podman', 'gh', 'kubectl', 'cargo', 'go', 'brew', 'pip', 'pip3'])
@@ -213,16 +227,16 @@ export function parseEntries(v: unknown): CmdEntry[] {
 
 export const addEntry = (list: CmdEntry[], e: CmdEntry): CmdEntry[] => [...list, e].slice(-KEEP_COMMANDS)
 
-const endWord = (e: CmdEntry): string => (e.status === 'ok' ? 'ok' : e.status === 'denied' ? 'stopped by the guard' : e.status === 'interrupted' ? 'stopped' : e.exit === undefined ? 'failed' : `failed (exit ${e.exit})`)
+const endWord = (e: CmdEntry): string => (e.status === 'ok' ? tr('ok') : e.status === 'denied' ? tr('stopped by the guard') : e.status === 'interrupted' ? tr('stopped') : e.exit === undefined ? tr('failed') : fillIn(tr('failed (exit {n})'), { n: e.exit }))
 
 export function commandsText(list: CmdEntry[], on: boolean): string {
-  const lines = [`Shell commands in this session, in order (the last ${KEEP_COMMANDS} at most; kind, time, how it ended, a label of the program and the kind, never the arguments).`]
-  if (!on) lines.push('The list is off now, so new commands are not added. Turn it on: Settings > Safety.')
-  if (list.length === 0) lines.push('', 'No shell command kept yet.')
+  const lines = [fillIn(tr('Shell commands in this session, in order (the last {n} at most; kind, time, how it ended, a label of the program and the kind, never the arguments).'), { n: KEEP_COMMANDS })]
+  if (!on) lines.push(tr('The list is off now, so new commands are not added. Turn it on: Settings > Safety.'))
+  if (list.length === 0) lines.push('', tr('No shell command kept yet.'))
   else {
     lines.push('')
     for (const e of list) lines.push(`${hhmmss(e.at)}  ${e.kind.padEnd(9)} ${endWord(e).padEnd(12)} ${e.label}`)
   }
-  lines.push('', 'The output and the arguments of a command are never kept: only its program name and its kind.')
+  lines.push('', tr('The output and the arguments of a command are never kept: only its program name and its kind.'))
   return lines.join('\n')
 }

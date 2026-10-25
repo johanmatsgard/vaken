@@ -12,6 +12,7 @@ import { startOfDay } from '../core/ledger'
 import { readSetting } from '../core/settings'
 import { LEDGER_KEY, pushLog } from './compaction'
 import { subArgs } from '../core/menu'
+import { sayIn } from './saylang'
 
 // IO-BLOCK-START
 function io($: EngineInterface): Io {
@@ -106,6 +107,7 @@ export function registerDiet(on: On): void {
   on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
     const rest0 = subArgs(e.args, 'run', 'diet')
     if (rest0 === undefined) return next(e)
+    await sayIn(io($)).catch(() => undefined)
     const { report, home } = await collect($)
     return { text: dietText(report, home) }
   })

@@ -1,5 +1,7 @@
 // Reads the memory notes Claude keeps (per-project folder and CLAUDE.md files) and shows them in plain words. Read only.
 import type { HelpEntry } from './registry'
+import { fillIn } from './fillin'
+import { tr } from './lang'
 import { detectStyle, lastName as lastNameOf, lines as linesOf, projectFolderName as folderNameOf } from './platform'
 
 export const MEMORY_HELP: HelpEntry[] = [{ title: 'What memory is', text: 'Claude keeps short notes about you and your project in files, so it remembers between sessions. /vaken-memory shows them in plain words. To correct one, tell Claude "forget this" or "change that note", or edit the file yourself.' }]
@@ -48,15 +50,15 @@ export function parseNote(text: string): { description?: string; type?: string; 
 }
 
 const KIND_WORD: Record<string, string> = { user: 'about you', feedback: 'how you like to work', project: 'about the project', reference: 'where to look' }
-export const kindWord = (type: string | undefined): string => (type === undefined ? 'a note' : (KIND_WORD[type] ?? type))
+export const kindWord = (type: string | undefined): string => (type === undefined ? tr('a note') : tr(KIND_WORD[type] ?? type))
 
 export function memoryText(index: Note[], files: string[], cwdFiles: string[], looked: string[] = []): string {
   const lines: string[] = []
-  const where = looked.length === 0 ? '' : ` Looked for: ${[...new Set(looked)].join(', ')}.`
-  lines.push(index.length === 0 ? `No memory notes for this project yet.${where}` : `Memory notes for this project (${index.length}):`)
+  const where = looked.length === 0 ? '' : ` ${fillIn(tr('Looked for: {names}.'), { names: [...new Set(looked)].join(', ') })}`
+  lines.push(index.length === 0 ? `${tr('No memory notes for this project yet.')}${where}` : fillIn(tr('Memory notes for this project ({n}):'), { n: index.length }))
   for (const n of index) lines.push(`  ${n.line}`)
-  lines.push('', cwdFiles.length === 0 ? 'No CLAUDE.md file found for this folder.' : `Instruction files: ${cwdFiles.join(', ')}.`)
-  if (files.length > 0) lines.push(`Note files: ${files.length}.`)
-  lines.push('', 'To change a note, tell Claude: "forget the note about ..." or "change the note about ...". /vaken-memory <file name> shows one note in full.')
+  lines.push('', cwdFiles.length === 0 ? tr('No CLAUDE.md file found for this folder.') : fillIn(tr('Instruction files: {list}.'), { list: cwdFiles.join(', ') }))
+  if (files.length > 0) lines.push(fillIn(tr('Note files: {n}.'), { n: files.length }))
+  lines.push('', tr('To change a note, tell Claude: "forget the note about ..." or "change the note about ...". /vaken-memory <file name> shows one note in full.'))
   return lines.join('\n')
 }

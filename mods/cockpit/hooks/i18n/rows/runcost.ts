@@ -25,7 +25,7 @@ export const ROWS: Rows = {
   "runcost.tests_pass": {"en":"Tests pass","sv":"Testerna går igenom"},
   "runcost.the_build_works": {"en":"The build works","sv":"Bygget fungerar"},
   "runcost.the_plan_window_has_about_n": {"en":"The plan window has about {n} min left at this pace.","sv":"Planfönstret har ungefär {n} min kvar i den här takten."},
-  "runcost.the_weekly_window_is_n_used": {"en":"The weekly window is {n}% used.","sv":"Veckofönstret är {n} % använt."},
-  "runcost.the_weekly_window_is_n_used_2": {"en":"The weekly window is {n}% used now.","sv":"Veckofönstret är {n} % använt nu."},
+  "runcost.the_weekly_window_is_n_used": {"en":"The weekly window is {n}% used.","sv":"Veckofönstret är {n}\u00a0% använt."},
+  "runcost.the_weekly_window_is_n_used_2": {"en":"The weekly window is {n}% used now.","sv":"Veckofönstret är {n}\u00a0% använt nu."},
   "runcost.this_may_cost_more_than_the": {"en":"This may cost more than the run limit of {usd}.","sv":"Det kan kosta mer än körningens gräns på {usd}."},
 }

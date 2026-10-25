@@ -2,7 +2,7 @@
 import { expect } from 'claude-code/testing'
 import { test } from './slow'
 
-import { stoppedWhat } from '../hooks/core/ship'
+import { riskyStopped } from '../hooks/core/ship'
 import { LEDGER_KEY } from '../hooks/features/compaction'
 import { VIEW_STRINGS } from '../hooks/core/lang'
 import { parsePrView } from '../hooks/core/crewpr'
@@ -185,8 +185,8 @@ test('fix yes puts a fix request for the failing check in the prompt box and lea
 test('Halt is on: fix yes and merge yes yes do nothing and say so; check and looking still work', async () => {
   const f = fake(pr(), 0, 'test\tfail\t1m\thttps://example.test/actions/runs/77\t')
   f.mem.set('cockpit:halt:me', { at: 1 })
-  expect(await shipStepText(f.io, ENV, 'fix yes', f.deps)).toBe('Pause is on. Nothing ran. Resume with /vaken-pause off first.')
-  expect(await shipStepText(f.io, ENV, 'merge yes yes', f.deps)).toBe('Pause is on. Nothing ran. Resume with /vaken-pause off first.')
+  expect(await shipStepText(f.io, ENV, 'fix yes', f.deps)).toBe('This session is paused. Nothing ran. Resume with /vaken-pause off first.')
+  expect(await shipStepText(f.io, ENV, 'merge yes yes', f.deps)).toBe('This session is paused. Nothing ran. Resume with /vaken-pause off first.')
   expect(f.told).toEqual([])
   expect(f.merges()).toEqual([])
   expect(await shipStepText(f.io, ENV, 'fix', f.deps)).not.toMatch(/Halt is on/)
@@ -270,8 +270,8 @@ test('the judge comes first: a number that is not the branch pull request does n
 })
 
 test('the ledger words of a refused merge are not read as a stopped step by the Ship verdict', () => {
-  expect(stoppedWhat('Did not merge a pull request')).toBe(false)
-  expect(stoppedWhat('Merged a pull request from a typed command')).toBe(false)
+  expect(riskyStopped('Did not merge a pull request')).toBe(false)
+  expect(riskyStopped('Merged a pull request from a typed command')).toBe(false)
 })
 
 test('every fixed line of the ship steps has a Swedish twin, is in the language list, and the Swedish keeps its slots', async () => {

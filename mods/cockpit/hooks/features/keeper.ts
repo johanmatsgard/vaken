@@ -177,7 +177,7 @@ export function registerKeeper(on: On): void {
       if (n === 0) throw err
       if (!toldFull) {
         toldFull = true
-        io($).toast(fullToast(n), true)
+        io($).toast(fullToast(n))
       }
       return await next(e)
     }

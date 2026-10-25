@@ -11,6 +11,7 @@ import { readState, stateKey } from '../core/proof'
 import { readSetting } from '../core/settings'
 import { LEDGER_KEY, pushLog } from './compaction'
 import { subArgs } from '../core/menu'
+import { sayIn } from './saylang'
 
 // IO-BLOCK-START
 function io($: EngineInterface): Io {
@@ -83,6 +84,7 @@ export function registerPlanFirst(on: On): void {
     const rest0 = subArgs(e.args, 'planfirst')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i).catch(() => undefined)
     return { text: planLine(await readSetting(i, SETTING_KEY), readPlan(await readNote(i, planKey(await i.sessionId())))) }
   })
 }

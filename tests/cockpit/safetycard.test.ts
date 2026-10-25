@@ -7,7 +7,7 @@ import { HALT_WHAT, RESUME_WHAT, haltKey } from '../hooks/core/guard'
 import { VIEW_STRINGS } from '../hooks/core/lang'
 import { SAFETY_CHECKPOINTS, safetyCardText, safetyLoud, safetyShort, safetyView } from '../hooks/core/safetycard'
 import type { SafetyFacts } from '../hooks/core/safetycard'
-import { SAFETY_CP_FAILED, SAFETY_HALT_SAID, SAFETY_RESUME_SAID } from '../hooks/core/safetywords'
+import { SAFETY_CP_FAILED, SAFETY_HALT_SAID, SAFETY_RESUME_SAID, UNDO_VS_APP } from '../hooks/core/safetywords'
 import { SETTINGS } from '../hooks/core/settings'
 import { indexKey, markKey, namedKey, pendingKey } from '../hooks/core/undo'
 import { LEDGER_KEY } from '../hooks/features/compaction'
@@ -47,9 +47,10 @@ test('loud when halted (urgent) or a step was held lately (warn), calm otherwise
 })
 
 test('Stop: Pause all presses to halt; while halted the row says Halted and Resume', () => {
+  // Calm is quiet: no "Stopped: none" or "Warned: none" rows
   const calm = safetyView(facts(), id)
-  expect(calm.groups.map(g => g.head)).toEqual(['Stop', 'Risky steps today'])
-  expect(calm.groups[0]?.rows).toMatchObject([{ key: 'halt', title: 'Pause all', right: 'Pause', press: { do: 'halt' } }])
+  expect(calm.groups.map(g => g.head)).toEqual(['Stop'])
+  expect(calm.groups[0]?.rows).toMatchObject([{ key: 'halt', title: 'Pause this session', right: 'Pause', press: { do: 'halt' } }])
   const halted = safetyView(facts({ halted: true }), id)
   expect(halted.groups[0]?.rows).toMatchObject([{ key: 'halt', title: 'Paused for safety', right: 'Resume', press: { do: 'resume' } }])
   const via = lineCard('safety', { now: NOW, ledger: [], halted: true, modes: {}, t: id })
@@ -57,43 +58,66 @@ test('Stop: Pause all presses to halt; while halted the row says Halted and Resu
   expect(lineCard('safety', { now: NOW, ledger: [], halted: false, modes: {}, t: id }).groups?.[0]?.rows[0]?.action).toEqual(HALT_ALL)
 })
 
-test('Undo: the files since your last message, then the newest three checkpoints with their age; each presses to a preview', () => {
+test('Undo: the files since your last message, then the checkpoints with their age, past the newest three behind Show N more; each presses to a preview', () => {
   const v = safetyView(facts({ undoFiles: 3, checkpoints: [cp('before-refactor', 2 * HOUR), cp('tidy', 25 * MIN), cp('first', 3 * 24 * HOUR), cp('fourth', 5 * 24 * HOUR)] }), id)
-  expect(v.groups.map(g => g.head)).toEqual(['Stop', 'Undo', 'Risky steps today'])
+  expect(v.groups.map(g => g.head)).toEqual(['Stop', 'Undo'])
   const rows = v.groups[1]?.rows ?? []
-  expect(rows).toHaveLength(1 + SAFETY_CHECKPOINTS)
+  // One more than fits is shown, not folded behind "Show 1 more"
+  expect(rows).toHaveLength(2 + SAFETY_CHECKPOINTS)
+  expect(v.groups[1]?.fold).toBeUndefined()
   expect(rows.map(r => [r.title, r.right])).toEqual([
     ['Preview undo (3 files)', undefined],
     ['before-refactor', '2 h ago · Preview'],
     ['tidy', '25 min ago · Preview'],
     ['first', '3 d ago · Preview'],
+    ['fourth', '5 d ago · Preview'],
   ])
-  expect(rows.map(r => r.press)).toEqual([{ do: 'undoLast' }, { do: 'undoNamed', name: 'before-refactor' }, { do: 'undoNamed', name: 'tidy' }, { do: 'undoNamed', name: 'first' }])
+  // Never dropped: more checkpoints wait behind the fold
+  const many = safetyView(facts({ checkpoints: ['a', 'b', 'c', 'd', 'e', 'f'].map((n, k) => cp(n, (k + 1) * HOUR)).concat([cp('now', 10_000)]) }), id).groups[1]
+  expect(many?.rows).toHaveLength(7)
+  expect(many?.fold).toEqual({ id: 'checkpoints', shown: SAFETY_CHECKPOINTS, more: 7 - SAFETY_CHECKPOINTS })
+  expect(many?.rows.at(-1)?.right).toBe('just now · Preview')
+  expect(rows.map(r => r.press)).toEqual([{ do: 'undoLast' }, { do: 'undoNamed', name: 'before-refactor' }, { do: 'undoNamed', name: 'tidy' }, { do: 'undoNamed', name: 'first' }, { do: 'undoNamed', name: 'fourth' }])
   expect(rows[1]?.what.next).toMatch(/\/vaken-undo name before-refactor yes in the session\. Nothing changes before that\.$/)
   expect(safetyView(facts({ undoFiles: 1 }), id).groups[1]?.rows[0]?.title).toBe('Preview undo (1 file)')
   expect(safetyView(facts(), id).groups.map(g => g.head)).not.toContain('Undo')
   expect([UNDO_LAST, undoNamed('tidy')]).toEqual([{ kind: 'undoLast' }, { kind: 'undoNamed', name: 'tidy' }])
 })
 
-test('the preview opens only under the row it was made for', () => {
-  const f = facts({ undoFiles: 2, checkpoints: [cp('tidy', HOUR)], preview: ['Preview of going back.'], previewOf: 'tidy' })
+test('the preview opens only under the row it was made for, and says each thing once', () => {
+  const some = ['Preview of going back.', '1 file would change:', '  src/a.ts: 2 lines removed, 1 line added', 'Nothing was changed yet. Before a restore vaken keeps a copy. To go ahead: /vaken-undo last yes']
+  const f = facts({ undoFiles: 2, checkpoints: [cp('tidy', HOUR)], preview: some, previewOf: 'tidy' })
   const rows = safetyView(f, id).groups[1]?.rows ?? []
-  expect(rows[0]?.what.facts).toBeUndefined()
-  expect(rows[1]?.what.facts).toEqual(['Preview of going back.'])
-  const last = safetyView({ ...f, previewOf: 'last' }, id).groups[1]?.rows[0]?.what
-  expect(last?.facts).toEqual(['Preview of going back.', 'Type this in the chat box:', '/vaken-undo last yes'])
-  expect(last?.next).toBe('Nothing changes before you type it.')
+  // The one line on who undoes what: the app's checkpoints its file edits, vaken's Undo shell and git steps too
+  expect(rows[0]?.what.facts).toEqual([UNDO_VS_APP])
+  expect(rows[1]?.what.facts).toEqual(['1 file would change:', '  src/a.ts: 2 lines removed, 1 line added'])
+  const last = safetyView({ ...f, previewOf: 'last' }, id).groups[1]?.rows[0]
+  expect(last?.title).toBe('Preview undo (2 files)')
+  expect(last?.what.facts).toEqual(['1 file would change:', '  src/a.ts: 2 lines removed, 1 line added', UNDO_VS_APP, 'Type this in the chat box:', '/vaken-undo last yes'])
+  expect(last?.what.next).toBe('Nothing changes before you type it.')
+  // Nothing can be put back: the title says so, and no copy line or "Nothing changes" repeats it
+  const none = ['Preview of undoing the edits since your last message.', 'Nothing would change.', '  src/f1.ts: cannot be restored, its copy file cannot be read.', 'Nothing was changed.']
+  const empty = safetyView({ ...f, preview: none, previewOf: 'last' }, id).groups[1]?.rows[0]
+  expect(empty?.title).toBe('Undo: nothing can be put back')
+  expect(empty?.what.facts).toEqual(['  src/f1.ts: cannot be restored, its copy file cannot be read.', UNDO_VS_APP])
+  expect(empty?.what.next).toBeUndefined()
 })
 
 test('Risky steps today: stopped and warned counts, each opening its words, from today\'s ledger only', () => {
   const e = (what: string, at = NOW - 60_000) => ({ at, what, did: true })
   const v = lineCard('safety', { now: NOW, ledger: [e('Held a risky command'), e('Held a risky command'), e('Warned about a package install'), e('Held a risky command', NOW - 3 * 24 * HOUR)], halted: false, modes: {}, t: id })
   const rows = v.groups?.find(g => g.head === 'Risky steps today')?.rows ?? []
-  expect(rows.map(r => [r.key, r.title, r.right])).toEqual([['stopped', 'Stopped', '2 steps'], ['warned', 'Warned', '1 step']])
+  // Said the way the Short look says it
+  expect(rows.map(r => [r.key, r.title, r.right])).toEqual([['stopped', '2 steps stopped today', undefined], ['warned', '1 warning today', undefined]])
   expect(rows[0]?.what.facts?.[0]).toMatch(/^Stopped a risky command: 2 times\./)
   expect(rows.map(r => r.action)).toEqual([undefined, undefined])
   expect(v.short).toBe('2 steps stopped today')
-  expect(lineCard('safety', { now: NOW, ledger: [], halted: false, modes: {}, t: id }).groups?.at(-1)?.rows.map(r => r.right)).toEqual(['none', 'none'])
+  expect(lineCard('safety', { now: NOW, ledger: [], halted: false, modes: {}, t: id }).groups?.map(g => g.head)).toEqual(['Stop'])
+  // An extra agent or a call over budget stops a step, but it is not a risky step
+  expect(lineCard('safety', { now: NOW, ledger: [e('Held an extra agent'), e('Held a call over budget')], halted: false, modes: {}, t: id }).short).toBe('All clear')
+  // A line from another session names it
+  const named = lineCard('safety', { now: NOW, ledger: [{ ...e('Held a risky command'), session: 's1', detail: 'rm -rf x' }, { ...e('Held a risky command', NOW - 2 * 60_000), session: 'me', detail: 'rm y' }], halted: false, modes: {}, t: id, safety: { undoFiles: 0, checkpoints: [], sid: 'me', names: { s1: 'Web fixes' } } })
+  expect(named.groups?.find(g => g.head === 'Risky steps today')?.rows[0]?.what.last).toEqual(['1 min ago: Web fixes: rm -rf x', '2 min ago: rm y'])
   expect(v.whats).toHaveLength(v.lines.length)
 })
 
@@ -121,11 +145,11 @@ test('the card is a line card with its own Show or Hide, and every new word it s
   const words = englishOf('safety')
   expect(words.filter(w => !VIEW_STRINGS.includes(w))).toEqual([])
   expect(words.filter(w => (SV[w] ?? '') === '')).toEqual([])
-  for (const w of ['Safety', 'Stop', 'Undo', 'Resume', 'Paused for safety', 'Stopped', 'Preview undo (1 file)', 'Preview undo ({n} files)', 'Type this in the chat box:', '{n} steps stopped today', '{t} ago']) expect(SV[w] ?? '').not.toBe('')
+  for (const w of ['Safety', 'Stop', 'Undo', 'Resume', 'Paused for safety', 'Stopped', 'Preview undo (1 file)', 'Preview undo ({n} files)', 'Type this in the chat box:', '{n} steps stopped today']) expect(SV[w] ?? '').not.toBe('')
   const sv = safetyView(facts({ undoFiles: 2, checkpoints: [cp('tidy', HOUR)], held: 2 }), w => SV[w] ?? w)
   expect(sv.short).toBe('2 steg stoppades i dag')
   expect(sv.groups.map(g => g.head)).toEqual(['Stoppa', 'Ångra', 'Riskabla steg i dag'])
-  expect(sv.groups[0]?.rows[0]).toMatchObject({ title: 'Pausa allt', right: 'Pausa' })
+  expect(sv.groups[0]?.rows[0]).toMatchObject({ title: 'Pausa den här sessionen', right: 'Pausa' })
 })
 
 const paneProps = { title: 'Vaken', isFocused: false, bodyColumns: 120, placement: 'inline' as const, scroll: { bodyRows: 80, offset: 0, total: 80 }, view: {} }
@@ -179,7 +203,7 @@ test('the pane shows the card; Pause all halts this session with a ledger line a
   const w = harness(on, world(NOW))
   const ui = await mountPane($)
   expect(await textOf(ui, /^Safety$/)).toBe(true)
-  expect(await textOf(ui, /^Pause all$/)).toBe(true)
+  expect(await textOf(ui, /^Pause this session$/)).toBe(true)
   expect(await textOf(ui, /^Preview undo \(2 files\)$/)).toBe(true)
   expect(await textOf(ui, /^before-refactor$/)).toBe(true)
   expect(await textOf(ui, /^2 h ago · Preview$/)).toBe(true)
@@ -191,8 +215,8 @@ test('the pane shows the card; Pause all halts this session with a ledger line a
   await ui.redraw()
   expect(await textOf(ui, /^Paused for safety$/)).toBe(true)
   expect(await textOf(ui, /^Resume$/)).toBe(true)
-  // Needs you does not list the halt again: it is this card's row, so the Needs you card says its calm line.
-  expect(await textOf(ui, /^Nothing needs you\.$/)).toBe(true)
+  // Needs you does not list the halt again: it is this card's row, so the Needs you card is its calm row ("None").
+  expect(await textOf(ui, /^None$/)).toBe(true)
   await ui.press({ key: 'press-ol-safety:halt-0' })
   await clock.settle()
   expect(w.mem.has(haltKey('test-session'))).toBe(false)
@@ -210,19 +234,22 @@ test('a checkpoint\'s row shows the preview of going back, notes it for the type
   await clock.settle()
   await ui.redraw()
   expect(w.mem.get(pendingKey('test-session'))).toMatchObject({ kind: 'named', name: 'before-refactor', at: NOW })
-  expect(await textOf(ui, /^Preview of going back to checkpoint "before-refactor"\.$/)).toBe(true)
-  expect(await textOf(ui, /^What you can do: To go back to it, type \/vaken-undo name before-refactor yes in the session\./)).toBe(true)
+  // The preview's own title is not repeated under the row that says it
+  expect(await textOf(ui, /^Preview of going back to checkpoint/)).toBe(false)
+  // Here no file can be put back: the file says why, and no line asks to type the go-back command
+  expect(await textOf(ui, /cannot be restored/)).toBe(true)
+  expect(await textOf(ui, /^What you can do: To go back to it/)).toBe(false)
   expect(w.mem.get(LEDGER_KEY)).toBeUndefined()
   expect(`${CHECKPOINT_OPEN}before-refactor`).toBe('safety:cp-before-refactor')
   await ui.press({ key: 'press-ol-safety:cp-before-refactor-0' })
   await clock.settle()
   await ui.redraw()
-  expect(await textOf(ui, /^Preview of going back/)).toBe(false)
+  expect(await textOf(ui, /cannot be restored/)).toBe(false)
   await ui.press({ key: 'press-ol-safety:undo-last-0' })
   await clock.settle()
   await ui.redraw()
   expect(UNDO_OPEN).toBe('safety:undo-last')
-  expect(await textOf(ui, /^Preview of undoing the edits since your last message\.$/)).toBe(true)
+  expect(await textOf(ui, /^Type this in the chat box:$|^What it means: Before a step changes a file/)).toBe(true)
   expect(await textOf(ui, /^Preview of going back to checkpoint/)).toBe(false)
   expect(w.toasts).not.toContain(SAFETY_CP_FAILED)
   await ui.unmount()

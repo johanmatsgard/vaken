@@ -8,6 +8,7 @@ import { listedCardOf } from '../hooks/core/cardhome'
 
 const sentences = (text: string): string[] => text.split(/(?<=\.)\s/)
 const LONGER: Record<string, number> = {
+  'Keys in the pane': 5,
   'Why the slash menu is short': 5,
   'What the prompt review does': 5,
   'What the answer shape does': 7,
@@ -63,7 +64,7 @@ test('the list of longer help entries names no entry that is short now (an entry
   expect(stale).toEqual([])
 })
 
-test('every help entry of every block is in exactly one Help topic (polish E10)', () => {
+test('every help entry of every block is in exactly one Help topic', () => {
   const placed = HELP_TOPICS.flatMap(g => g.entries.map(h => h.title))
   expect(placed.filter((t, n) => placed.indexOf(t) !== n)).toEqual([])
   expect(FEATURE_HELP.map(h => h.title).filter(t => !placed.includes(t))).toEqual([])

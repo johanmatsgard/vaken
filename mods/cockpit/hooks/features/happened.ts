@@ -10,6 +10,7 @@ import { homeFrom } from '../core/platform'
 import type { Io } from '../core/io'
 import { readSetting } from '../core/settings'
 import { subArgs } from '../core/menu'
+import { sayIn } from './saylang'
 
 // IO-BLOCK-START
 function io($: EngineInterface): Io {
@@ -76,6 +77,7 @@ export function registerHappened(on: On): void {
     const rest0 = subArgs(e.args, 'happened')
     if (rest0 === undefined) return next(e)
     const i = io($)
-    return { text: happenedWords((await i.get(lastKey(await i.sessionId()))) as Turn | undefined) }
+    await sayIn(i)
+    return { text: happenedWords((await i.get(lastKey(await i.sessionId()))) as Turn | undefined, true) }
   })
 }

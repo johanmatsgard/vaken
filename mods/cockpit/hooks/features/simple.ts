@@ -2,6 +2,7 @@
 import type { EngineInterface, On } from 'claude-code'
 
 import { withToastGate } from '../core/io'
+import { MODEL_SIMPLER_WHAT, askModel } from '../core/modelGate'
 import { homeFrom } from '../core/platform'
 import type { Io } from '../core/io'
 import { FAILED_WORDS, NO_ANSWER_WORDS, SIMPLE_MODEL, SIMPLE_REPLY_TOKENS, SIMPLE_SYSTEM, SIMPLE_TIMEOUT_MS, simpleLines, simplePrompt } from '../core/simple'
@@ -37,7 +38,7 @@ export const noteAnswer = (answer: string): void => {
 export async function simpler(i: Io, answer: string | undefined): Promise<string[]> {
   if (answer === undefined || answer.trim() === '') return [NO_ANSWER_WORDS]
   try {
-    const r = await i.complete({ model: SIMPLE_MODEL, system: SIMPLE_SYSTEM, prompt: simplePrompt(answer), maxTokens: SIMPLE_REPLY_TOKENS, effort: 'low', timeoutMs: SIMPLE_TIMEOUT_MS })
+    const r = await askModel(i, { what: MODEL_SIMPLER_WHAT }, { model: SIMPLE_MODEL, system: SIMPLE_SYSTEM, prompt: simplePrompt(answer), maxTokens: SIMPLE_REPLY_TOKENS, effort: 'low', timeoutMs: SIMPLE_TIMEOUT_MS })
     const lines = r.isAnswered ? simpleLines(r.text) : []
     return lines.length === 0 ? [FAILED_WORDS] : lines
   } catch {

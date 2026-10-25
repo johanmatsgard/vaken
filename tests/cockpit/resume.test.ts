@@ -1,7 +1,7 @@
 import { expect } from 'claude-code/testing'
 import { test } from './slow'
 
-import { AFTER_RESET_MS, DEADLINE_MS, FALLBACK_MS, MAX_PER_DAY, MAX_REPLANS, dueVerdict, nextReset, parseWait, planWait, replanWait, statusText } from '../hooks/core/resume'
+import { AFTER_RESET_MS, DEADLINE_MS, FALLBACK_MS, MAX_PER_DAY, MAX_REPLANS, dueVerdict, nextReset, wroteSince, parseWait, planWait, replanWait, statusText } from '../hooks/core/resume'
 
 const NOW = Date.parse('2026-10-10T12:00:00Z')
 const HOUR = 3_600_000
@@ -42,7 +42,7 @@ test('the status says what waits', () => {
   expect(statusText('resume', { failedAt: NOW, dueAt: NOW + HOUR, mode: 'resume', fromReset: true }, NOW, 1)).toMatch(/sends "continue" at .* Resumes today: 1 of 3/)
 })
 
-test('at the reset a window that still reads full plans the wait again, a few times, then leaves it to you (E1)', () => {
+test('at the reset a window that still reads full plans the wait again, a few times, then leaves it to you', () => {
   const w = { failedAt: NOW, dueAt: NOW + HOUR, mode: 'resume' as const, fromReset: true }
   const due = { now: NOW + HOUR + 1, halted: false, wroteSince: false, doneToday: 0 }
   expect(dueVerdict(w, { ...due, stillFull: true })).toEqual({ act: 'again' })
@@ -52,4 +52,22 @@ test('at the reset a window that still reads full plans the wait again, a few ti
   const in3 = new Date(NOW + 3 * HOUR).toISOString()
   expect(replanWait(w, usage(in3), NOW + HOUR)).toEqual({ ...w, dueAt: NOW + 3 * HOUR + AFTER_RESET_MS, fromReset: true, replans: 1 })
   expect(replanWait({ ...w, replans: 1 }, undefined, NOW + HOUR)).toEqual({ ...w, dueAt: NOW + HOUR + FALLBACK_MS, fromReset: false, replans: 2 })
+})
+
+test('a full weekly window waits for its own reset, not the 5-hour one', () => {
+  const in2 = new Date(NOW + 2 * HOUR).toISOString()
+  const in30 = new Date(NOW + 30 * HOUR).toISOString()
+  const weekFull = { at: NOW, windows: [{ label: '5-hour', percent: 40, resetsAt: in2 }, { label: 'Weekly', percent: 100, resetsAt: in30 }] }
+  expect(nextReset(weekFull, NOW)).toBe(NOW + 30 * HOUR)
+  const bothFull = { at: NOW, windows: [{ label: '5-hour', percent: 100, resetsAt: in2 }, { label: 'Weekly', percent: 100, resetsAt: in30 }] }
+  expect(nextReset(bothFull, NOW)).toBe(NOW + 30 * HOUR)
+  expect(planWait('resume', weekFull, NOW)?.dueAt).toBe(NOW + 30 * HOUR + AFTER_RESET_MS)
+})
+
+test('a message typed after the stop counts as going on, even when the answer to it has ended', () => {
+  expect(wroteSince({ lastEventAt: NOW + HOUR, state: 'idle', promptAt: NOW + 10 * 60_000 }, NOW)).toBe(true)
+  expect(wroteSince({ lastEventAt: NOW + HOUR, state: 'working' }, NOW)).toBe(true)
+  expect(wroteSince({ lastEventAt: NOW + HOUR, state: 'idle', promptAt: NOW - HOUR }, NOW)).toBe(false)
+  expect(wroteSince({ lastEventAt: NOW + 1_000, state: 'idle', promptAt: NOW + 1_000 }, NOW)).toBe(false)
+  expect(wroteSince(undefined, NOW)).toBe(false)
 })

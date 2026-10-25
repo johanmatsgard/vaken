@@ -3,7 +3,7 @@ import { expect } from 'claude-code/testing'
 import { test } from './slow'
 
 import { GUIDE, GUIDE_ALWAYS, GUIDE_VIEW_STRINGS, guideLines } from '../hooks/core/cardguide'
-import { APPEARS, CARDS_VIEW_STRINGS, FIRST_CARDS, arrivals, autoHidden, cardsDefault, cardsOptions, isNewCard, moreCardsLabel, newToast, openedCard, startHistory } from '../hooks/core/cardrules'
+import { APPEARS, CARDS_VIEW_STRINGS, FIRST_CARDS, HIDDEN_FIRST, arrivals, autoHidden, cardsDefault, cardsOptions, isNewCard, newToast, openedCard, startHistory } from '../hooks/core/cardrules'
 import type { AppearFacts } from '../hooks/core/cardrules'
 import { VIEW_STRINGS } from '../hooks/core/lang'
 import { SETTINGS, defaults } from '../hooks/core/settings'
@@ -44,7 +44,8 @@ test('each rule: the card shows with data and hides without', () => {
 
 test('on a fresh install only the cards with nothing are left out, in one pass', () => {
   const fresh = defaults()
-  expect(autoHidden(CARD_IDS, fresh, none)).toEqual(CARD_IDS.filter(id => APPEARS[id] !== undefined))
+  // Preview starts hidden by its setting (HIDDEN_FIRST), so the rule leaves it alone
+  expect(autoHidden(CARD_IDS, fresh, none)).toEqual(CARD_IDS.filter(id => APPEARS[id] !== undefined && id !== 'preview'))
   const some = autoHidden(CARD_IDS, fresh, { ...none, ...withData.prs, ...withData.agents })
   expect(some).not.toContain('prs')
   expect(some).not.toContain('agents')
@@ -65,14 +66,21 @@ test('the settings rows follow the table: Auto is the default of a card with a r
     const row = SETTINGS.find(s => s.key === `cards.${id}`)!
     expect(row.default, id).toBe(cardsDefault(id))
     expect(row.options.map(o => o.value), id).toEqual(cardsOptions(id).map(o => o.value))
-    expect(row.default, id).toBe(APPEARS[id] === undefined ? 'show' : 'auto')
+    expect(row.default, id).toBe(APPEARS[id] === undefined ? 'show' : (HIDDEN_FIRST as readonly string[]).includes(id) ? 'hide' : 'auto')
   }
 })
 
-test('the More cards row says how many wait, and every new word has a Swedish line', () => {
-  expect(moreCardsLabel(1, s => s)).toBe('1 more card when it has something to show')
-  expect(moreCardsLabel(5, s => s)).toBe('5 more cards when they have something to show')
-  expect(moreCardsLabel(5, s => SV[s] ?? s)).toBe('5 kort till visas när de har något att visa')
+test('Preview starts hidden on a new install (the app shows the page itself); a stored Show or Auto keeps it, and it is never announced as new', () => {
+  expect(HIDDEN_FIRST).toEqual(['preview'])
+  expect(cardsDefault('preview')).toBe('hide')
+  expect(cardsOptions('preview').map(o => o.value)).toEqual(['auto', 'show', 'hide'])
+  const facts = { ...none, preview: true }
+  expect(autoHidden(CARD_IDS, { ...defaults(), 'cards.preview': 'auto' }, facts)).not.toContain('preview')
+  expect(autoHidden(CARD_IDS, { ...defaults(), 'cards.preview': 'auto' }, none)).toContain('preview')
+  expect(autoHidden(CARD_IDS, { ...defaults(), 'cards.preview': 'show' }, none)).not.toContain('preview')
+})
+
+test('every word of the cards area has a Swedish line', () => {
   const live = englishOf('cards')
   expect(live).not.toContain('Welcome')
   for (const w of live) {
@@ -148,9 +156,10 @@ test('each "shows when" line matches its rule kind: a first-run card is always s
 })
 
 test('every word of the card guide has a Swedish line', () => {
-  for (const w of GUIDE_VIEW_STRINGS) {
+  // A guide word may share its row with another place (Risky steps' "How strict the safety rules are." is also its Settings description, a common row)
+  for (const w of GUIDE_VIEW_STRINGS) expect(SV[w] ?? '', w).not.toBe('')
+  for (const w of englishOf('guide')) {
     expect(VIEW_STRINGS, w).toContain(w)
-    expect(SV[w] ?? '', w).not.toBe('')
+    expect(GUIDE_VIEW_STRINGS, w).toContain(w)
   }
-  expect(englishOf('guide').sort()).toEqual([...GUIDE_VIEW_STRINGS].sort())
 })

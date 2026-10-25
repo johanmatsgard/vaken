@@ -125,7 +125,7 @@ test('joinPath', () => {
 
 const POSIX = ['/work/proj', '/work/proj/', '/work/proj///', '/work//proj', '/', '', 'proj', 'a/b', '/work/my.app/src/ui/Button.tsx', '/work/proj/.claude/worktrees/wt-1', '/work/proj/.claude/worktrees/wt-1/src', '/work/proj/.worktrees/x', 'src/locales/sv/common.json', 'locales/en.json', '/work/proj/node_modules/x/index.js', '/work/proj/.git/config', '/work/proj/.env.local', '/work/proj/migrations/001.sql', '/work/a b/c-d_e', '/work/a-very-long-folder-name-here']
 
-test('step 3: home folder from env closures', async () => {
+test('paths: home folder from env closures', async () => {
   const env = (vals: Record<string, string | undefined>) => {
     const asked: string[] = []
     const get = (name: string) => async () => {
@@ -143,7 +143,7 @@ test('step 3: home folder from env closures', async () => {
   expect(await homeFrom(env({ HOMEDRIVE: 'C:', HOMEPATH: '\\Users\\me' }).e)).toBe('C:\\Users\\me')
 })
 
-test('step 3: last names and parts keep the old POSIX answers', () => {
+test('paths: last names and parts keep the old POSIX answers', () => {
   const oldTail = (p: string): string => p.replace(/\/+$/, '').split('/').pop() ?? p
   const oldName = (p: string): string => p.replace(/\/+$/, '').split('/').pop() || p
   const oldBase = (p: string): string => p.split('/').filter(Boolean).pop() ?? p
@@ -200,7 +200,7 @@ test('step 3: last names and parts keep the old POSIX answers', () => {
   }
 })
 
-test('step 3: whole modules keep the old POSIX answers', () => {
+test('paths: whole modules keep the old POSIX answers', () => {
   expect(memorySpots('/work/me', '/work/me/app/.claude/worktrees/w1').map(s => `${s.dir}|${s.label}`)).toEqual([
     '/work/me/.claude/projects/-work-me-app--claude-worktrees-w1/memory|w1',
     '/work/me/.claude/projects/-work-me-app/memory|app',
@@ -216,7 +216,7 @@ test('step 3: whole modules keep the old POSIX answers', () => {
   expect(happenedWords({ ...emptyTurn(), edits: 2, files: ['/work/a/one.ts', 'b/two.ts'] })).toContain('(one.ts, two.ts)')
 })
 
-test('step 3: the same callers on Windows paths', () => {
+test('paths: the same callers on Windows paths', () => {
   const cwd = 'C:\\Users\\me\\proj'
   expect(projectName(cwd)).toBe('proj')
   expect(projectName('C:\\Users\\me\\proj\\')).toBe('proj')

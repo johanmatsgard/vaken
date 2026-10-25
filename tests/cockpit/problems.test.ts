@@ -46,7 +46,9 @@ test('each card says how loud it is from what the pane has', () => {
   // The Ship, Where was I, Safety and Context health cards are calm unless something blocks, is left open, is halted or is heavy.
   expect(Object.entries(busy).every(([id, l]) => (['ship', 'back', 'safety', 'context', 'preview', 'setup', 'do', 'guard'].includes(id) ? l === 'calm' : l === 'normal'))).toBe(true)
   const bad = cardLoudness(facts({ proof: 'problem', safety: 'halted', agents: { any: true, stuck: true }, computer: { gaugeOn: true, full: true }, prs: 'failing', ship: 'blocked', back: 'open' }), NOW)
-  expect([bad.proof, bad.safety, bad.guard, bad.agents, bad.computer, bad.prs, bad.ship, bad.back]).toEqual(['warn', 'urgent', 'calm', 'warn', 'warn', 'warn', 'warn', 'warn'])
+  expect([bad.proof, bad.safety, bad.guard, bad.agents, bad.computer, bad.prs, bad.ship, bad.back]).toEqual(['warn', 'urgent', 'calm', 'warn', 'warn', 'warn', 'warn', 'normal'])
+  // Where was I: yesterday's open ends are normal; only a real wait since you left warns
+  expect(cardLoudness(facts({ back: 'waits' }), NOW).back).toBe('warn')
   expect(cardLoudness(facts({ safety: 'held' }), NOW).safety).toBe('warn')
 })
 
@@ -167,9 +169,9 @@ test('while arranging, the board gets the set order, not the problems-first one'
   await ui.press({ key: 'arrange' })
   await ui.unmount()
   const arranging = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
-  const board = (await arranging.find({ key: 'arrange-board' })) as { props?: { props?: { order?: string[] } } } | undefined
+  const board = (await arranging.find({ key: 'arrange-board' })) as { props?: { props?: { lists?: string[][] } } } | undefined
   // Needs you is the first tile (fixed); the person's own order follows, a problem moves nothing.
-  expect(board?.props?.props?.order?.slice(0, 2)).toEqual(['needs', 'limit'])
+  expect(board?.props?.props?.lists?.flat().slice(0, 2)).toEqual(['needs', 'limit'])
   await arranging.press({ key: 'arrange-done' })
   await arranging.unmount()
 })
@@ -181,7 +183,7 @@ const fresh = (): Record<string, unknown> => ({
   'cockpit:session:s2': rec('s2', { state: 'waiting' }),
 })
 
-test('a new person sees five cards and one row for the rest; the row opens Settings; a card chosen Show appears, one chosen Hide never does', async ($, on) => {
+test('a new person sees five cards; the card guide (from Help) opens Settings; a card chosen Show appears, one chosen Hide never does', async ($, on) => {
   mock.clock(on, { now: NOW })
   const mem = memStore(on)
   for (const [k, v] of Object.entries(fresh())) mem.set(k, v)
@@ -189,9 +191,10 @@ test('a new person sees five cards and one row for the rest; the row opens Setti
   engine(on)
   const ui = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
   expect((await titles(ui)).sort()).toEqual(['Autopilot', 'Other sessions', 'Plan limits', 'Safety', 'This session'])
-  const more = (await ui.find({ key: 'morel-more-cards' })) as { props?: { label?: string } } | undefined
-  expect(more?.props?.label).toMatch(/^About the \d+ cards$/)
-  await ui.press({ key: 'morel-more-cards' })
+  expect(await ui.find({ key: 'morel-more-cards' }), 'no card guide link in the footer').toBeUndefined()
+  await ui.press({ key: 'help' })
+  await ui.redraw()
+  await ui.press({ key: 'press-help-guide-0' })
   await ui.unmount()
   const guide = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
   expect(await guide.find({ key: 'guide-done' })).toBeDefined()
@@ -208,6 +211,8 @@ test('a new person sees five cards and one row for the rest; the row opens Setti
   const back = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
   expect(await back.find({ key: 'guide-done' })).toBeDefined()
   await back.press({ key: 'guide-done' })
+  await back.redraw()
+  await back.press({ key: 'help-done' })
   await back.unmount()
   mem.set('cockpit:setting:cards.skills', 'show')
   mem.set('cockpit:setting:cards.safety', 'hide')
@@ -224,19 +229,19 @@ const nodes = (n: Drawn, out: Drawn[] = []): Drawn[] => {
 }
 const keyOf = (n: Drawn): string | undefined => n.key ?? (n.props?.key as string | undefined)
 
-test('the footer is one row: the more-cards button at the left, the three actions at the right; a narrow pane wraps it into two rows; the Working sentence is not in it', async ($, on) => {
+test('the footer is the presses only, right-aligned in one wrapping row at every width, with no card guide link; the Working sentence is not in it', async ($, on) => {
   mock.clock(on, { now: NOW })
   const mem = memStore(on)
   for (const [k, v] of Object.entries(fresh())) mem.set(k, v)
   mock.env(on, { HOME: '/home/test' })
   engine(on)
-  for (const [bodyColumns, wraps] of [[140, false], [60, true]] as const) {
+  for (const bodyColumns of [140, 60]) {
     const ui = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: { ...paneProps, bodyColumns } })
     const footer = nodes((await ui.drawn()) as Drawn).find(n => keyOf(n) === 'footer')
-    expect(footer?.props?.flexDirection).toBe(wraps ? 'column' : 'row')
+    expect(footer?.props?.flexDirection).toBe('row')
+    expect(footer?.props?.justifyContent).toBe('flex-end')
     const inside = nodes(footer as Drawn).map(keyOf)
-    expect(inside.indexOf('morel-more-cards')).toBeGreaterThan(-1)
-    expect(inside.indexOf('morel-more-cards')).toBeLessThan(inside.indexOf('settings'))
+    expect(inside).not.toContain('morel-more-cards')
     expect(inside.filter(k => k === 'arrange' || k === 'popout' || k === 'settings')).toEqual(['arrange', 'popout', 'settings'])
     expect(await ui.find({ type: 'Text', text: /Working means Claude did something/ })).toBeUndefined()
     await ui.unmount()

@@ -1,0 +1,14 @@
+// Area "lean": the words of core/lean.ts
+import type { Rows } from '../types'
+
+export const ROWS: Rows = {
+  "lean.all_long_output": {"en":"All long output","sv":"All lång utdata"},
+  "lean.all_skip_repeats": {"en":"All, skip repeats","sv":"All, hoppa över upprepningar"},
+  "lean.cut_line": {"en":{"one":"Cut 1 long output today (about {m} lines Claude did not read).","other":"Cut {n} long outputs today (about {m} lines Claude did not read)."},"sv":{"one":"Kortade 1 lång utdata i dag (ungefär {m} rader som Claude inte läste).","other":"Kortade {n} långa utdata i dag (ungefär {m} rader som Claude inte läste)."}},
+  "lean.help_text": {"en":"Before Claude reads it, a long install, test, build or lint log is cut to its first lines, its error lines and its last 40 lines; a file read again with no change gets one line instead of its text, once; with All long output, a huge read, search, page or tool answer is also cut to its first and last lines, with one line on how to ask for the rest; with All, skip repeats, a todo list or auto mode reminder that comes again unchanged also becomes one short note, never the first one or a changed one. A new chat starts with the branch and the count of changed files, and before a big job one line says about how much of the 5-hour window it may use. /vaken-usage says how many lines were cut today.","sv":"Innan Claude läser den kortas en lång installations-, test-, bygg- eller lintlogg till sina första rader, sina felrader och sina sista 40 rader; en fil som läses igen utan ändring ger en rad i stället för sin text, en gång; med All lång utdata kortas också en stor läsning, sökning, sida eller verktygssvar till sina första och sista rader, med en rad om hur resten hämtas; med All, hoppa över upprepningar blir en påminnelse om att-göra-listan eller auto-läget som kommer igen oförändrad också en kort rad, aldrig den första eller en ändrad. En ny chatt börjar med grenen och antalet ändrade filer, och före ett stort jobb säger en rad ungefär hur mycket av 5-timmarsfönstret det kan använda. /vaken-usage säger hur många rader som kortades i dag."},
+  "lean.help_title": {"en":"What a lean session is","sv":"Vad en smal session är"},
+  "lean.lean_session": {"en":"Lean session","sv":"Smal session"},
+  "lean.logs_only": {"en":"Logs only","sv":"Bara loggar"},
+  "lean.note": {"en":"Cuts long logs to the errors and last lines. A new chat starts with git facts.","sv":"Kortar långa loggar till felen och sista raderna. En ny chatt börjar med fakta från git."},
+  "lean.repeat_line": {"en":{"one":"Left out 1 unchanged reminder today (about {m} characters Claude did not read).","other":"Left out {n} unchanged reminders today (about {m} characters Claude did not read)."},"sv":{"one":"Utelämnade 1 oförändrad påminnelse i dag (ungefär {m} tecken som Claude inte läste).","other":"Utelämnade {n} oförändrade påminnelser i dag (ungefär {m} tecken som Claude inte läste)."}},
+}

@@ -49,12 +49,12 @@ export async function findChrome(io: Pick<Io, 'run'>): Promise<string | undefine
 }
 
 
-const WIN_PS_SCRIPT = "Get-CimInstance Win32_Process | Where-Object { $_.Name -in 'chrome.exe','msedge.exe' } | ForEach-Object { \"$($_.ProcessId) $($_.CommandLine)\" }"
+const WIN_PS_SCRIPT = "Get-CimInstance Win32_Process | Where-Object { $_.Name -in 'chrome.exe','msedge.exe' } | ForEach-Object { \"$($_.ProcessId) $($_.CommandLine)\" }" // en-only: a PowerShell program, not a text
 export const WIN_PS_ARGV: readonly string[] = ['powershell', '-NoProfile', '-NonInteractive', '-Command', WIN_PS_SCRIPT]
 // PowerShell takes a moment to start.
 export const WIN_LIST_MS = 15_000
 export const psArgvOf = (plat: ProcPlatform): readonly string[] => (plat === 'win32' ? WIN_PS_ARGV : ['ps', '-axo', 'pid,command'])
-export const sleepArgvOf = (plat: ProcPlatform): string[] => (plat === 'win32' ? ['powershell', '-NoProfile', '-NonInteractive', '-Command', 'Start-Sleep -Seconds 1'] : ['sleep', '1'])
+export const sleepArgvOf = (plat: ProcPlatform): string[] => (plat === 'win32' ? ['powershell', '-NoProfile', '-NonInteractive', '-Command', 'Start-Sleep -Seconds 1'] : ['sleep', '1']) // en-only: a program, not a text
 
 
 // On Windows the output goes to `<profile>/<outName>` and `.err` so callers read the same files. Never throws.

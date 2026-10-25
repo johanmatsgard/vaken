@@ -20,6 +20,7 @@ import { LEDGER_KEY, pushLog } from './compaction'
 import { flags, langOf } from './home/state'
 import { subArgs } from '../core/menu'
 import { BY_PERSON_ONLY, byPerson } from '../core/origin'
+import { sayIn } from './saylang'
 
 // IO-BLOCK-START
 function ioBase($: EngineInterface): Io {
@@ -207,6 +208,7 @@ export function registerPhoneDo(on: On): void {
     const rest0 = subArgs(e.args, 'run', 'do')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i)
     const env = await envOf($)
     const tell = (note: string): boolean => tellClaude($, note)
     return { text: await doText(i, env, rest0, tell, byPerson(e.origin)) }

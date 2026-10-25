@@ -129,6 +129,28 @@ test('/vaken-tasks: a start, a new task, words for a task and a template applied
   expect(await say($, 'vaken-tasks', 'add Fix the header', ME)).not.toBe(BY_PERSON_ONLY)
 })
 
+test('/vaken-tasks: try again, keep, throw away, clear, a cost limit and the all-words need the person; stop N stays open', SLOW, async ($, on) => {
+  world(on)
+  for (const o of AWAY) {
+    for (const args of ['retry 1', 'keep 1', 'throw 1', 'throw 1 yes', 'clear', 'limit run 50', 'keep all', 'throw all yes']) expect(await say($, 'vaken-tasks', args, o), args).toBe(BY_PERSON_ONLY)
+    expect(await say($, 'vaken-tasks', 'stop 1', o)).not.toBe(BY_PERSON_ONLY)
+  }
+  expect(await say($, 'vaken-tasks', 'clear', ME)).not.toBe(BY_PERSON_ONLY)
+})
+
+test('the agent files: writing them or changing the agent setup needs the person; the lists stay open', SLOW, async ($, on) => {
+  const w = world(on)
+  for (const o of AWAY) {
+    const before = JSON.stringify([...w.mem.entries()])
+    expect(await say($, 'vaken-tasks', 'agents make yes', o)).toBe(BY_PERSON_ONLY)
+    for (const args of ['on', 'off', 'scope all', 'cap use yes', 'make builder yes', 'replace builder yes yes']) expect(await say($, 'vaken-setup', args, o), args).toBe(BY_PERSON_ONLY)
+    expect(JSON.stringify([...w.mem.entries()])).toBe(before)
+    expect(await say($, 'vaken-tasks', 'agents', o)).not.toBe(BY_PERSON_ONLY)
+    expect(await say($, 'vaken-setup', '', o)).not.toBe(BY_PERSON_ONLY)
+  }
+  expect(await say($, 'vaken-setup', 'on', ME)).toBe('Set up agents for me is on.')
+})
+
 test('/vaken-settings: every change needs the person (set, here, session, reset yes, a layout, a preset yes); listing and previews stay open', SLOW, async ($, on) => {
   const w = world(on)
   const writes = ['guard.destructive off', 'here guard.destructive off', 'here reset', 'session runner.researcher sonnet', 'session reset', 'reset yes', 'layout apply x', 'layout save x', 'preset quiet yes', 'preset careful yes here']

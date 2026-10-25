@@ -5,6 +5,8 @@ import type { Setting } from './settings'
 import { fmt } from './fmt'
 import { isShellTool } from './tools'
 import { lastPart } from './platform'
+import { fillIn } from './fillin'
+import { langNow, tr } from './lang'
 
 export const ERRORS_SETTINGS: Setting[] = [
   {
@@ -47,16 +49,24 @@ export function classify(text: string): Known | undefined {
   return KNOWN.find(k => k.pattern.test(text))
 }
 
+// The main loop's last step, in memory: `failed` while its last step was a failed shell step, `kind` only, never the text; `told` once its toast was decided.
+export const shellFail: { failed: boolean; kind?: string; told: boolean; toastAt?: number } = { failed: false, told: true }
+export function noteShellStep(ok: boolean, shell: boolean, kind: string | undefined): void {
+  shellFail.failed = !ok && shell
+  shellFail.kind = shellFail.failed ? kind : undefined
+  if (shellFail.failed) shellFail.told = false
+}
+
 export type Last = { at: number; tool: string; kind: string }
 export const lastKey = (sessionId: string): string => `cockpit:error:${sessionId}`
 
 const ago = (ms: number): string => fmt.ago(ms, 'hours')
 
 export function errorWords(last: Last | undefined, now: number): string {
-  if (last === undefined) return 'No failed step in this session, or the error was of a kind vaken does not know.'
+  if (last === undefined) return tr('No failed step in this session, or the error was of a kind vaken does not know.')
   const k = KNOWN.find(x => x.kind === last.kind)
-  if (k === undefined) return 'The last failed step was of a kind vaken does not know. Ask Claude to explain it in plain words.'
-  return `${last.tool} failed ${ago(now - last.at)}.\nWhat it means: ${k.says}\nFirst thing to try: ${k.tryThis}`
+  if (k === undefined) return tr('The last failed step was of a kind vaken does not know. Ask Claude to explain it in plain words.')
+  return fillIn(tr('{tool} failed {ago}.\nWhat it means: {says}\nFirst thing to try: {tryThis}'), { tool: last.tool, ago: fmt.ago(now - last.at, 'hours', langNow()), says: tr(k.says), tryThis: tr(k.tryThis) })
 }
 
 export type Failed = { at: number; what: string; exit?: number; kind?: string }
@@ -89,5 +99,5 @@ export function failedLine(f: Failed | undefined, now: number): string | undefin
   if (f === undefined || now < f.at || now - f.at >= FAILED_TTL_MS || f.what === '') return undefined
   const says = KNOWN.find(k => k.kind === f.kind)?.says
   const facts = [f.exit === undefined ? undefined : `exit ${f.exit}`, says === undefined ? undefined : `${says.charAt(0).toLowerCase()}${says.slice(1).replace(/\.$/, '')}`, ago(now - f.at)].filter((x): x is string => x !== undefined)
-  return `Keep the last failing step and what was tried: ${f.what} (${facts.join(', ')}).`
+  return `Keep the last failing step and what was tried: ${f.what} (${facts.join(', ')}).` // en-only: a line in the compaction note for Claude
 }

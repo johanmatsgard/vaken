@@ -41,8 +41,8 @@ test('nothing open and no break: one calm line, "Nothing waits", and no group', 
 })
 
 test('a break of 15 minutes or more says "Back after"; a shorter one and a session at work say nothing of it', () => {
-  expect(backShort(facts({ gapMs: 2 * HOUR }), id)).toBe('Back after 2 h · nothing waits')
-  expect(backShort(facts({ gapMs: 25 * MIN }), id)).toBe('Back after 25 min · nothing waits')
+  expect(backShort(facts({ gapMs: 2 * HOUR }), id)).toBe('Back after 2 h')
+  expect(backShort(facts({ gapMs: 25 * MIN }), id)).toBe('Back after 25 min')
   expect(backShort(facts({ gapMs: 14 * MIN }), id)).toBe('Nothing waits')
   const view = { now: NOW, here: { rec: { state: 'working', lastEventAt: NOW - 3 * HOUR } } } as unknown as View
   expect(backFactsOf(view, { open: [] } as unknown as Prefs).gapMs).toBeUndefined()
@@ -60,7 +60,8 @@ test('open ends: the card is loud, lists one whole row per project, then the one
   expect(v.groups?.[0]?.rows[0]?.what.facts?.[0]).toBe('Back after 2 h. Goal: Fix the login Branch feat-x.')
   const rows = v.groups?.[1]?.rows ?? []
   expect(rows.map(r => r.title)).toEqual(['app: tests failed, 1 risky step stopped', 'site: 2 tasks not done', 'and 1 more projects', 'Clear the open ends in all sessions'])
-  expect(rows[3]).toMatchObject({ key: 'gotit', right: 'Clear', action: GOT_IT })
+  expect(rows[3]).toMatchObject({ key: 'gotit', action: GOT_IT })
+  expect(rows[3]?.right).toBeUndefined()
   expect(rows.map(r => r.action)).toEqual([undefined, undefined, undefined, GOT_IT])
   expect(rows[0]?.what.facts).toEqual(['tests failed', '1 risky step stopped'])
   expect(v.lines[0]).toBe('Back after 2 h · 3 projects have open ends')
@@ -105,7 +106,8 @@ test('the card is a line card with its own Show or Hide, and every word it shows
   for (const w of ['Clear', 'and {n} more projects', 'Goal', '{kinds} failed']) expect(SV[w] ?? '').not.toBe('')
   const sv = backView(facts({ gapMs: 2 * HOUR, open: [app, site], more: 1 }), w => SV[w] ?? w)
   expect(sv.short).toBe('Tillbaka efter 2 h · 3 projekt har öppna trådar')
-  expect(sv.groups.map(g => g.head)).toEqual(['Där du var', 'Lämnat öppet'])
+  // No goal: no "No goal set" row (calm is quiet), so only the open ends
+  expect(sv.groups.map(g => g.head)).toEqual(['Lämnat öppet'])
 })
 
 const paneProps = { title: 'Vaken', isFocused: false, bodyColumns: 120, placement: 'inline' as const, scroll: { bodyRows: 80, offset: 0, total: 80 }, view: {} }
@@ -157,7 +159,7 @@ test('the pane shows the card with the open ends and the digest; Got it clears t
   expect(await textOf(ui, /^Where was I$/)).toBe(true)
   await ui.press({ key: 'press-glance-back-0' })
   await ui.redraw()
-  expect(await textOf(ui, /^2 h ago$/)).toBe(true)
+  expect(await textOf(ui, /^No goal set$/)).toBe(false)
   expect(await textOf(ui, /^app: tests failed, 1 risky step stopped$/)).toBe(true)
   expect(await textOf(ui, /^While you were away \(2 h\): 2 sessions finished/)).toBe(true)
   // Got it: the morning's record is dismissed, so the open ends go from the card.

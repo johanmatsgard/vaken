@@ -3,10 +3,12 @@ import { tokenWord } from './appcontext'
 import { timesWord } from './words'
 import { hhmm } from './time'
 import { sysWord } from './syswords'
-import { ACTED_MARK, FREED_TITLE, SHORTENED_TITLE, isSumTitle } from './counts'
+import { ACTED_MARK, FREED_TITLE, LEAN_TOKENS_TITLE, SHORTENED_TITLE, isSumTitle } from './counts'
+import { fillIn } from './fillin'
 
+// `usd` is money measured for you, less what it cost (an estimate at list prices).
 // An entry without both `before` and `after` is a note, not a saving. `did: true` makes the Autopilot card count it by `what`.
-export type Entry = { at: number; session?: string; what: string; detail?: string; before?: number; after?: number; how?: 'button' | 'auto' | 'typed'; did?: boolean }
+export type Entry = { at: number; session?: string; what: string; detail?: string; before?: number; after?: number; how?: 'button' | 'auto' | 'typed'; did?: boolean; usd?: number; cuts?: number; saved?: number }
 
 export const startOfDay = (now: number): number => {
   const d = new Date(now)
@@ -23,7 +25,7 @@ export function todaySummary(list: Entry[], now: number, counts?: Record<string,
 }
 
 // Not an action taken for you (no `did`); the counts store holds these too.
-const compactNote = (what: string): boolean => /^(compacted|compact now|auto-compact|compaction)\b/.test(what)
+const compactNote = (what: string): boolean => /^(compacted|compact now|auto-compact|compaction|Would have compacted)\b/.test(what)
 
 type Did = { what: string; n: number }
 // The ledger keeps only 60 lines, so a busy day takes its true number from `counts`.
@@ -32,8 +34,10 @@ export function didToday(list: Entry[], now: number, counts?: Record<string, num
   for (const e of list) {
     if (e.did !== true || e.at < startOfDay(now)) continue
     const old = out.find(d => d.what === e.what)
-    if (old === undefined) out.push({ what: e.what, n: 1 })
-    else old.n += 1
+    // The day's one row of lean cuts carries its own count
+    const by = e.cuts ?? 1
+    if (old === undefined) out.push({ what: e.what, n: by })
+    else old.n += by
   }
   for (const [what, n] of Object.entries(counts ?? {})) {
     if (isSumTitle(what) || what.startsWith(ACTED_MARK) || compactNote(what)) continue
@@ -43,6 +47,9 @@ export function didToday(list: Entry[], now: number, counts?: Record<string, num
   }
   return out
 }
+
+// How many things vaken did today: each action and each shortened chat, with the day's counts where the ledger has dropped lines.
+export const actedToday = (list: Entry[], now: number, counts?: Record<string, number>): number => todaySummary(list, now, counts).count + didToday(list, now, counts).reduce((n, d) => n + d.n, 0)
 
 const HOW: Record<NonNullable<Entry['how']>, string> = { button: 'from the card', auto: 'by itself', typed: 'typed by you' }
 
@@ -61,6 +68,8 @@ const SHOWN: [RegExp, string][] = [
   [/outside the fence$/, 'outside your folders'],
   [/^Warned before an action outside/, 'Warned about a step outside'],
   [/^Claude said done without proof$/, 'Claude said done, but no check backs it'],
+  // One name for one feature: the row says the name of its setting, Keep session cheap
+  [/^Kept the cache warm\b/, 'Kept the session cheap'],
   // Older stored lines say 'shorten' and read as compact.
   [/^compacted\b/, 'compacted the session'],
   [/^auto-compact\b/, 'compacting by itself'],
@@ -91,18 +100,30 @@ export function didKind(what: string): DidKind {
   if (/^(Warned|Found|Spotted|Noticed|Caught|Going round|Claude said)\b/.test(t)) return 'warned'
   return 'did'
 }
-export function didTitle(what: string): string {
-  const t = shownTitle(what)
-  const short = t.replace(/^Warned (about|before) /, '').replace(/^Stopped (?=a |an |the )/, '')
-  return short === t ? t : `${short.charAt(0).toUpperCase()}${short.slice(1)}`
-}
+// A row keeps the whole shown title, so the row, the Short line and the Quiet ask say the same words.
+export const didTitle = (what: string): string => shownTitle(what)
 export { timesWord }
-// The text twin passes no `t` and stays English.
-export function shortSummary(s: { count: number; freed: number }, did: Did[] = [], t: (x: string) => string = x => x): string {
-  const times = (n: number): string => (n === 1 ? t('once') : t('{n} times').replace('{n}', String(n)))
-  const lower = (x: string): string => `${x.charAt(0).toLowerCase()}${x.slice(1)}`
-  const parts = [...(s.count === 0 ? [] : [t('compacted the session {times}, about {k} freed').replace('{times}', times(s.count)).replace('{k}', tokenWord(s.freed))]), ...did.map(d => `${lower(t(shownTitle(d.what)))} ${times(d.n)}`)]
-  // Three parts at most, so the line stays calm.
-  if (parts.length > 3) return `${parts.slice(0, 3).join(', ')}, ${t('and {n} more').replace('{n}', String(parts.length - 3))}`
-  return parts.length === 0 ? t('Nothing today') : parts.join(', ')
+// A name keeps its capital inside a sentence ("Claude said done", never "claude said done")
+const NAME_FIRST = /^(Claude|Mac|PC|Windows|GitHub)\b/
+export const lowerFirst = (x: string): string => (NAME_FIRST.test(x) ? x : `${x.charAt(0).toLowerCase()}${x.slice(1)}`)
+// Two parts at most, so the line stays calm.
+export const SHORT_PARTS = 2
+// The text twin passes no `t` and stays English. `money`: the keeper's saving today ("saved about $1.37 (estimate)"); it is the first part, and the caller leaves the keeper's row out of `did`.
+export function shortSummary(s: { count: number; freed: number }, did: Did[] = [], t: (x: string) => string = x => x, money = ''): string {
+  const times = (n: number): string => (n === 1 ? t('once') : fillIn(t('{n} times'), { n }))
+  const parts = [...(money === '' ? [] : [money]), ...(s.count === 0 ? [] : [fillIn(t('compacted the session {times}, about {k} tokens freed'), { times: times(s.count), k: tokenWord(s.freed) })]), ...did.map(d => `${lowerFirst(t(shownTitle(d.what)))} ${times(d.n)}`)]
+  const upper = (x: string): string => `${x.charAt(0).toUpperCase()}${x.slice(1)}`
+  if (parts.length > SHORT_PARTS) return upper(`${parts.slice(0, SHORT_PARTS).join(', ')}, ${fillIn(t('and {n} more'), { n: parts.length - SHORT_PARTS })}`)
+  return parts.length === 0 ? t('Nothing today') : upper(parts.join(', '))
 }
+
+// The day's lean cuts: one ledger row a day (a count and an estimate of the tokens saved, never any output text). The counts store keeps the sums when the 60 lines no longer hold the row.
+export const LEAN_WHAT = 'Shortened long output'
+export { LEAN_TOKENS_TITLE }
+export const leanSavedToday = (list: Entry[], now: number, counts?: Record<string, number>): number =>
+  Math.max(list.reduce((n, e) => (e.what === LEAN_WHAT && e.at >= startOfDay(now) ? n + (e.saved ?? 0) : n), 0), counts?.[LEAN_TOKENS_TITLE] ?? 0)
+
+// The task runs: one row each for started, finished and stopped, with counts and the run's name only. None starts with Stopped, which the card groups as a stop.
+export const RUN_STARTED_WHAT = 'Task run started'
+export const RUN_FINISHED_WHAT = 'Task run finished'
+export const RUN_STOPPED_WHAT = 'Task run stopped by you'

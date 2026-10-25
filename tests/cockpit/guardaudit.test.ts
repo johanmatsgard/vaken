@@ -128,6 +128,10 @@ test('4: a shell write to a shell startup file or the PowerShell profile is a pr
   for (const cmd of ['"x" | Out-File $PROFILE -Append', 'Out-File $PROFILE -Append', 'Add-Content $PROFILE x', 'Clear-Content $PROFILE', 'Set-Content $PROFILE ""']) {
     expect([cmd, await scoped('PowerShell', cmd, W)]).toEqual([cmd, [expect.stringMatching(/PowerShell profile/)]])
   }
+  for (const file of ['/home/user/.zshenv', '/home/user/.bash_profile', '/home/user/.npmrc', '/home/user/Library/LaunchAgents/x.plist', '/home/user/app/.mcp.json', '/home/user/app/.claude/hooks/a.sh', '/home/user/app/.claude/agents/a.md', '/home/user/app/.claude/commands/a.md', '/home/user/.claude/agents/a.md']) {
+    expect([file, (await judgeTool(memIo(), P, 'Write', { file_path: file, content: 'x' }, MODES)).found.map(f => f.words)]).toEqual([file, [expect.stringMatching(/a protected file/)]])
+  }
+  for (const file of ['/home/user/app/src/a.ts', '/home/user/app/README.md', '/home/user/app/.claude/notes.md', '/home/user/app/mcp.json']) expect([file, (await judgeTool(memIo(), P, 'Write', { file_path: file, content: 'x' }, MODES)).found]).toEqual([file, []])
   const edit = (await judgeTool(memIo(), P, 'Edit', { file_path: '/home/user/.zshrc', old_string: 'a', new_string: 'b' }, MODES)).found.map(f => f.words)
   expect(await scoped('Bash', 'echo x >> ~/.zshrc')).toEqual(edit)
   for (const cmd of ['echo x > out.txt', 'npm test 2>/dev/null', 'echo x | tee log.txt']) expect([cmd, await scoped('Bash', cmd)]).toEqual([cmd, []])
@@ -181,7 +185,8 @@ function engine(on: On, seed: Record<string, unknown>, host: { decision: string;
   })
   on('process.run', () => ({ value: { exitCode: 1, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }) as never)
   on('tool.call', { tool: /^(?:Bash|Read)$/ }, () => ({ result: { stdout: '', stderr: '', code: 0 }, text: 'done' }) as never)
-  on('tool.check', () => ({ decision: host.decision }) as never)
+  // Since Claude Code 2.1.307 a test's tool call also meets the engine's own permission check: that one is the person's Allow, answered yes here.
+  on('tool.check', (_$, _e, next) => ({ decision: (next as unknown as { origin?: { plugin?: string } }).origin?.plugin === 'engine' ? 'allow' : host.decision }) as never)
   on('settings.read', () => ({ value: host.mode === undefined ? {} : { permissions: { defaultMode: host.mode } } }) as never)
   on('ui.toast', () => ({ value: undefined }) as never)
   on('command.register', () => ({ value: { command: 'x' } }))
@@ -257,7 +262,7 @@ test('B: a store key, a dotted, slashed or colon name in code is not a secret va
   expect(secretsAfter('Read', numbered)).toEqual([])
 })
 
-test('B2: names made of words in mixed styles are names; random keys with the same letters and digits are not', () => {
+test('names made of words in mixed styles are names; random keys with the same letters and digits are not', () => {
   for (const v of ['sessionStorage_v2', 'X-Api-Secret-Token2', 'MyAppSigningKey2026', 'userAuthToken_v2_cache', 'Bearer_Token_Store_v3', 'HTTPAuthHeaderV2']) expect([v, looksRandom(v)]).toEqual([v, false])
   for (const v of ['abcd1234efgh5678ijkl', 'kT9vLm2QxR7pZw4N', 'AbCdEfGhIjKl12', 'Q3X7K9M2P5R8T1V4abc', '3f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c', 'wJ8rXUtnFEMIK7MDENGbPxRfiCY3zq9Lk2Hd']) expect([v, looksRandom(v)]).toEqual([v, true])
 })
@@ -295,6 +300,20 @@ const EVERYDAY_BASH = [
   'curl https://example.com/api/items', 'curl -s https://example.com | head', 'curl -o out.json https://example.com/data.json', 'echo done', 'node scripts/build.mjs',
 ]
 const EVERYDAY_PS = ['Get-ChildItem', 'Get-ChildItem -Recurse src', 'Select-String -Path src\\*.ts -Pattern TODO', '$x = 5', '$files', 'Test-Path .\\package.json', 'Write-Host "done"', 'Get-Content README.md', 'npm test', 'git status']
+
+test('rsync --delete outside temp and rebuildable folders is a risky command; a plain rsync or one into dist is not', () => {
+  for (const cmd of ['rsync -a --delete src/ ~/backup/', 'rsync -av --delete-after ./site/ host:/var/www/', 'rsync -a --del a/ /srv/data']) expect([cmd, ids(cmd)]).toEqual([cmd, ['rsync-delete']])
+  for (const cmd of ['rsync -a src/ ~/backup/', 'rsync -a --delete src/ dist/', 'rsync -a --delete src/ /tmp/x/', 'rsync -a --delete-excluded']) expect([cmd, ids(cmd)]).toEqual([cmd, []])
+})
+
+test('SQL that drops or empties data through an MCP tool is found whatever the tool is called; a search box is never read as SQL', async () => {
+  const found = async (tool: string, args: Record<string, unknown>): Promise<string[]> => (await judgeTool(memIo(), P, tool, args, MODES)).found.map(f => f.block)
+  expect(await found('mcp__supabase__apply_migration', { name: 'x', query: 'DROP TABLE accounts' })).toEqual(['destructive'])
+  expect(await found('mcp__pg__run', { sql: 'TRUNCATE orders' })).toEqual(['destructive'])
+  expect(await found('mcp__wh__exec', { statement: 'DELETE FROM users' })).toEqual(['destructive'])
+  expect(await found('mcp__docs__search', { query: 'delete from my account' })).toEqual([])
+  expect(await found('mcp__pg__run', { sql: 'SELECT 1' })).toEqual([])
+})
 
 test('everyday commands: nothing is held or warned by any part of the Guard', async () => {
   const bad: string[] = []

@@ -2,6 +2,7 @@
 import { test } from './slow'
 import type { On } from 'claude-code'
 import { posix } from './fspath'
+import { viaParent } from './viaparent'
 
 import { APPEARS } from '../hooks/core/cardrules'
 import { desired } from '../hooks/core/setupcard'
@@ -13,7 +14,7 @@ import { PR_SHARED_KEY, parsePrView } from '../hooks/core/crewpr'
 import { HISTORY_KEY, REPORT_KEY } from '../hooks/core/overnight'
 import { TEMPLATES_KEY } from '../hooks/core/orchestra'
 import { bandKey } from '../hooks/core/band'
-import { COL_PT, ROW_PT } from '../hooks/ui/tokens'
+import { columnPt, ROW_PT } from '../hooks/ui/tokens'
 
 export let NOW = Date.parse('2026-10-11T12:00:00Z') // moves on between states (below), so the pane's kept readings are old when the next state mounts
 export const MIN = 60_000
@@ -106,10 +107,10 @@ export const walk = (n: Node, out: Node[] = []): Node[] => {
 export const strings = (n: Node): string[] => (n.children ?? []).filter((c): c is string => typeof c === 'string')
 export const nameOf = (x: Node): string => String(x.key ?? x.props?.key ?? '')
 export const num = (v: unknown): number => (typeof v === 'number' ? v : 0)
-export const propsAt = (wPt: number) => ({ title: 'Vaken', isFocused: false, bodyColumns: wPt / COL_PT, placement: 'dock' as const, scroll: { bodyRows: Math.round(HEIGHT_PT / ROW_PT), offset: 0, total: 200 }, view: {} })
+export const propsAt = (wPt: number) => ({ title: 'Vaken', isFocused: false, bodyColumns: wPt / columnPt(), placement: 'dock' as const, scroll: { bodyRows: Math.round(HEIGHT_PT / ROW_PT), offset: 0, total: 200 }, view: {} })
 export const textsOf = (root: Node): string[] => walk(root).flatMap(strings)
 // The widest thing inside a part, in points: a Box or Client with a width in cells, or a picture's width.
-export const widest = (n: Node): number => Math.max(0, ...walk(n).slice(1).map(x => (x.type === 'Svg' ? num(x.props?.width) : num(x.props?.width) * COL_PT)))
+export const widest = (n: Node): number => Math.max(0, ...walk(n).slice(1).map(x => (x.type === 'Svg' ? num(x.props?.width) : num(x.props?.width) * columnPt())))
 export const pathTo = (t: Node, target: Node, path: Node[] = []): Node[] | undefined => {
   if (t === target) return path
   for (const c of kids(t)) {
@@ -177,6 +178,7 @@ export type State = {
   before?: ($: EngineInterface) => Promise<void>
   open?: (ui: Pane) => Promise<void> // press a person would make to reach the state's view (a second pass is drawn there, after the board)
   leave?: (ui: Pane) => Promise<void>
+  after?: ($: EngineInterface) => Promise<void> // undoes `before` once the state is swept
   start?: (ui: Pane) => Promise<void>
   band?: boolean
   viewHas?: RegExp[]
@@ -364,7 +366,7 @@ export const STATES: State[] = [
   {
     name: 'a waiting session with a reply box, a stuck nudge, a heavy chat',
     rows: /^(press-o-|press-n-|press-ol-here|morel-others|press-ol-fit)/,
-    has: [/Your turn/, /asks you a question/, /Context is 93% full/],
+    has: [/Your turn/, /A session whose title is long enough/, /^93%$/], // the question row's name (its chip says Question, the dim line its age only); the context bar's percent (1.138.0: no Context is N% full row)
     seed: mem => {
       mem.set('cockpit:session:test-session', rec('test-session', { cwd: ROOT, branch: 'feat-x', state: 'working', title: 'Fix the login page', contextPercent: 93, costUsd: 4.2, fiveHourPercent: 91, fiveHourResetsAt: '2026-10-11T13:00:00Z' }))
       mem.set('cockpit:session:s1', rec('s1', { state: 'waiting', stateSince: NOW - 12 * MIN, title: 'A session whose title is long enough that it has to be cut', ask: { kind: 'question', tool: 'AskUserQuestion', since: NOW - 12 * MIN } }))
@@ -380,7 +382,7 @@ export const STATES: State[] = [
     has: [/Computer/, /Memory|memory/],
     rows: /^press-ol-computer/,
     seed: mem => {
-      mem.set('cockpit:laptop:v2', { at: NOW - 20_000, schema: 3, cpuBusy: 0.95, pressure: 'critical', freeShare: 0.03, swap: { totalMb: 8192, usedMb: 7900 }, battery: { hasBattery: true, onAc: false, percent: 9, remaining: '0:25' }, thermal: { state: 'slowed', speedLimit: 60 }, procs: { count: 7, rssMb: 5400 }, memMb: 16384, load: 12, cores: 8 })
+      mem.set('cockpit:laptop:v2', { at: NOW - 20_000, schema: 3, cpuBusy: 95, pressure: 'critical', freeShare: 0.03, swap: { totalMb: 8192, usedMb: 7900 }, battery: { hasBattery: true, onAc: false, percent: 9, remaining: '0:25' }, thermal: { state: 'slowed', speedLimit: 60 }, procs: { count: 7, rssMb: 5400 }, memMb: 16384, load: 12, cores: 8 })
     },
   },
   {
@@ -388,7 +390,7 @@ export const STATES: State[] = [
     has: [/Computer/],
     rows: /^press-ol-computer/,
     seed: mem => {
-      mem.set('cockpit:laptop:v2', { at: NOW - 40 * MIN, schema: 1, cpuBusy: 0.2 })
+      mem.set('cockpit:laptop:v2', { at: NOW - 40 * MIN, schema: 1, cpuBusy: 20 })
     },
   },
   {
@@ -403,13 +405,18 @@ export const STATES: State[] = [
     },
   },
   {
-    name: 'focus on (the Focus row and the line above the chat box)',
-    has: [/Notices paused/],
+    // Quiet starts from the command (the This session card has no Quiet row; the band shows it and ends it)
+    name: 'focus on (the Quiet line above the chat box)',
+    has: [], // only the band shows Quiet; bandSweep checks its posted line
     band: true,
     rows: /^press-ol-here/,
     seed: () => {},
-    start: ui => ui.press({ key: 'focus-start' }),
-    leave: ui => ui.press({ key: 'focus-end' }),
+    before: async $ => {
+      await $.command.run(viaParent('vaken-focus', ''))
+    },
+    after: async $ => {
+      await $.command.run(viaParent('vaken-focus', 'off'))
+    },
   },
   {
     name: 'a vague last prompt (What it misses)',

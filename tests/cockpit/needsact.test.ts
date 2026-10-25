@@ -57,18 +57,21 @@ test('Needs you groups the inbox by kind in its order; only this session\'s stop
     item({ kind: 'review', sid: 'me', what: '2 finished answers changed files and wait for your look.', since: undefined, approx: true, todo: 'Look at the changes, then type /vaken-ship reviewed in that session.' }),
   ]
   const groups = needsGroups(items, NOW0, id)
-  expect(groups.map(g => g.head)).toEqual(['Stopped steps', 'Paused for safety', 'Changes to look at'])
+  // Finished answers that wait for a look are no Needs you row (a calm line on This session)
+  expect(groups.map(g => g.head)).toEqual(['Stopped steps', 'Paused for safety'])
   expect(groups[1]?.rows).toHaveLength(1)
-  const [mine, theirs] = groups[0]?.rows ?? []
-  expect(mine).toMatchObject({ title: 'app: Stopped a risky command', right: '3 min ago', inside: { label: 'Allow once', action: { kind: 'allowOnce' } } })
+  // Newest first; this session's row carries no session name
+  const [theirs, mine] = groups[0]?.rows ?? []
+  expect(mine).toMatchObject({ title: 'Stopped a risky command', right: '3 min ago', inside: { label: 'Allow once', action: { kind: 'allowOnce' } } })
   expect(mine?.action).toBeUndefined()
   expect(mine?.what.means).toContain('This deletes x.')
-  expect(theirs?.title).toBe('web: Stopped a risky command')
+  // Another session's row: its name is its own line (`session`), the event its title
+  expect(theirs?.title).toBe('Stopped a risky command')
+  expect(theirs?.session).toEqual({ name: 'web' })
   expect(theirs?.action).toBeUndefined()
   expect(theirs?.right).toBe('2 min ago')
   expect(theirs?.what.next?.startsWith(ELSEWHERE_NEXT)).toBe(true)
-  expect(groups[1]?.rows[0]).toMatchObject({ title: 'web: Halted', what: { next: 'Type /vaken-pause off in that session when you are ready.' } })
-  expect(groups[2]?.rows[0]?.right).toBeUndefined()
+  expect(groups[1]?.rows[0]).toMatchObject({ title: 'Halted', session: { name: 'web' }, what: { next: 'Type /vaken-pause off in that session when you are ready.' } })
   const allowed = needsGroups([item({ allowed: true })], NOW0, id)
   expect(allowed.map(g => g.head)).toEqual(['Stopped steps'])
   expect(allowed[0]?.rows[0]).toMatchObject({ right: 'allowed' })
@@ -79,7 +82,7 @@ test('Proof: a failed check presses as Fix and claims with no check as Check; Gu
   const proof = { ...emptyState(), seq: 3, lastEditSeq: 1, turns: 1, receipts: [{ kind: 'tests' as const, ok: false, at: NOW0 - MIN, seq: 2 }, { kind: 'lint' as const, ok: true, at: NOW0 - MIN, seq: 3 }], last: { at: NOW0, seconds: 1, edits: 1, files: 1, ran: [], claims: ['tests' as const], unproven: [{ kind: 'tests' as const, why: 'failed' as const }], notChecked: [], doneSet: [] } }
   const ctx: CardCtx = { now: NOW0, ledger: [], proof, halted: false, modes: {} }
   const rows = (lineCard('proof', ctx).groups ?? []).flatMap(g => g.rows)
-  expect(rows.find(r => r.key === 'check-tests')).toMatchObject({ right: 'failed · Fix', action: fixCheck('tests') })
+  expect(rows.find(r => r.key === 'check-tests')).toMatchObject({ right: 'failed · 1 min ago · Fix', action: fixCheck('tests') })
   expect(rows.find(r => r.key === 'check-lint')?.action).toBeUndefined()
   expect(rows.find(r => r.key === 'unproven')).toMatchObject({ right: '1 claim · Check', action: checkClaims(1) })
   const guard = lineCard('guard', ctx).groups ?? []
@@ -164,8 +167,9 @@ test('Needs you shows the stopped steps of every session, grouped (the undo row 
   expect(await textOf(ui, /^If an edit went wrong$/)).toBe(false)
   expect(await textOf(ui, /^Preview undo \(2 files\)$/)).toBe(true)
   expect(await textOf(ui, /^Undo last answer$/)).toBe(false)
-  expect(await textOf(ui, /^app: Stopped a risky command$/)).toBe(true)
-  expect(await textOf(ui, /^s1: Stopped a risky command$/)).toBe(true)
+  expect(await textOf(ui, /^Stopped a risky command$/)).toBe(true)
+  expect(await textOf(ui, /^s1$/)).toBe(true)
+  expect(await textOf(ui, /^s1: Stopped a risky command$/)).toBe(false)
   await ui.press({ key: 'press-ol-needs:hold-s1-1-0' })
   await clock.settle()
   await ui.redraw()
@@ -234,7 +238,8 @@ test('Fix puts a short prompt in the prompt box (nothing sent, a second press ad
   })
   const ui = await mountPane($)
   await openCards(ui, ['proof', 'safety'])
-  expect(await textOf(ui, /^failed · Fix$/)).toBe(true)
+  // A check's result carries its age
+  expect(await textOf(ui, /^failed · .+ ago · Fix$/)).toBe(true)
   expect(await textOf(ui, /^1 claim · Check$/)).toBe(true)
   await ui.press({ key: 'press-ol-proof:check-tests-0' })
   await clock.settle()
@@ -251,18 +256,21 @@ test('Fix puts a short prompt in the prompt box (nothing sent, a second press ad
   await clock.settle()
   await ui.redraw()
   expect(ran).toEqual([])
-  expect(await textOf(ui, /^Type this in the chat box:$/)).toBe(true)
-  expect(await textOf(ui, /^\/vaken-undo last yes$/)).toBe(true)
+  // In this world no copy can be read, so the row says nothing can be put back and offers no line to type
+  expect(await textOf(ui, /^Undo: nothing can be put back$/)).toBe(true)
+  expect(await textOf(ui, /cannot be restored/)).toBe(true)
+  expect(await textOf(ui, /^Type this in the chat box:$/)).toBe(false)
   expect(toasts).toContain(UNDO_SAID)
   expect(mem.get('cockpit:undo:pending:test-session')).toMatchObject({ kind: 'last', at: now })
-  expect(await textOf(ui, /^Preview of undoing the edits since your last message\.$/)).toBe(true)
-  expect(await textOf(ui, /^What you can do: Nothing changes before you type it\.$/)).toBe(true)
+  // The preview's own title is not repeated under the row
+  expect(await textOf(ui, /^Preview of undoing the edits since your last message\.$/)).toBe(false)
+  expect(await textOf(ui, /^What you can do: Nothing changes before you type it\.$/)).toBe(false)
   await ui.press({ key: 'press-ol-safety:undo-last-0' })
   await clock.settle()
   await ui.redraw()
-  expect(await textOf(ui, /^Preview of undoing/)).toBe(false)
-  await ui.press({ key: 'press-ol-proof:look-0' })
-  await clock.settle()
+  expect(await textOf(ui, /cannot be restored/)).toBe(false)
+  // With nothing to look at the Checks card draws no look row
+  expect(await textOf(ui, /^Nothing waits for your look$/)).toBe(false)
   expect(sent.length).toBe(1)
   expect(filled.length).toBe(1)
   await ui.unmount()
@@ -302,7 +310,7 @@ const holdFacts = (ageMin: number, detail: string | undefined, now: number) => (
   seen: {},
 })
 
-test('a stopped step of 40 minutes is still listed, but no longer offers the yes: it says to try again in Claude, then allow', () => {
+test('a stopped step of 40 minutes is still listed with its own title and its age, but no longer offers the yes: its detail says Allow once has timed out', () => {
   const [fresh] = buildInbox(holdFacts(10, 'This deletes build.', NOW0))
   const [old] = buildInbox(holdFacts(40, 'This deletes build.', NOW0))
   expect(fresh?.stale).toBeUndefined()
@@ -310,11 +318,12 @@ test('a stopped step of 40 minutes is still listed, but no longer offers the yes
   expect(old?.stale).toBe(true)
   expect(canAllowHere(old as InboxItem)).toBe(false)
   const row = itemRow(old as InboxItem, 0, NOW0, id)
-  expect(row.title).toBe(`app: ${STOPPED_OLD}`)
-  expect(row.title).toBe('app: Stopped (try again in Claude, then allow)')
+  expect(row.title).toBe('Stopped a risky command')
   expect(row.inside).toEqual({ label: 'Dismiss', action: { kind: 'dismissHold', sid: 'me' } })
   expect(row.action).toBeUndefined()
   expect(row.right).toBe('40 min ago')
+  expect(row.what.why).toBe(`Stopped 40 min ago. ${STOPPED_OLD}.`)
+  expect(STOPPED_OLD).toBe('Allow once has timed out')
   expect(old?.todo).toBe('Try the step again in Claude. When it is stopped again, allow it then.')
 })
 
@@ -322,7 +331,7 @@ test('a stopped step with the step it tried shows it in the open row and holds A
   const [withStep] = buildInbox(holdFacts(3, 'This deletes build.', NOW0))
   const row = itemRow(withStep as InboxItem, 0, NOW0, id)
   expect(row.what.means).toBe('Claude tried a risky step. Vaken stopped it before it ran. Nothing changed, and the session waits for you. This deletes build.')
-  expect(row.inside).toEqual({ label: 'Allow once', action: ALLOW_ONCE, more: [{ label: 'Dismiss', action: { kind: 'dismissHold', sid: 'me' } }] })
+  expect(row.inside).toEqual({ label: 'Allow once', action: ALLOW_ONCE, more: [{ label: 'Keep stopped', action: { kind: 'keepStopped' } }, { label: 'Dismiss', action: { kind: 'dismissHold', sid: 'me' } }] })
   expect(row.action).toBeUndefined()
   const [bare] = buildInbox(holdFacts(3, undefined, NOW0))
   expect(canAllowHere(bare as InboxItem)).toBe(false)

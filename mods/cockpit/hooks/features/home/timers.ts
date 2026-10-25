@@ -4,7 +4,7 @@ import { quietly } from '../../core/quiet'
 import type { Timer } from 'claude-code'
 import { beat, loadRun } from '../orchestra'
 import type { HomeEngine } from './engine'
-import { write } from './load'
+import { busyBeat, write } from './load'
 import { refreshContext, refreshSessions, refreshUsage } from './refresh'
 
 const BEAT_MS = 30_000
@@ -15,7 +15,7 @@ let checkTimer: Timer | undefined
 export function startTimers(eng: HomeEngine): void {
   if (beatTimer === undefined) {
     beatTimer = eng.every(BEAT_MS, quietly('home:beat', eng.now, () => {
-      void write(eng.io(), {}, false, true).catch(() => undefined)
+      void write(eng.io(), busyBeat(), false, true).catch(() => undefined)
       void refreshUsage(eng)
       void refreshSessions(eng)
       void refreshContext(eng)

@@ -6,15 +6,15 @@ import { ALLOW_SET_WHAT, ALLOW_USED_WHAT, DISMISS_WHAT, HALT_DENY_WHAT, HALT_WHA
 import { ANOMALY_WHAT, DRIFT_WHAT } from './proof2'
 import { BLOCK_WHAT, LOOP_WHAT, THRASH_WHAT } from './loopbreaker'
 import { BROKEN_WHAT, CHECKED_WHAT } from './stability'
-import { CAP_HOLD_WHAT, CAP_WHAT } from './agentcap'
+import { CAP_DEPTH_WHAT, CAP_HOLD_WHAT, CAP_SPEND_WHAT, CAP_WHAT } from './agentcap'
 import { COACH_WHAT } from './coach'
 import { COLLIDE_WHAT } from './crew'
 import { DIET_WHAT } from './diet'
 import { DIGEST_WHAT } from './away'
 import { ENV_WHAT, FENCE_WHAT, HELD_WHAT as MIGRATION_HELD_WHAT, WARNED_WHAT as MIGRATION_WARNED_WHAT } from './guardback'
 import { EXTENDED_WHAT, HELD_WHAT as BUDGET_HELD_WHAT, WARNED_WHAT as BUDGET_WARNED_WHAT } from './budget'
-import { FRESH_WHAT } from './freshstart'
-import { KEPT_WHAT } from './cachekeeper'
+import { FRESH_BRIEF_WHAT, FRESH_WHAT } from './freshstart'
+import { KEEPER_STOP_WHAT, KEEPER_UNREAD_WHAT, KEPT_LOST_WHAT, KEPT_PAID_WHAT, KEPT_WHAT } from './cachekeeper'
 import { NAMED_WHAT, RESTORED_WHAT } from './undo'
 import { NEIGHBORS_WHAT } from './neighbors'
 import { PACKET_WHAT } from './continuity'
@@ -23,6 +23,7 @@ import { GUARD_UPGRADE_WHAT, PRESETS, presetWhat } from './presets'
 import { QUEUE_OFFER_WHAT, STEER_SEND_WHAT, STEER_STOP_WHAT } from './inbox'
 import { REMIND_WHAT, RESUME_WHAT as LIMIT_RESUME_WHAT } from './resume'
 import { LIMIT_GO_WHAT, LIMIT_PAUSE_WHAT } from './overnight'
+import { LEAN_WHAT, RUN_FINISHED_WHAT, RUN_STARTED_WHAT, RUN_STOPPED_WHAT } from './ledger'
 import { ROUTED_WHAT, WARNED_WHAT as SWITCH_WARNED_WHAT } from './route'
 import { RULE_WHAT } from './rules'
 import { STARTERS_WHAT } from './starters'
@@ -35,6 +36,9 @@ import { WOULD_WHAT } from './compactrest'
 import { shownTitle, startOfDay } from './ledger'
 import type { HelpEntry } from './registry'
 import { timesWord } from './words'
+import { fillIn, same } from './fillin'
+import { langNow, t as tHere, trFill } from '../i18n/t'
+import type { Lang } from '../i18n/types'
 import { fmt } from './fmt'
 import { sysWord, wordSystemNow } from './syswords'
 
@@ -54,7 +58,7 @@ const ENTRIES: [string, Explain][] = [
   e(THRASH_WHAT, 'Claude edited one file 5 times in 10 minutes while steps kept failing in between. Claude was told; nothing was stopped.', 'Another edit of the same file may not fix it. Claude may be guessing.', 'Look at the file, or ask Claude what it thinks is wrong. Turn it off: Settings > Safety > Loop breaker.'),
 
   e(UNPROVEN_WHAT, 'Claude said the tests pass, the work is done or it is fixed, but no passing check backs this up. Nothing was stopped.', 'Claude can be wrong about its own work. A check that passed is the proof.', 'Ask Claude to run the checks and show the result. /vaken-ship proof shows what ran. Settings > Safety > Claims switches this off.'),
-  e(DRIFT_WHAT, 'At least 5 edits went to new folders that do not match your goal. Nothing was stopped.', 'Claude may have wandered away from the task you gave it.', 'Check the files it changed. If it was on purpose, ignore this. /vaken-tasks goal sets the goal vaken compares with.'),
+  e(DRIFT_WHAT, 'At least 5 edits went to new folders that do not match your goal. Nothing was stopped.', 'Claude may have wandered away from the task you gave it.', 'Check the files it changed; if it was on purpose, ignore this. /vaken-tasks goal sets the goal. Settings > Advanced > Goal drift warning turns this off.'),
   e(ANOMALY_WHAT, 'Claude looked stuck: one file edited 6 times in one answer, 15 calls with no file changed and a lot of text read, or 3 failures of one kind of command.', 'A stuck Claude uses up your plan and gets nowhere.', 'Read the details and ask Claude what is wrong. It was told to explain. Settings > Advanced > Odd-change warning turns this off.'),
 
   e(GUARD_HELD_WHAT.destructive, 'Claude tried a command that can destroy data, such as a delete, a force-push or a wipe. Vaken stopped it and told Claude.', 'Many of these cannot be undone.', 'If safe, press Allow once in Needs you (for 30 min) or type /vaken-guard allow once there, then ask Claude to retry. See Settings > Safety > Risky commands.'),
@@ -66,9 +70,9 @@ const ENTRIES: [string, Explain][] = [
   e(GUARD_HELD_WHAT.tests, 'Claude tried to change a test so that it skips or checks less. Vaken stopped the edit and told Claude.', 'A weakened test can hide a real bug.', 'If the change is right, press Allow once in Needs you (for 30 min) or type /vaken-guard allow once there. If not, ask Claude to fix the code.'),
   e(GUARD_WARNED_WHAT.tests, 'Claude changed a test so that it skips or checks less. Claude was told to tell you; nothing was stopped.', 'A weakened test can hide a real bug.', 'Look at the test change and ask Claude to fix the code instead. Settings > Safety > Test changes can stop such edits.'),
 
-  e(HALT_WHAT, 'You pressed Pause all or typed /vaken-pause. Commands, edits, tools, agents, web fetches and skills are paused until you resume.', 'It is the emergency stop for doing things. Reading and thinking still work.', 'Press Resume in Needs you or on the Safety card, or type /vaken-pause off, when you want Claude to work again.'),
-  e(HALT_LIFT_WHAT, 'The pause ended. Steps that change things work again.', 'Claude can edit files and run commands again.', 'Type /vaken-pause to pause again, or press Pause all on the Safety card, when it shows.'),
-  e(HALT_DENY_WHAT, 'This session was paused, and Claude tried a step that changes things. Vaken stopped it.', 'This is what Pause all is for. Such steps stay stopped while it lasts.', 'Press Resume in Needs you or on the Safety card, or type /vaken-pause off, to let Claude work again.'),
+  e(HALT_WHAT, 'You pressed Pause this session or typed /vaken-pause. Commands, edits, tools, agents, web fetches and skills are paused until you resume.', 'It is the emergency stop for doing things. Reading and thinking still work.', 'Press Resume in Needs you or on the Safety card, or type /vaken-pause off, when you want Claude to work again.'),
+  e(HALT_LIFT_WHAT, 'The pause of this session ended. Steps that change things work again.', 'Claude can edit files and run commands again.', 'Type /vaken-pause to pause this session again, or press Pause this session on the Safety card, when it shows.'),
+  e(HALT_DENY_WHAT, 'This session was paused, and Claude tried a step that changes things. Vaken stopped it.', 'This is what Pause this session is for. Such steps stay stopped while it lasts.', 'Press Resume in Needs you or on the Safety card, or type /vaken-pause off, to let Claude work again.'),
   e(ALLOW_SET_WHAT, 'You pressed Allow once or typed /vaken-guard allow once. The stopped step may go through, one time.', 'It is your yes for one step that the safety check would stop. It fades after 30 minutes.', 'Tell Claude to try the step again. It does not run by itself. If Claude does not try it, the yes just ends.'),
   e(ALLOW_USED_WHAT, 'A step that the safety check would stop went through, because you had allowed one.', 'The allowance is used up. The next step is stopped again.', 'Check what the step did. The next stopped step waits for your Allow once again.'),
   e(DISMISS_WHAT, 'You pressed Dismiss on a stopped step. It left Needs you, and nothing was allowed.', 'The step never ran. If Claude tries it again, it is stopped again.', 'Nothing to do. If you want the step after all, tell Claude to try again and press Allow once then.'),
@@ -101,11 +105,21 @@ const ENTRIES: [string, Explain][] = [
   e(ROUTED_WHAT, 'Claude started an agent that only looks things up, and vaken ran it on a cheaper model.', 'A lookup does not need the biggest model. This saves plan usage.', '/vaken-tasks route shows the details. Settings > Agents > Agent models sets Off, Suggest or Auto.'),
   e(SWITCH_WARNED_WHAT, 'You switched model in a long session while its saved copy (the cache) was warm. Vaken warned you first.', 'A switch throws the saved copy away, and writing it again costs usage.', 'Switch model only at the start of a new session. Settings > Agents > Agent models: Off also stops this warning.'),
   e(LIMIT_RESUME_WHAT, 'The plan limit had stopped an answer. After the reset, vaken sent "continue" for you.', 'The work goes on without you at the screen.', '/vaken-help run after-limit off cancels it. Settings > Money and plan > After a limit sets Off, Remind or Resume.'),
-  e(LIMIT_PAUSE_WHAT, 'The plan limit stopped agents of your task run. Their tasks wait again, and the run paused until the limit resets.', 'An agent that runs into the limit only fails. Waiting keeps the work for later.', 'Nothing. It goes on after the reset. /vaken-tasks afterlimit wait makes it wait for you. /vaken-help run after-limit off all cancels the wait.'),
+  e(LIMIT_PAUSE_WHAT, 'The plan limit stopped agents of your task run. Their tasks wait again, and the run paused until the limit resets.', 'An agent that runs into the limit only fails. Waiting keeps the work for later.', 'Press Go on, on the Agents card, after the reset. /vaken-tasks afterlimit go makes a run go on by itself.'),
   e(LIMIT_GO_WHAT, 'The plan limit had paused your task run. The limit reset, so the run went on by itself.', 'The run can finish while you are away.', '/vaken-tasks report shows the result when it ends.'),
+  e(LEAN_WHAT, 'Vaken cut long output (logs, big reads, repeated reminders) before Claude read it. One row a day counts the cuts.', 'Less text to read means fewer tokens used. The saving is an estimate.', 'Nothing. Settings > Money and plan > Lean session changes it.'),
+  e(RUN_STARTED_WHAT, 'You started a task run. Vaken began handing its tasks to agents.', 'The log shows when the work began and how many tasks it holds.', '/vaken-tasks shows the run. /vaken-tasks stop ends it.'),
+  e(RUN_FINISHED_WHAT, 'Every task of your task run ended: done, failed or skipped.', 'You can read the result without watching the run.', '/vaken-tasks report shows the result.'),
+  e(RUN_STOPPED_WHAT, 'You stopped your task run. Running agents were told to stop, and no new one starts.', 'Stopping keeps work from going on without you.', '/vaken-tasks again runs it once more.'),
   e(REMIND_WHAT, 'The plan limit stopped an answer. Vaken told you when the limit resets.', 'You know when you can go on.', 'Send "continue" after the reset. Settings > Money and plan > After a limit can do it for you.'),
-  e(KEPT_WHAT, 'The session was quiet, so vaken sent Claude one tiny question to keep the saved copy of the session (the cache) warm.', 'A cold cache makes your next message cost more. This costs a little usage.', 'Settings > Money and plan > Keep session cheap turns it off. /vaken-help run keeper shows when it last asked.'),
+  e(KEPT_WHAT, 'The session was quiet, so vaken sent Claude one tiny question to keep the saved copy of the session (the cache) warm.', 'A cold cache makes your next message cost more. This costs a little usage; the card shows the money saved once the cache is used.', 'Settings > Money and plan > Keep session cheap turns it off. /vaken-help run keeper shows when it last asked.'),
+  e(KEPT_PAID_WHAT, 'Your next message used the warm cache. Vaken counted the money that saved, less what keeping it warm cost.', 'Writing the cache again costs far more than reading it.', 'Nothing. The Autopilot card shows the money on the Kept the session cheap row.'),
+  e(KEPT_LOST_WHAT, 'You came back after the cache had gone stale, so keeping it warm cost a little and saved nothing.', 'Vaken counts the misses too, so the money it shows is honest.', 'Nothing. Settings > Money and plan > Keep session cheap turns the keeper off.'),
+  e(KEEPER_STOP_WHAT, 'The cache had gone stale when the keeper read it, so that read paid for a rewrite. The keeper stopped for this break.', 'More reads of a stale cache would only cost.', 'Nothing. Settings > Money and plan > Keep session cheap turns the keeper off.'),
+  e(KEEPER_UNREAD_WHAT, 'The keeper tried to read the cache and got no answer, so it could not keep it warm.', 'Without a read, the cache can go stale during your break.', '/vaken-help run keeper shows the state. Settings > Money and plan > Keep session cheap turns it off.'),
   e(CAP_WHAT, 'Claude started an agent while your limit was already reached. You were warned; nothing was stopped.', 'Many agents at once slow your laptop and use your plan fast.', 'Wait for one to finish. Settings > Agents > Agent cap and Most at once change the limit.'),
+  e(CAP_DEPTH_WHAT, 'An agent tried to start an agent more than 2 levels deep. Vaken stopped it and told Claude.', 'Agents that start agents can spread far and spend fast.', 'Claude does the step itself. Settings > Agents > Agent cap set to Warn lifts the stop.'),
+  e(CAP_SPEND_WHAT, 'Your request had cost as much as its agent limit, so vaken stopped the next agent and told Claude.', 'One request should not use a big part of your plan without you knowing.', 'Send a new message to start a new count. /vaken-settings cap.spend raises the limit.'),
   e(CAP_HOLD_WHAT, 'Claude tried to start an agent while your limit was reached. Vaken stopped it and told Claude.', 'Many agents at once slow your laptop and use your plan fast.', 'Wait for one agent to finish. Settings > Agents > Most at once raises the limit.'),
 
   e(DIET_WHAT, 'Your CLAUDE.md files, which Claude reads on every answer, are big or repeat lines. You were told once.', 'A big file costs plan usage all day.', '/vaken-help run diet lists the files and the lines that appear twice. Trim what you can.'),
@@ -123,6 +137,7 @@ const ENTRIES: [string, Explain][] = [
   e(PLAN_SUGGEST_WHAT, 'Your message looked like a big task (long, or with two big verbs), and few files had changed. Vaken suggested a plan first.', 'A short plan costs less than a redo.', 'Ask Claude for a plan. /vaken-explain planfirst says why. Settings > Prompts and memory > Plan first sets Suggest, Ask or Off.'),
   e(PLAN_ASK_WHAT, 'Your message looked like a big task. Vaken told Claude to write a short plan and wait for your yes.', 'A short plan costs less than a redo.', 'Read the plan, then say yes or change it. Settings > Prompts and memory > Plan first turns this off.'),
   e(FRESH_WHAT, 'Your new message is on a new topic, and the session is big. Only you were told.', 'A fresh session costs less than carrying the whole old session along.', 'Start a new session for the new topic. /vaken-explain fresh says why. Settings > Prompts and memory > Fresh-start nudge turns it off.'),
+  e(FRESH_BRIEF_WHAT, 'You pressed Start fresh. Vaken saved a short brief of this session and copied a line to paste.', 'A new session starts empty. The brief saves you from explaining the work again.', 'Open a new session and paste the line. /vaken-explain fresh says why.'),
 
   e(COLLIDE_WHAT, 'Claude was about to edit a file that another live session edited in the last 30 minutes. Nothing was stopped.', 'Two sessions can undo each other\'s work.', '/vaken-help run claims lists who edits what. Wait for the other session. Settings > Agents > File overlap turns this off.'),
   e(NEIGHBORS_WHAT, 'Another live session works in the same folder as this one. Only you were told.', 'Two sessions in one folder can change the same files.', '/vaken neighbors lists them. Give one session its own worktree. Settings > Agents > Two in one folder turns this off.'),
@@ -173,7 +188,7 @@ const DETAIL_MAX = 110
 export const LINES_MAX = 14
 const DAY = 24 * 3_600_000
 
-export const agoWord = (ms: number): string => fmt.ago(Math.max(0, ms), 'days')
+export const agoWord = (ms: number, lang: Lang = 'en'): string => fmt.ago(Math.max(0, ms), 'days', lang)
 
 const cut = (text: string, max: number): string => {
   const t = text.replace(/\s+/g, ' ').trim()
@@ -183,17 +198,19 @@ const cut = (text: string, max: number): string => {
 type Row = { at: number; detail?: string }
 type Kind = { what: string; n: number; last: number }
 
-export function explainLines(what: string, rows: Row[], now: number): string[] {
+export function explainLines(what: string, rows: Row[], now: number, say: (s: string) => string = same): string[] {
   const title = titleFor(what) ?? what
   const week = rows.filter(r => r.at >= now - 7 * DAY && r.at <= now)
   const found = explainFor(what)
-  const lines = [`${shownTitle(title)} (${timesWord(week.length)} in 7 days)`]
-  if (found === undefined) lines.push('There is no explanation for this line yet.')
-  else lines.push(`What it means: ${found.means}`, `Why: ${found.why}`, `What you can do: ${found.next}`)
+  // The count in the language of the answer (English for a caller that passes no `say`)
+  const times = say === same ? timesWord(week.length) : tHere('words.times', { n: week.length })
+  const lines = [fillIn(say('{title} ({times} in 7 days)'), { title: say(shownTitle(title)), times })]
+  if (found === undefined) lines.push(say('There is no explanation for this line yet.'))
+  else lines.push(`${say('What it means:')} ${say(found.means)}`, `${say('Why:')} ${say(found.why)}`, `${say('What you can do:')} ${say(found.next)}`)
   const last = [...rows].sort((a, b) => b.at - a.at).slice(0, TIMES_MAX)
   if (last.length > 0) {
-    lines.push('', 'The last times:')
-    for (const r of last) lines.push(`  ${agoWord(now - r.at)}${r.detail === undefined || r.detail.trim() === '' ? '' : `: ${cut(r.detail, DETAIL_MAX)}`}`)
+    lines.push('', say('The last times:'))
+    for (const r of last) lines.push(`  ${agoWord(now - r.at, say === same ? 'en' : langNow())}${r.detail === undefined || r.detail.trim() === '' ? '' : `: ${say === same ? cut(r.detail, DETAIL_MAX) : trFill(cut(r.detail, DETAIL_MAX))}`}`)
   }
   return lines.slice(0, LINES_MAX)
 }

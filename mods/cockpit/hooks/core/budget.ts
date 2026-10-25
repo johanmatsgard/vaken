@@ -1,7 +1,9 @@
 // Budgets in dollars per session and per day that warn at 80% and refuse costly calls at 100% in Stop mode. Pure.
 import { moneyEn as money } from './prices'
 import { percentOf } from './words'
-import { tEn } from '../i18n/t'
+import { t as tNow, tr } from '../i18n/t'
+import { fillIn } from './fillin'
+import { fmt } from './fmt'
 
 export type Which = 'session' | 'day'
 export type Level = 'ok' | 'warn' | 'over'
@@ -48,12 +50,15 @@ export function rises(before: Record<Which, Level>, list: Reading[]): Reading[] 
 const percent = (r: Reading): number => (r.share < 1 ? Math.floor(r.share * 100) : percentOf(r.share))
 const label = (w: Which): string => (w === 'session' ? 'session' : 'day')
 
-export const toastText = (r: Reading, t: (s: string) => string = s => s): string => t('Cost: {pct}% of the {which} budget (about {usd} of {limit}, estimate).').replace('{pct}', String(percent(r))).replace('{which}', t(label(r.which))).replace('{usd}', money(r.usd)).replace('{limit}', money(r.limit)) + (r.which === 'day' ? ` ${t('Only sessions vaken saw today are counted.')}` : '')
+export const toastText = (r: Reading, t: (s: string) => string = s => s): string => t('Cost: {pct}% of the {which} budget (about {usd} of {limit}, estimate).').replace('{pct}', String(percent(r))).replace('{which}', t(label(r.which))).replace('{usd}', fmt.money(r.usd)).replace('{limit}', fmt.money(r.limit)) + (r.which === 'day' ? ` ${t('Only sessions vaken saw today are counted.')}` : '')
 
+// Only Stop, which the person chose, changes what Claude does. In every other mode the note is facts only: Claude keeps working as before.
 export const noteText = (r: Reading, mode: string): string =>
-  r.level === 'over'
-    ? `Vaken saw the ${label(r.which)} cost budget used up: about ${money(r.usd)} of ${money(r.limit)} (an estimate). ${mode === 'stop' ? 'New costly calls such as agents are stopped now. ' : ''}Tell the person what you did so far and ask if you should go on. They can type /vaken-usage budget extend.`
-    : `Vaken saw ${percent(r)}% of the ${label(r.which)} cost budget used: about ${money(r.usd)} of ${money(r.limit)} (an estimate). Use only what the task needs, start no agents you can avoid, and tell the person about the cost.`
+  mode === 'stop'
+    ? r.level === 'over'
+      ? `Vaken saw the ${label(r.which)} cost budget used up: about ${money(r.usd)} of ${money(r.limit)} (an estimate). New costly calls such as agents are stopped now. Tell the person what you did so far and ask if you should go on. They can type /vaken-usage budget extend.`
+      : `Vaken saw ${percent(r)}% of the ${label(r.which)} cost budget used: about ${money(r.usd)} of ${money(r.limit)} (an estimate). At 100% vaken stops costly calls such as agents.`
+    : `For information only: vaken saw ${percent(r)}% of the ${label(r.which)} cost budget used, about ${money(r.usd)} of ${money(r.limit)} (an estimate). The person already sees this. Do not change your work or your answer because of it.`
 
 export const stopReason = (tool: string, r: Reading): string =>
   `Vaken stopped this ${tool} call: the ${label(r.which)} cost budget is used up, about ${money(r.usd)} of ${money(r.limit)} (an estimate). Do not start other costly work. Tell the person and ask if you should go on. They can type /vaken-usage budget extend.`
@@ -62,14 +67,14 @@ export const ledgerWarned = (r: Reading): string => `${percent(r)}% of the ${lab
 export const ledgerHeld = (tool: string, r: Reading): string => `Stopped a ${tool} call: the ${label(r.which)} budget of ${money(r.limit)} is used up (estimate).`
 
 export function budgetLines(f: Facts, extra: { session: number; day: number }, daySessions?: number): string[] {
-  if (f.mode === 'off') return ['Budget: off. Turn it on: Settings > Money and plan.']
-  const lines = [`Budget: ${f.mode === 'stop' ? 'stop' : 'warn'}. ${f.mode === 'stop' ? 'At 80% you are warned; at 100% costly calls such as agents are stopped.' : 'At 80% and at 100% you are warned.'}`]
+  if (f.mode === 'off') return [tr('Budget: off. Turn it on: Settings > Money and plan.')]
+  const lines = [f.mode === 'stop' ? tr('Budget: stop. At 80% you are warned; at 100% costly calls such as agents are stopped.') : tr('Budget: warn. At 80% and at 100% you are warned.')]
   for (const [which, s] of [['session', f.session], ['day', f.day]] as const) {
     if (s === undefined) continue
     const r = read(which, s)
-    const added = extra[which] > 0 ? ` (${money(s.limit - extra[which])} plus ${money(extra[which])} extended)` : ''
-    const over = which === 'day' && daySessions !== undefined ? `, ${tEn('words.session', { n: daySessions })}` : ''
-    lines.push(`${which === 'session' ? 'Session' : 'Day'}: about ${money(s.usd)} of ${money(s.limit)}${added}, ${r === undefined ? '' : `${percent(r)}%`}${over} (estimate; source: ${f.source === 'engine' ? "the engine's session total" : 'tokens and list prices'}).`)
+    const added = extra[which] > 0 ? ` ${fillIn(tr('({base} plus {extra} extended)'), { base: fmt.money(s.limit - extra[which]), extra: fmt.money(extra[which]) })}` : ''
+    const over = which === 'day' && daySessions !== undefined ? `, ${tNow('words.session', { n: daySessions })}` : ''
+    lines.push(fillIn(tr('{which}: about {usd} of {limit}{added}, {pct}{over} (estimate; source: {source}).'), { which: which === 'session' ? tr('Session') : tr('Day'), usd: fmt.money(s.usd), limit: fmt.money(s.limit), added, pct: r === undefined ? '' : fmt.percent(percent(r)), over, source: f.source === 'engine' ? tr("the engine's session total") : tr('tokens and list prices') }))
   }
   return lines
 }
@@ -78,10 +83,10 @@ export type Ask = { kind: 'status' } | { kind: 'extend'; which?: Which } | { kin
 export function parseAsk(args: string): Ask {
   const w = args.trim().toLowerCase().split(/\s+/).filter(x => x !== '')
   if (w.length === 0 || w[0] === 'status') return { kind: 'status' }
-  if (w[0] !== 'extend') return { kind: 'bad', why: 'Use: /vaken-usage budget, or /vaken-usage budget extend [session|day]' }
+  if (w[0] !== 'extend') return { kind: 'bad', why: tr('Use: /vaken-usage budget, or /vaken-usage budget extend [session|day]') }
   if (w.length === 1) return { kind: 'extend' }
   if (w.length === 2 && (w[1] === 'session' || w[1] === 'day')) return { kind: 'extend', which: w[1] }
-  return { kind: 'bad', why: 'Use: /vaken-usage budget extend [session|day]' }
+  return { kind: 'bad', why: tr('Use: /vaken-usage budget extend [session|day]') }
 }
 
 export function toExtend(ask: { which?: Which }, list: Reading[]): Which[] {

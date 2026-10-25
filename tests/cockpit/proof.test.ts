@@ -2,7 +2,7 @@
 import { expect, mock } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { PROOF_HELP, PROOF_SETTINGS, affectsTests, afterTurn, buildEvidence, checksIn, doneLines, doneMet, emptyState, exitCodeOf, goalFrom, isPersonMessage, judge, packLines, parseKinds, parseShortstat, readState, recordEdit, recordReceipts, statusOf } from '../hooks/core/proof'
+import { PROOF_HELP, PROOF_SETTINGS, affectsTests, afterTurn, buildEvidence, checksIn, doneLines, doneMet, emptyState, exitCodeOf, failingNames, goalFrom, isPersonMessage, judge, outputVerdict, packLines, parseKinds, parseShortstat, readState, recordEdit, recordReceipts, statusOf } from '../hooks/core/proof'
 import type { ProofState } from '../hooks/core/proof'
 import { keyTitle } from '../hooks/core/titles'
 import { claimNote, findClaims, gapsOf } from '../hooks/core/proofclaims'
@@ -23,7 +23,7 @@ test('which commands are checks, and which only look like one', () => {
   expect(checksIn('scripts/check-cockpit.sh').map(h => h.kind)).toEqual(['tests'])
   expect(checksIn('bash ./run-tests.sh && sh test.sh').map(h => h.kind)).toEqual(['tests'])
   expect(checksIn('scripts/unit-tests.sh')).toEqual([{ kind: 'tests', hidden: false }])
-  expect(checksIn('scripts/check-cockpit.sh 2>&1 | tail -3')).toEqual([{ kind: 'tests', hidden: true }])
+  expect(checksIn('scripts/check-cockpit.sh 2>&1 | tail -3')).toEqual([{ kind: 'tests', hidden: true, by: 'pipe', plain: true }])
   expect(checksIn('cat scripts/check-cockpit.sh')).toEqual([])
   expect(checksIn('scripts/release.sh')).toEqual([])
   expect(checksIn('git commit -m "npm test passes"')).toEqual([])
@@ -33,19 +33,72 @@ test('which commands are checks, and which only look like one', () => {
 })
 
 test('a pipe, || or ; can hide how a check ended; && cannot', () => {
-  expect(checksIn('npm test | tail -5')).toEqual([{ kind: 'tests', hidden: true }])
-  expect(checksIn('npm test || true')).toEqual([{ kind: 'tests', hidden: true }])
-  expect(checksIn('npm test; echo done')).toEqual([{ kind: 'tests', hidden: true }])
+  expect(checksIn('npm test | tail -5')).toEqual([{ kind: 'tests', hidden: true, by: 'pipe', plain: true }])
+  expect(checksIn('npm test || true')).toEqual([{ kind: 'tests', hidden: true, by: 'chain' }])
+  expect(checksIn('npm test; echo done')).toEqual([{ kind: 'tests', hidden: true, by: 'chain' }])
   expect(checksIn('npm run lint && npm test')).toEqual([{ kind: 'lint', hidden: false }, { kind: 'tests', hidden: false }])
-  expect(checksIn('npm run lint; npm test')).toEqual([{ kind: 'lint', hidden: true }, { kind: 'tests', hidden: false }])
+  expect(checksIn('npm run lint; npm test')).toEqual([{ kind: 'lint', hidden: true, by: 'chain' }, { kind: 'tests', hidden: false }])
+})
+
+test('a redirect such as 2>&1, >&2 or &> is not a separator: the check stays honest', () => {
+  expect(checksIn('npm test 2>&1')).toEqual([{ kind: 'tests', hidden: false }])
+  expect(checksIn('npm test >&2')).toEqual([{ kind: 'tests', hidden: false }])
+  expect(checksIn('npm test &> out.log')).toEqual([{ kind: 'tests', hidden: false }])
+  expect(checksIn('npm test &>> out.log && npm run build 2>&1')).toEqual([{ kind: 'tests', hidden: false }, { kind: 'build', hidden: false }])
+  expect(judge(checksIn('npm test 2>&1'), false, undefined)).toEqual([{ kind: 'tests', ok: true, exit: 0 }])
+  expect(checksIn('npm test & npm run lint')).toEqual([{ kind: 'tests', hidden: true, by: 'chain' }, { kind: 'lint', hidden: false }])
+})
+
+test('a piped run is read from the tool\'s own summary; only with none does it say why it is not clear', () => {
+  const piped = checksIn('npm test 2>&1 | tail -5')
+  expect(judge(piped, false, undefined, ' 12 pass\n 0 fail\nRan 12 tests across 3 files.')).toEqual([{ kind: 'tests', ok: true }])
+  expect(judge(piped, false, undefined, '(fail) login > keeps the typed address [1.2ms]\n 11 pass\n 1 fail')).toEqual([{ kind: 'tests', ok: false, names: ['login > keeps the typed address'] }])
+  expect(judge(piped, false, undefined, 'Tests:       2 failed, 10 passed, 12 total')[0]?.ok).toBe(false)
+  expect(judge(piped, false, undefined, ' Tests  10 passed (10)')[0]?.ok).toBe(true)
+  expect(judge(piped, false, undefined, '==== 1 failed, 3 passed in 0.12s ====')[0]?.ok).toBe(false)
+  expect(judge(piped, false, undefined, '==== 4 passed in 0.12s ====')[0]?.ok).toBe(true)
+  expect(judge(piped, false, undefined, '--- FAIL: TestLogin (0.00s)\nFAIL\texample.com/app\t0.01s')).toEqual([{ kind: 'tests', ok: false, names: ['TestLogin'] }])
+  expect(judge(piped, false, undefined, 'ok  \texample.com/app\t0.01s')[0]?.ok).toBe(true)
+  expect(judge(piped, false, undefined, 'test result: FAILED. 3 passed; 1 failed')[0]?.ok).toBe(false)
+  expect(judge(piped, false, undefined, 'test result: ok. 4 passed; 0 failed')[0]?.ok).toBe(true)
+  expect(judge(checksIn('npx tsc --noEmit | head'), false, undefined, 'src/a.ts(3,1): error TS2304: Cannot find name')[0]?.ok).toBe(false)
+  expect(judge(checksIn('npx eslint . | tail -2'), false, undefined, '\u2716 3 problems (2 errors, 1 warning)')[0]?.ok).toBe(false)
+  expect(judge(piped, false, undefined, 'npm error Test failed.  See above for more details.')[0]?.ok).toBe(false)
+  expect(judge(piped, false, undefined, 'some lines\nno summary')).toEqual([{ kind: 'tests', ok: undefined, why: 'pipe' }])
+  expect(judge(checksIn('npm test || true'), false, undefined, '')).toEqual([{ kind: 'tests', ok: undefined, why: 'chain' }])
+  expect(judge(checksIn('npm run lint && npm test'), true, 1)).toEqual([{ kind: 'lint', ok: undefined, why: 'many' }, { kind: 'tests', ok: undefined, why: 'many' }])
+})
+
+// A pass printed by a command after the check, or left by a filter that drops failure lines, is not the check's pass
+test('a pass is read from the output only when the check is piped into plain readers; a failure always counts', () => {
+  const pass = ' 12 pass\n 0 fail'
+  expect(judge(checksIn('npm test; echo " 12 pass"'), false, undefined, pass)).toEqual([{ kind: 'tests', ok: undefined, why: 'chain' }])
+  expect(judge(checksIn('npm test || true'), false, undefined, pass)).toEqual([{ kind: 'tests', ok: undefined, why: 'chain' }])
+  expect(judge(checksIn('npm test | tail -5 && echo "ok done"'), false, undefined, 'ok done')).toEqual([{ kind: 'tests', ok: undefined, why: 'pipe' }])
+  expect(judge(checksIn('npm test 2>&1 | grep pass'), false, undefined, pass)).toEqual([{ kind: 'tests', ok: undefined, why: 'pipe' }])
+  expect(judge(checksIn('go test ./... | head -3'), false, undefined, 'ok  \texample.com/a\t0.01s')).toEqual([{ kind: 'tests', ok: undefined, why: 'pipe' }])
+  expect(judge(checksIn('npm test 2>&1 | tee out.log | tail -5\n'), false, undefined, pass)).toEqual([{ kind: 'tests', ok: true }])
+  expect(judge(checksIn('npm test || true'), false, undefined, ' 11 pass\n 1 fail')[0]?.ok).toBe(false)
+  expect(judge(checksIn('npm test 2>&1 | grep -v x'), false, undefined, ' 1 fail')[0]?.ok).toBe(false)
+})
+
+test('the first 3 failing test names are kept, whole, with secrets hidden; the rest are counted', () => {
+  const out = ['FAILED tests/test_a.py::test_one - assert 1', 'FAILED tests/test_a.py::test_two', 'FAILED tests/test_b.py::test_three', 'FAILED tests/test_b.py::test_four', '=== 4 failed in 0.3s ==='].join('\n')
+  expect(failingNames(out)).toEqual({ names: ['tests/test_a.py::test_one', 'tests/test_a.py::test_two', 'tests/test_b.py::test_three'], more: 1 })
+  const [r] = judge(checksIn('pytest -q'), true, 1, out)
+  expect(r).toEqual({ kind: 'tests', ok: false, exit: 1, names: ['tests/test_a.py::test_one', 'tests/test_a.py::test_two', 'tests/test_b.py::test_three'], more: 1 })
+  const s = recordReceipts(emptyState(), [r as NonNullable<typeof r>], NOW)
+  expect(s.receipts[0]).toMatchObject({ names: ['tests/test_a.py::test_one', 'tests/test_a.py::test_two', 'tests/test_b.py::test_three'], more: 1 })
+  expect(failingNames('not ok 1 - login keeps the address\n  ● Login › shows the error under the box')).toEqual({ names: ['login keeps the address', 'Login › shows the error under the box'], more: 0 })
+  expect(outputVerdict(undefined)).toBeUndefined()
 })
 
 test('the verdict of a result: passed, failed with a code, or not clear', () => {
   expect(judge(checksIn('npm test'), false, undefined)).toEqual([{ kind: 'tests', ok: true, exit: 0 }])
   expect(judge(checksIn('npm test'), true, 2)).toEqual([{ kind: 'tests', ok: false, exit: 2 }])
   expect(judge(checksIn('npm test'), true, undefined)).toEqual([{ kind: 'tests', ok: false }])
-  expect(judge(checksIn('npm test | tail'), false, undefined)).toEqual([{ kind: 'tests', ok: undefined }])
-  expect(judge(checksIn('npm run lint && npm test'), true, 1)).toEqual([{ kind: 'lint', ok: undefined }, { kind: 'tests', ok: undefined }])
+  expect(judge(checksIn('npm test | tail'), false, undefined)).toEqual([{ kind: 'tests', ok: undefined, why: 'pipe' }])
+  expect(judge(checksIn('npm run lint && npm test'), true, 1)).toEqual([{ kind: 'lint', ok: undefined, why: 'many' }, { kind: 'tests', ok: undefined, why: 'many' }])
   expect(exitCodeOf('Exit code 127\nnpm: not found')).toBe(127)
   expect(exitCodeOf('all good')).toBeUndefined()
 })
@@ -65,7 +118,7 @@ test('a receipt goes stale when a file is edited after it', () => {
 })
 
 test('an edit that cannot change a result leaves the runs fresh; code, config, tests and lockfiles do not', () => {
-  for (const p of ['README.md', 'docs/HANDOFF.md', 'notes.txt', 'guide.rst', 'a/b/shot.PNG', 'logo.svg', '.gitignore', 'LICENSE', 'docs/design/x.json', 'docs/site/config.js']) expect(affectsTests(p)).toBe(false)
+  for (const p of ['README.md', 'docs/notes.md', 'notes.txt', 'guide.rst', 'a/b/shot.PNG', 'logo.svg', '.gitignore', 'LICENSE', 'docs/design/x.json', 'docs/site/config.js']) expect(affectsTests(p)).toBe(false)
   for (const p of ['src/app.ts', 'package.json', 'package-lock.json', 'tsconfig.json', 'Makefile', 'tests/app.test.ts', 'docs/example.test.ts', 'src/a.spec.js', 'scripts/test.sh', 'test_app.py', 'Edit']) expect(affectsTests(p)).toBe(true)
   expect(affectsTests('/Users/me/docs/app/src/a.ts')).toBe(true)
   expect(affectsTests('/Users/me/docs/app/notes.md')).toBe(false)
@@ -200,7 +253,7 @@ test('the git summary is read as counts', () => {
 })
 
 test('the goal: the key words of a real message, never its sentence; not a command, not a greeting', () => {
-  expect(goalFrom('Fix the login bug on the checkout page. It breaks on Safari.')).toBe('Fix login bug')
+  expect(goalFrom('Fix the login bug on the checkout page. It breaks on Safari.')).toBe('Fix the login bug')
   expect(goalFrom('add a dark mode switch to settings')).toBe(keyTitle('add a dark mode switch to settings'))
   expect(goalFrom(`Please deploy with the token ${'s' + 'k-'}abcdefghijklmnop1234 to the staging server now`)).not.toMatch(/sk-|abcdef/)
   expect(goalFrom('Fix the login bug on the checkout page. It breaks on Safari.')!.length).toBeLessThan(40)
@@ -292,6 +345,24 @@ test('a failing run leaves a failed receipt with the exit code; a look at a file
   expect(stateOf(mem).receipts).toEqual([])
   await $.tool.call({ tool: 'Bash', command: 'npm run lint' })
   expect(stateOf(mem).receipts).toEqual([{ kind: 'lint', ok: false, exit: 3, at: NOW, seq: 1 }])
+})
+
+test('Fix on a failure: the named failure event marks the check failed at once; the tool call of that step does not count it again', async ($, on) => {
+  const mem = engine(on, c => (c.startsWith('npm') ? { isError: true, text: 'Exit code 2\nboom' } : { text: 'ok' }))
+  on('classic.PostToolUseFailure', () => ({}) as never)
+  const failure = (command: string, tool_use_id: string, over: Record<string, unknown> = {}) => $.classic.PostToolUseFailure({ session_id: 'test-session', transcript_path: '', cwd: '/w', hook_event_name: 'PostToolUseFailure', tool_name: 'Bash', tool_input: { command }, tool_use_id, error: 'Exit code 2\nboom', ...over } as never)
+  await failure('npm test', 'u1')
+  expect(stateOf(mem).receipts).toEqual([{ kind: 'tests', ok: false, exit: 2, at: NOW, seq: 1 }])
+  expect(statusOf(stateOf(mem), 'tests')).toBe('failed')
+  await $.tool.call({ tool: 'Bash', command: 'npm test', tool_use_id: 'u1' } as never)
+  expect(stateOf(mem).receipts.length).toBe(1)
+  // not a check, stopped by the person, or receipts off: nothing
+  await failure('ls nothing', 'u2')
+  await failure('npm run build', 'u3', { is_interrupt: true })
+  mem.set('cockpit:setting:proof.receipts', 'off')
+  await failure('npm run lint', 'u4')
+  expect(stateOf(mem).receipts.length).toBe(1)
+  expect(JSON.stringify(stateOf(mem))).not.toMatch(/boom|npm/)
 })
 
 test('Receipts off: nothing is recorded', async ($, on) => {

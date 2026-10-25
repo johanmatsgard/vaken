@@ -67,7 +67,8 @@ function memStore(on: On, seed: Record<string, unknown> = {}): Map<string, unkno
 
 function world(on: On, seed: Record<string, unknown> = {}): Map<string, unknown> {
   mock.clock(on, { now: NOW })
-  const mem = memStore(on, seed)
+  // Plain mode is on by default; it is held off here so only the shape section is seen.
+  const mem = memStore(on, { 'cockpit:setting:plain.mode': 'off', ...seed })
   mock.session(on)
   mock.env(on, { HOME: '/home/test' })
   on('session.id', () => ({ value: 'me' }))

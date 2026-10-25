@@ -9,7 +9,7 @@ const NOW = Date.parse('2026-10-12T10:00:00Z')
 const good: Laptop = { at: NOW, schema: 3, pressure: 'normal', freeShare: 0.13, memMb: 24576, load: 3, cores: 18 }
 const lacking: Laptop = { at: NOW + LAPTOP_EVERY_MS, schema: 3, load: 4.1, cores: 18 }
 
-test('LV3: a reading without the memory share keeps the last good one while it is fresh', () => {
+test('a reading without the memory share keeps the last good one while it is fresh', () => {
   expect(memoryUsedPct(lacking)).toBeUndefined()
   expect(sharesLine(lacking)).toMatch(/^Memory not read/)
   const kept = keepMemory(lacking, good)
@@ -20,7 +20,7 @@ test('LV3: a reading without the memory share keeps the last good one while it i
   expect(kept.at).toBe(lacking.at)
 })
 
-test('LV3: a newer memory figure is never replaced; a stale or missing good reading is not used', () => {
+test('a newer memory figure is never replaced; a stale or missing good reading is not used', () => {
   const own = { ...lacking, freeShare: 0.09 }
   expect(keepMemory(own, good)).toBe(own)
   expect(keepMemory(lacking, undefined)).toBe(lacking)
@@ -30,6 +30,6 @@ test('LV3: a newer memory figure is never replaced; a stale or missing good read
   expect(keepMemory({ ...lacking, at: good.at - 1 }, good).freeShare).toBeUndefined()
 })
 
-test('LV5: the Safety section jump says where it goes', () => {
+test('the Safety section jump says where it goes', () => {
   expect(SECTION_TABLE.find(s => s.name === 'Safety')?.jump?.label).toBe('Open the Safety card ›')
 })

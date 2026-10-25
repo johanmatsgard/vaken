@@ -5,14 +5,14 @@ import { test } from './slow'
 import { APPEARS } from '../hooks/core/cardrules'
 import { emptyState } from '../hooks/core/proof'
 import { SKILLS_COUNTS_KEY, SKILLS_LISTING_KEY } from '../hooks/core/skills'
-import { COL_PT } from '../hooks/ui/tokens'
+import { columnPt } from '../hooks/ui/tokens'
 
 const NOW = new Date(2026, 9, 10, 14, 0).getTime()
 const MIN = 60_000
 const PANE_PT = 540
-const REGION_COLS = Math.floor(PANE_PT / COL_PT)
+const REGION_COLS = Math.floor(PANE_PT / columnPt())
 
-const paneProps = { title: 'Vaken', isFocused: false, bodyColumns: PANE_PT / COL_PT, placement: 'dock' as const, scroll: { bodyRows: 60, offset: 0, total: 60 }, view: {} }
+const paneProps = { title: 'Vaken', isFocused: false, bodyColumns: PANE_PT / columnPt(), placement: 'dock' as const, scroll: { bodyRows: 60, offset: 0, total: 60 }, view: {} }
 
 function engine(on: On) {
   on('session.id', () => ({ value: 'test-session' }))
@@ -83,7 +83,9 @@ function tilesOf(tree: Node): { title: string; figure: string }[] {
   return walk(tree)
     .filter(n => n.type === 'Box' && n.props?.position === 'absolute')
     .map(tile => {
-      const [head, figure] = kids(tile)
+      // The tile holds one box with the title row and the figure (both lines sit in the tile's first rows)
+      const [inner] = kids(tile)
+      const [head, figure] = inner === undefined ? [] : kids(inner)
       const [title] = head === undefined ? [] : kids(head)
       return { title: title === undefined ? '' : textOf(title), figure: figure === undefined ? '' : textOf(figure) }
     })

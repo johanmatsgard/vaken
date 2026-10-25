@@ -73,9 +73,12 @@ test('a state chip draws its word in the picture and names it', () => {
   expect(text.some(n => Array.isArray(n.children) && n.children.includes('[On]')), 'the chip is its word in brackets').toBe(true)
 })
 
-test('a band line opens with a mark glyph that differs by level, so the colour of the line is not the signal', () => {
+test('a band line opens with a mark glyph that differs by meaning, so the colour of the line is not the signal; ◆ is only Needs you', () => {
   const item = (level: BandItem['level'], id = 'x'): BandItem => ({ id, level, text: 't', at: 0, ttlMs: 1 })
-  const marks = [markOf(item('urgent')), markOf(item('warn')), markOf(item('info')), markOf(item('info', 'did:y'))]
-  expect(new Set(marks).size).toBe(4)
+  // A stall (urgent) and a risk (warn) are both warnings, ▲; info has none; what vaken did has ✓
+  const marks = [markOf(item('warn')), markOf(item('info')), markOf(item('info', 'did:y'))]
+  expect(new Set(marks).size).toBe(3)
+  expect(markOf(item('urgent'))).toBe('▲')
+  expect(marks).not.toContain('◆')
   expect(tr('common.needs_you').length).toBeGreaterThan(0)
 })

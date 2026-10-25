@@ -1,5 +1,6 @@
 // The fresh-start nudge: a clearly different topic in a big chat suggests a new session. A local word test, no model call; only short hashes are kept.
 import { hashOf, isPersonMessage } from './proof'
+import { trFill } from './lang'
 import type { HelpEntry } from './registry'
 import type { Setting } from './settings'
 import { percentOf } from './words'
@@ -18,13 +19,21 @@ export const FRESH_SETTINGS: Setting[] = [
   },
 ]
 export const FRESH_HELP: HelpEntry[] = [
-  { title: 'When does it suggest a fresh session?', text: 'When a new message is on a new topic and the session is big, vaken says a fresh session costs less. It compares key words on your computer and keeps only short codes, never your words. It only shows a line above the chat box and never writes to Claude.' },
+  { title: 'When does it suggest a fresh session?', text: 'When a new message is on a new topic and the session is big, vaken says a fresh session costs less. It compares key words on your computer and keeps only short codes, never your words. It only shows a line above the chat box and never writes to Claude; a press on Start fresh saves a short brief of this session and copies the line to paste into a new session.' },
   { title: 'When the fresh-start nudge stays quiet', text: 'It never fires for a command that starts with /, or for a message that continues the work (also, and then, continue, next). It shows at most once in 2 hours. /vaken-explain fresh explains the last decision.' },
 ]
 
 export const FRESH_WHAT = 'Suggested a fresh session'
 export const FRESH_TEXT = 'New topic? A fresh session costs less.'
 export const FRESH_BAND_ID = 'fresh'
+// The press on the nudge: vaken writes the brief, and the person opens the new session (the engine cannot open one for them).
+export const FRESH_PRESS = 'Start fresh'
+export const FRESH_BRIEF_COPIED = 'Brief saved and copied. Open a new session and paste: {line}'
+export const FRESH_BRIEF_SAID = 'Brief saved. Open a new session and paste: {line}'
+export const FRESH_BRIEF_FAILED = 'Could not write the brief from here. Type /vaken-help run packet in the session.'
+export const FRESH_BRIEF_WHAT = 'Wrote a brief for a fresh session'
+// en-only: the line the person pastes into the new session, read by Claude
+export const freshBriefLine = (shown: string): string => `Read ${shown} first. It is the brief of my last session.`
 export const FRESH_TTL_MS = 10 * 60_000
 const FRESH_MIN_TOKENS = 80_000
 const FRESH_MIN_WORDS = 6
@@ -35,12 +44,12 @@ const FRESH_MIN_HISTORY = 8
 export const FRESH_GAP_MS = 2 * 60 * 60_000
 
 const STOP = new Set(
-  ('about above after again also always among another because been before being between both cannot could does doing done down during each either else even ever every ' +
-    'from further have having here hers herself himself into itself just keep know like made make many might more most much must myself need needs never next once ' +
-    'only other ours ourselves over please rather really same shall should since some something such take than that their theirs them themselves then there these ' +
-    'they thing things think this those through today under until upon very want wants were what whatever when where whether which while whom whose will with within ' +
-    'without would yeah your yours yourself yourselves ' +
-    'också från inte några skulle kunna behöver vill mycket efter innan eller detta dessa deras ').split(' '),
+  ('about above after again also always among another because been before being between both cannot could does doing done down during each either else even ever every ' + // en-only: words the topic test ignores, never shown
+    'from further have having here hers herself himself into itself just keep know like made make many might more most much must myself need needs never next once ' + // en-only: words the topic test ignores, never shown
+    'only other ours ourselves over please rather really same shall should since some something such take than that their theirs them themselves then there these ' + // en-only: words the topic test ignores, never shown
+    'they thing things think this those through today under until upon very want wants were what whatever when where whether which while whom whose will with within ' + // en-only: words the topic test ignores, never shown
+    'without would yeah your yours yourself yourselves ' + // en-only: words the topic test ignores, never shown
+    'också från inte några skulle kunna behöver vill mycket efter innan eller detta dessa deras ').split(' '), // en-only: words the topic test ignores, never shown
 )
 
 export function wordHashes(text: string): string[] {
@@ -103,6 +112,7 @@ export function advanceFresh(state: FreshState, v: FreshVerdict, now: number): F
 }
 
 export function freshLine(mode: string, state: FreshState): string {
-  if (mode !== 'on') return 'Fresh-start nudge: off. Turn it on: Settings > Prompts and memory.'
-  return `Fresh-start nudge: on. ${state.last === undefined ? 'No message checked yet.' : state.last.why}`
+  if (mode !== 'on') return trFill('Fresh-start nudge: off. Turn it on: Settings > Prompts and memory.')
+  // The reason was stored in English: it is said here, a sentence at a time
+  return trFill(`Fresh-start nudge: on. ${state.last === undefined ? 'No message checked yet.' : state.last.why}`)
 }

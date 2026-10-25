@@ -17,7 +17,7 @@ export const WIN_TEXT = {
   held: 'The PC is held awake',
 }
 
-export const WIN_DETAIL_WORK = 'Held the PC awake for 10 minutes, because {n}. It is renewed while they work.'
-export const WIN_DETAIL_WHY = 'Held the PC awake for 10 minutes: {why}. It is renewed while that lasts.'
+export const WIN_DETAIL_WORK = 'Held the PC awake for 10 minutes, because {n}. It is renewed while they work.' // en-only: a stored ledger detail, said where the ledger is shown
+export const WIN_DETAIL_WHY = 'Held the PC awake for 10 minutes: {why}. It is renewed while that lasts.' // en-only: a stored ledger detail, said where the ledger is shown
 
 export const AWAKE_WIN_STRINGS: string[] = [WIN_KEEPING, WIN_LID_NOTE, WIN_NOTHING, WIN_NO_PROGRAM, WIN_NO_START]

@@ -2,7 +2,7 @@
 import { expect, mock } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { SKILLS_COUNTS_KEY, SKILLS_FLUSH_MS, SKILLS_LISTING_KEY, SKILLS_NAMES_MAX, UNUSED_SHOWN, FIND_DESC_MAX, addSkillCounts, cleanName, commandEntries, findCommands, findDescription, findRight, findWords, holdsCounts, listingFrom, noteSkill, parseListing, skillsCostLine, skillsText, skillsWhat, startSkillCommand, topSkills, unusedSkills, windowStart } from '../hooks/core/skills'
+import { SKILLS_COUNTS_KEY, SKILLS_FLUSH_MS, SKILLS_LISTING_KEY, SKILLS_NAMES_MAX, FIND_DESC_MAX, addSkillCounts, cleanName, commandEntries, findCommands, findDescription, findRight, findWords, holdsCounts, listingFrom, noteSkill, parseListing, skillsCostLine, skillsText, skillsWhat, startSkillCommand, topSkills, unusedSkills, windowStart } from '../hooks/core/skills'
 import type { SkillCounts } from '../hooks/core/skills'
 import { SLOW, test } from './slow'
 import { viaParent } from './viaparent'
@@ -102,7 +102,7 @@ test('a press starts a skill by its command name; a name that is no command give
 test('the three looks: full rows by use, short line, text twin', () => {
   const listing = listingFrom(skills, NOW)
   const v = skillsWhat({ counts, listing, now: NOW })
-  expect(v.short).toBe('Top: grilling 6, code review 3')
+  expect(v.short).toBe('Top: grilling · 6 times, code review · 3 times')
   expect(v.lines).toEqual(['grilling: 6 times', 'code review: 3 times', '5 skills listed, 2.1k tokens; 2 of 4 not used this week; counted for 2 days'])
   const g = v.groups ?? []
   expect(g.map(x => x.head)).toEqual(['Used this week', 'Skill list', 'Not used this week'])
@@ -111,19 +111,19 @@ test('the three looks: full rows by use, short line, text twin', () => {
     ['code review', '3 times', 'code-review'],
   ])
   expect(g[2]?.rows.map(r => r.title)).toEqual(['unused one', 'unused two'])
-  expect(skillsWhat({ counts: {}, now: NOW }).short).toBe('No skill used yet this week.')
+  expect(skillsWhat({ counts: {}, now: NOW }).short).toBe('No skill used this week')
   expect(skillsWhat({ counts: {}, listing, now: NOW }).short).toBe('5 skills listed, 2.1k tokens; 4 of 4 not used this week')
   expect(skillsWhat({ counts: {}, now: NOW }).groups).toEqual([])
   expect(skillsText({ counts, listing, now: NOW })).toEqual(['Skills used in the last 7 days:', '  grilling: 6 times', '  code-review: 3 times', '', '5 skills listed, 2.1k tokens; 2 of 4 not used this week; counted for 2 days', 'Not used this week:', '  unused-one, unused-two'])
   expect(skillsText({ counts: {}, now: NOW })[0]).toBe('No skill was used in the last 7 days.')
 })
 
-test('a long unused list shows the first few and says how many more', () => {
+test('a long unused list holds every name, so its fold counts them all', () => {
   const many = { totalSkills: 30, includedSkills: 30, tokens: 5000, skillFrontmatter: Array.from({ length: 30 }, (_, n) => ({ name: `s${String(n).padStart(2, '0')}`, source: 'plugin', tokens: 100 })) }
   const g = skillsWhat({ counts: {}, listing: listingFrom(many, NOW), now: NOW }).groups ?? []
   const rows = g.find(x => x.head === 'Not used this week')?.rows ?? []
-  expect(rows.length).toBe(UNUSED_SHOWN + 1)
-  expect(rows.at(-1)?.title).toBe(`and ${30 - UNUSED_SHOWN} more`)
+  expect(rows.length).toBe(30)
+  expect(rows.some(r => r.title.startsWith('and '))).toBe(false)
 })
 
 test('every string the card passes to the translator has a Swedish line, and a line keeps its placeholders', () => {

@@ -38,12 +38,14 @@ test('no bar without a run, and none while the run is being set up', () => {
   expect(RunBar(fake(), { ...base(), status: 'setup' }, 300)).toBeNull()
 })
 
-test('the fill is the finished tasks out of all; failed and stopped count as finished, and the bar says finished', () => {
+test('the fill is the done tasks out of all, the one count the summary says; failed and stopped are not done', () => {
   setLang('en')
   const run = withStates(base(), ['done', 'failed', 'stopped', 'waiting'])
-  expect(runProgress(run)).toMatchObject({ done: 3, all: 4, pct: 75 })
+  expect(runProgress(run)).toMatchObject({ done: 1, all: 4, pct: 25 })
   expect(texts(run)).toContain('Task run')
-  expect(texts(run)).toContain('3 of 4 finished')
+  expect(texts(run)).toContain('1 of 4 done')
+  // In the Agents view the Tasks header names the run: the bar line is the figure alone
+  expect(strings(RunBar(fake(), run, 300, 'rv', false)).join('|')).not.toContain('Task run')
 })
 
 test('it pulses only while the run runs and a helper works', () => {
@@ -63,6 +65,6 @@ test('it pulses only while the run runs and a helper works', () => {
 
 test('Swedish figure', () => {
   setLang('sv')
-  expect(texts(withStates(base(), ['done', 'waiting', 'waiting', 'waiting']))).toContain('1 av 4 avslutade')
+  expect(texts(withStates(base(), ['done', 'waiting', 'waiting', 'waiting']))).toContain('1 av 4 klara')
   setLang('en')
 })

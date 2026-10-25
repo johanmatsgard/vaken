@@ -50,11 +50,14 @@ const FOUND: [string, string][] = [
   ['cd /etc && find . -name x -delete', 'find-delete'],
   ['find / -name x -exec rm -rf {} +', 'find-delete'],
   ['git push -f # anything', 'git-push-force'],
+  ['git push --force', 'git-push-force'],
+  ['git push --force-with-lease origin main', 'git-push-force'],
+  ['git push --force-with-lease origin HEAD:main', 'git-push-force'],
 ]
 
 test('risky commands are found, routine ones are not', () => {
   for (const [cmd, id] of FOUND) expect(risky(cmd)).toContain(id)
-  const fine = ['ls -la', 'git status', 'git push origin feature', 'git push --force-with-lease origin feature', 'rm -rf node_modules', 'rm -rf dist build', 'git clean -n', 'psql -c "DELETE FROM users WHERE id = 1"', 'echo "rm -rf ~"', 'npm test', 'git reset --soft HEAD~1']
+  const fine = ['ls -la', 'git status', 'git push origin feature', 'git push --force-with-lease origin feature', 'git push --force-with-lease', 'git push --force-with-lease origin', 'git push --force-with-lease --force-if-includes origin HEAD','rm -rf node_modules', 'rm -rf dist build', 'git clean -n', 'psql -c "DELETE FROM users WHERE id = 1"', 'echo "rm -rf ~"', 'npm test', 'git reset --soft HEAD~1']
   for (const cmd of fine) expect(risky(cmd)).toEqual([])
 })
 
@@ -189,6 +192,8 @@ test('test tampering: skips, removed checks and always-true checks are found; fa
     ['a_test.go', 'func TestA(t *testing.T) {}', 'func TestA(t *testing.T) { t.Skip("x") }'],
     ['a.test.ts', 'expect(a).toBe(1)\nexpect(b).toBe(2)', 'expect(a).toBe(1)'],
     ['a.test.ts', 'expect(a).toBe(1)', 'expect(a).toBe(1)\nexpect(true).toBe(true)'],
+    ['a.test.ts', "it('x', f)", "fit('x', f)"],
+    ['a.test.ts', "it('x', f)", "xit('x', f)"],
   ]
   for (const [p, a, b] of bad) expect(checkTamper(p, a, b)).toBeDefined()
   const fine: [string, string, string][] = [
@@ -196,6 +201,8 @@ test('test tampering: skips, removed checks and always-true checks are found; fa
     ['a.test.ts', 'expect(a).toBe(1)', 'expect(a).toBe(1)\nexpect(b).toBe(2)'],
     ['a.test.ts', "it('old', f)", "it('new', f)"],
     ['a.test.ts', 'it.skip("a")', 'it("a")'],
+    ['tests/test_model.py', 'def test_a():\n    assert m', 'def test_a():\n    model.fit(x, y)\n    assert m'],
+    ['a.test.ts', 'expect(a)', 'scaler.fit(data)\n$fit(1)\nexpect(a)'],
   ]
   for (const [p, a, b] of fine) expect(checkTamper(p, a, b)).toBeUndefined()
   expect(describeTamper('a.test.ts', checkTamper('a.test.ts', 'expect(a)\nexpect(b)', "it.skip('x', f)")!)).toMatch(/switched off.*removed/)
@@ -213,6 +220,9 @@ test('installs are read for npm and pip; look-alike names are found', () => {
   expect(nearMiss('axois', POPULAR_NPM)?.target).toBe('axios')
   expect(nearMiss('axios', POPULAR_NPM)).toBeUndefined()
   expect(nearMiss('left-pad', POPULAR_NPM)).toBeUndefined()
+  for (const real of ['preact', 'nuxt', 'vuex', 'color']) expect(nearMiss(real, POPULAR_NPM), real).toBeUndefined()
+  expect(nearMiss('@evil/preact', POPULAR_NPM)?.target).toBe('react')
+  expect(nearMiss('raect', POPULAR_NPM)?.target).toBe('react')
   expect(pythonHas('Requests>=2\nnumpy', 'requests')).toBe(true)
   expect(parseNpmView('{"time.created":"2015-01-01T00:00:00.000Z","dist.unpacked-size":2048,"license":"MIT"}')).toEqual({ createdAt: '2015-01-01T00:00:00.000Z', sizeBytes: 2048, license: 'MIT', deprecated: undefined })
   expect(parseNpmView('not json')).toBeUndefined()

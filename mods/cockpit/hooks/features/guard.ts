@@ -1,12 +1,15 @@
-// The Guard (Settings > Safety): risky commands, edits outside the fence, odd new packages, weakened tests, and Pause all.
+// The Guard (Settings > Safety): risky commands, edits outside the fence, odd new packages, weakened tests, and the pause of a session.
 import { tr } from '../core/lang'
+import { fillIn } from '../core/fillin'
+import { sayIn } from './saylang'
 import type { EngineInterface, On } from 'claude-code'
 
 import { ALLOW_SET_WHAT, ALLOW_USED_WHAT, BLOCKS, DISMISS_WHAT, GUARD_WHATS, HALT_DENY_WHAT, HALT_SCOPE, HALT_WHAT, HELD_WHAT, OTHER_RULES, OTHER_SETTING_KEY, RESUME_WHAT, SETTING_KEY, WARNED_WHAT, allowKey, allowLive, canChange, detailOf, guardBrokeReason, haltKey, haltMem, haltReason, haltStops, heldToast, holdReason, parseAllow, parseGuardAsk, parseHalt, parsePkg, pkgKey, scopeFrom, scopeKey, statusText, strings, warnNote, warnToast, withPkg } from '../core/guard'
 import type { Block, Found, Mode, OtherRule } from '../core/guard'
 import { GUARD_UPGRADE_WHAT, upgradeGuardWorst } from '../core/guardupgrade'
-import { findSetting } from '../core/settings'
-import { grantAllow, noteHeld, stepOf, takeAllow } from '../core/allowonce'
+import { findSetting, readSetting } from '../core/settings'
+import { KEPT_STOPPED_REASON, closeStop, grantAllow, isKeptStopped, keepOpenStop, noteHeld, stepOf, takeAllow } from '../core/allowonce'
+import { ALLOW_RULES_KEY, allowRulesModeOf, parseBook, rulesText } from '../core/allowrules'
 import { judgeTool } from '../core/guardjudge'
 import type { Env, Judged, Modes } from '../core/guardjudge'
 import { bindFs } from '../core/fileops'
@@ -21,6 +24,7 @@ import { DEFAULT_HOLD_WHY, HOST_NOTE_KEY, hostView, isExplicit, noteHostView, pa
 import type { HostView } from '../core/guardhost'
 import { isFolded } from '../core/menu'
 import { BY_PERSON_ONLY, byPerson } from '../core/origin'
+import { tellNow } from '../core/tellme'
 
 // IO-BLOCK-START
 function io($: EngineInterface): Io {
@@ -63,7 +67,11 @@ const modeOf = (i: Io, b: Block): Promise<Mode> => guardMode(i, SETTING_KEY[b])
 
 const modesOf = async (i: Io): Promise<Modes> => ({ destructive: await modeOf(i, 'destructive'), scope: await modeOf(i, 'scope'), packages: await modeOf(i, 'packages'), tests: await modeOf(i, 'tests') })
 
-const HALT_SCOPE_CAP = `${HALT_SCOPE.charAt(0).toUpperCase()}${HALT_SCOPE.slice(1)}`
+// Said in the language of the answer, so it is read when the answer is made.
+const haltScopeCap = (): string => {
+  const s = tr(HALT_SCOPE)
+  return `${s.charAt(0).toUpperCase()}${s.slice(1)}`
+}
 
 async function othersOf(i: Io): Promise<Record<OtherRule, Mode>> {
   const out = {} as Record<OtherRule, Mode>
@@ -103,8 +111,17 @@ export async function allowHeldOnce(i: Io, sid: string, how: 'typed' | 'button',
 
 // "Dismiss": the stopped steps of that session leave Needs you. It writes only the ledger line and never touches the allowance, so nothing goes through.
 export async function dismissHeld(i: Io, sid: string, how: 'typed' | 'button'): Promise<void> {
+  closeStop(sid)
   await ledger(i, sid, DISMISS_WHAT, 'The stopped step was dismissed. It did not run.', how)
   i.invalidate()
+}
+
+// "Keep stopped": the row leaves like a dismiss, and the same exact step stays stopped for the rest of this session.
+export async function keepHeldStopped(i: Io, sid: string, how: 'typed' | 'button'): Promise<boolean> {
+  const kept = keepOpenStop(sid)
+  await ledger(i, sid, DISMISS_WHAT, 'The stopped step stays stopped for this session. It did not run.', how)
+  i.invalidate()
+  return kept
 }
 
 // Takes an Io, never `$`.
@@ -126,7 +143,7 @@ export function registerGuard(on: On): void {
   on('session.start', { cwd: /(?<guard>)/ }, async ($, e, next) => {
     try {
       await $.command.register({ name: 'vaken-pause', description: 'Stop commands, edits, tools, agents and web fetches in this session: /vaken-pause, /vaken-pause off. A word after it runs a part: steer.', argumentHint: 'steer | off | status', immediate: true })
-      await $.command.register({ name: 'vaken-guard', description: 'Show the guard, allow one stopped step, set the edit fence. A word after it runs a part: outbox, fence, commands.', argumentHint: 'outbox | fence | commands | allow once | scope <folders...> | scope off', immediate: true }) // en-only: slash menu hint
+      await $.command.register({ name: 'vaken-guard', description: 'Show the guard, allow one stopped step, set the edit fence. A word after it runs a part: outbox, fence, commands.', argumentHint: 'outbox | fence | commands | rules | allow once | scope <folders...> | scope off', immediate: true }) // en-only: slash menu hint
     } catch {
       // the commands are optional: a failure shows less, never breaks the session
     }
@@ -186,6 +203,7 @@ export function registerGuard(on: On): void {
         await ledger(i, sid, ALLOW_USED_WHAT, detailOf(holds), 'typed')
         i.invalidate()
       } else {
+        if (await isKeptStopped(sid, step)) return { deny: KEPT_STOPPED_REASON }
         await noteHeld(i, sid, step, heldKeys(holds), detailOf(holds))
         const offer = await undoOffer(i)
         let first = false
@@ -197,6 +215,7 @@ export function registerGuard(on: On): void {
         }
         if (first) {
           i.toast(`${heldToast(holds)}${offer.toast}`, true)
+          tellNow({ kind: 'ask' })
           i.invalidate()
         }
         return { deny: `${holdReason(holds)}${holds.some(byDefault) ? ` ${DEFAULT_HOLD_WHY}` : ''}${offer.note}` }
@@ -234,31 +253,34 @@ export function registerGuard(on: On): void {
   on('command.run', { command: 'vaken-pause' }, async ($, e, next) => {
     if (isFolded(e.command, e.args)) return next(e)
     const i = io($)
+    await sayIn(i)
     const sid = await i.sessionId()
     const word = e.args.trim().toLowerCase()
     const halted = await isHalted(i, sid)
-    if (word === 'status') return { text: halted ? `Paused for safety. ${HALT_SCOPE_CAP} are stopped in this session. Resume with /vaken-pause off.` : 'Not paused.' } // en-only: plain answer of a slash command (text twin)
+    if (word === 'status') return { text: halted ? fillIn(tr('Paused for safety. {scope} are stopped in this session. Resume with /vaken-pause off.'), { scope: haltScopeCap() }) : tr('Not paused.') }
     if (word === 'off') {
-      if (!halted) return { text: 'It was not halted.' } // en-only: plain answer of a slash command (text twin)
+      if (!halted) return { text: tr('It was not halted.') }
       // Lifting a pause unlocks every step, so only the person may type it.
       if (!byPerson(e.origin)) return { text: BY_PERSON_ONLY }
       await setHalt(i, sid, false, 'typed')
       i.toast(tr('Resumed.'), true)
-      return { text: 'Resumed. Steps that change things work again in this session.' } // en-only: plain answer of a slash command (text twin)
+      return { text: tr('Resumed. Steps that change things work again in this session.') }
     }
-    if (word !== '' && word !== 'on') return { text: 'Use /vaken-pause to stop, /vaken-pause off to lift it, /vaken-pause status to look.' } // en-only: plain answer of a slash command (text twin)
-    if (halted) return { text: 'Already paused. Resume with /vaken-pause off.' } // en-only: plain answer of a slash command (text twin)
+    if (word !== '' && word !== 'on') return { text: tr('Use /vaken-pause to stop, /vaken-pause off to lift it, /vaken-pause status to look.') }
+    if (halted) return { text: tr('Already paused. Resume with /vaken-pause off.') }
     await setHalt(i, sid, true, 'typed')
-    i.toast(tr('Paused for safety. Resume with /vaken-pause off.'), true)
-    return { text: `Paused for safety. ${HALT_SCOPE_CAP} are stopped in this session. Reading still works. A step that is already running keeps running. Resume with /vaken-pause off.` }
+    i.toast(tr('This session is paused for safety. Resume with /vaken-pause off.'), true)
+    return { text: fillIn(tr('Paused for safety. {scope} are stopped in this session. Reading still works. A step that is already running keeps running. Resume with /vaken-pause off.'), { scope: haltScopeCap() }) }
   })
 
   on('command.run', { command: 'vaken-guard' }, async ($, e, next) => {
     if (isFolded(e.command, e.args)) return next(e)
     const i = io($)
+    await sayIn(i)
     const sid = await i.sessionId()
     const ask = parseGuardAsk(e.args)
     if (ask.kind === 'bad') return { text: ask.why }
+    if (ask.kind === 'rules') return { text: rulesText(parseBook(await i.get(ALLOW_RULES_KEY)), allowRulesModeOf(await readSetting(i, 'allow.rules'))) }
     // Letting a held step through or changing your folders loosens the guard, so only the person may type it.
     if ((ask.kind === 'allow' || ask.kind === 'scope-off' || ask.kind === 'scope-set') && !byPerson(e.origin)) return { text: BY_PERSON_ONLY }
     if (ask.kind === 'allow') {
@@ -269,22 +291,22 @@ export function registerGuard(on: On): void {
       const note = parseHostNote(await i.get(HOST_NOTE_KEY))
       const unasked = note?.sid === sid && note.view === 'unasked'
       const worstStop = unasked && ((modes.destructive === 'warn' && !(await isExplicit(i, SETTING_KEY.destructive))) || (others.secrets === 'warn' && !(await isExplicit(i, OTHER_SETTING_KEY.secrets))))
-      const said = g.bound ? 'Done. The step held last goes through, once, and no other stopped step.' : 'Done. The next stopped step goes through, once.' // en-only: plain answer of a slash command (text twin)
-      const tail = anyHold ? '' : worstStop ? ' In this mode Claude Code does not ask first, so risky commands and secrets stop even on Warn.' : g.bound ? '' : ' Nothing is on Hold now: set a check to Hold in Settings > Safety.' // en-only: plain answer of a slash command (text twin)
-      return { text: `${said} It fades if not used within 30 minutes.${tail}` }
+      const said = g.bound ? tr('Done. The step held last goes through, once, and no other stopped step.') : tr('Done. The next stopped step goes through, once.')
+      const tail = anyHold ? '' : worstStop ? tr(' In this mode Claude Code does not ask first, so risky commands and secrets stop even on Warn.') : g.bound ? '' : tr(' Nothing is on Hold now: set a check to Hold in Settings > Safety.')
+      return { text: fillIn(tr('{said} It fades if not used within 30 minutes.{tail}'), { said, tail }) }
     }
     if (ask.kind === 'scope-off') {
       await i.del(scopeKey(sid))
-      return { text: 'Your folders cleared: only protected files count now.' } // en-only: plain answer of a slash command (text twin)
+      return { text: tr('Your folders cleared: only protected files count now.') }
     }
     if (ask.kind === 'scope-set') {
       const cwd = await $.session.cwd()
       const paths = scopeFrom(ask.words, await i.home(), cwd)
       await i.set(scopeKey(sid), paths)
-      return { text: `Your folders set for this session: ${paths.join(', ')}. An edit outside them is flagged (see Settings > Safety). /vaken-guard scope off clears it.` }
+      return { text: fillIn(tr('Your folders set for this session: {folders}. An edit outside them is flagged (see Settings > Safety). /vaken-guard scope off clears it.'), { folders: paths.join(', ') }) }
     }
     const scope = strings(await i.get(scopeKey(sid)))
-    if (ask.kind === 'scope-show') return { text: scope.length > 0 ? `Your folders: ${scope.join(', ')}. /vaken-guard scope off clears them.` : 'No folders set. /vaken-guard scope <folders...> sets them for this session.' } // en-only: plain answer of a slash command (text twin)
+    if (ask.kind === 'scope-show') return { text: scope.length > 0 ? fillIn(tr('Your folders: {folders}. /vaken-guard scope off clears them.'), { folders: scope.join(', ') }) : tr('No folders set. /vaken-guard scope <folders...> sets them for this session.') }
     const last = logLines((await readLog(i, LEDGER_KEY)).filter(x => GUARD_WHATS.includes(x.what)), 3)
     return {
       text: statusText({

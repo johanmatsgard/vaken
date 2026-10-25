@@ -7,7 +7,7 @@ import { arrangeSeed } from '../hooks/features/home/arrangeseed'
 import { CARD_IDS } from '../hooks/features/home/logic'
 import { ALL_IDS, NEEDS_SLOT, STANDARD_IDS } from '../hooks/features/home/viewset'
 import { clientKey } from '../hooks/ui/firstclick'
-import { COL_PT } from '../hooks/ui/tokens'
+import { columnPt } from '../hooks/ui/tokens'
 import { test } from './slow'
 
 const NOW = new Date(2026, 9, 11, 9, 0).getTime()
@@ -51,7 +51,7 @@ const mountAt = ($: unknown, bodyColumns: number) => (): Promise<Pane> =>
   ($ as { ui: { mount: (o: unknown) => Promise<Pane> } }).ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps(bodyColumns) })
 async function openSettings($: unknown, on: On, widthPt: number, view: string | undefined): Promise<{ mount: () => Promise<Pane>; toasts: string[] }> {
   const toasts = engine(on, view)
-  const mount = mountAt($, Math.round(widthPt / COL_PT))
+  const mount = mountAt($, Math.round(widthPt / columnPt()))
   const home = await mount()
   await home.press({ key: 'settings' })
   await home.unmount()
@@ -85,13 +85,16 @@ function rowWins(tree: Node, cardKey: string, jumpKey: string): void {
 }
 
 // The board is drawn, and its cards (Needs you aside, a slot of its own) are `want`, in that order.
-async function boardHas(pane: Pane, want: readonly string[]): Promise<void> {
+async function boardHas(pane: Pane, want: readonly string[]): Promise<string[]> {
   expect(await pane.find({ key: 'settings-done' }), 'Settings is left').toBeUndefined()
   expect(await pane.find({ key: 'arrange-bar' }), 'the Arranging header').toBeDefined()
   const board = walk((await pane.drawn()) as Node).find(n => n.type === 'Client' && keyOf(n) === 'arrange-board')
   expect(board, 'the Arrange board').toBeDefined()
-  const order = ((board?.props?.props as { order?: string[] } | undefined)?.order ?? []).filter(id => id !== NEEDS_SLOT)
-  expect(order).toEqual([...want])
+  // The board shows the pane's own columns (even columns): every card once, each column in the view's order
+  const lists = ((board?.props?.props as { lists?: string[][] } | undefined)?.lists ?? []).map(l => l.filter(id => id !== NEEDS_SLOT))
+  expect([...lists.flat()].sort()).toEqual([...want].sort())
+  for (const l of lists) expect(l.map(id => want.indexOf(id))).toEqual(l.map(id => want.indexOf(id)).sort((a, b) => a - b))
+  return lists.flat()
 }
 
 for (const widthPt of [300, 400, 700]) {
@@ -120,7 +123,7 @@ for (const widthPt of [300, 400, 700]) {
       await settings.press({ key: 'jump-settings-look-and-cards' })
       await settings.unmount()
       const arranging = await mount()
-      await boardHas(arranging, ids)
+      const onBoard = await boardHas(arranging, ids)
       expect(toasts.filter(t => t === ARRANGING_TO_CUSTOM).length, 'said once').toBe(1)
       // Back from Arrange: the home screen in Custom shows the same cards in the same order, and Settings now says Custom.
       await arranging.press({ key: 'arrange-done' })
@@ -131,7 +134,9 @@ for (const widthPt of [300, 400, 700]) {
       expect(await home.find({ key: 'arrange-board' }), 'Arrange is closed').toBeUndefined()
       const seen = ids.map(at)
       expect(ids.filter((_, n) => (seen[n] as number) < 0), 'every card of the view is drawn').toEqual([])
-      expect([...seen].sort((a, b) => a - b), 'in the same order').toEqual(seen)
+      // What was arranged is what is seen: the pane draws the board's columns, column by column
+      const drawnOrder = onBoard.map(at)
+      expect([...drawnOrder].sort((a, b) => a - b), 'in the same order as the board').toEqual(drawnOrder)
       expect(CARD_IDS.filter(id => !ids.includes(id) && drawn.includes(id)), 'no other card').toEqual([])
       await home.unmount()
     })
@@ -139,7 +144,7 @@ for (const widthPt of [300, 400, 700]) {
 
   test(`Standard view at ${widthPt} pt: the footer's Arrange cards takes the same path`, async ($, on) => {
     const toasts = engine(on, undefined)
-    const mount = mountAt($, Math.round(widthPt / COL_PT))
+    const mount = mountAt($, Math.round(widthPt / columnPt()))
     const home = await mount()
     expect(await home.find({ key: 'arrange' }), 'the footer button shows in Standard').toBeDefined()
     await home.press({ key: 'arrange' })

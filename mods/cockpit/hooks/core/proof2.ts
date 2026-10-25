@@ -1,12 +1,13 @@
 // Proof: drift watch, diff of intent, confidence score and anomaly sentinel. Keeps folder names, edit counts, line counts and tool-call counts per session; never a command, output, file content or Claude's words.
 import type { HelpEntry } from './registry'
 import type { Setting } from './settings'
-import { PROOF_KINDS, hashOf, kindWord, relevantKinds, statusOf, statusWord } from './proof'
-import type { ProofState } from './proof'
+import { PROOF_KINDS, hashOf, kindName, kindWord, relevantKinds, stateWord, statusOf } from './proof'
+import type { ProofKind, ProofState } from './proof'
 import { folderOf, isCodePath, isTestPath, riskOf, shortName } from './proof2risk'
 import type { Change, FileInfo, Receipt2 } from './proof2risk'
 import { strictlyInside, under } from './platform'
-import { tEn } from '../i18n/t'
+import { t as tNow, tr } from '../i18n/t'
+import { fillIn } from './fillin'
 
 
 export const PROOF2_SETTINGS: Setting[] = [
@@ -191,6 +192,7 @@ export const afterMessage = (s: Proof2State): Proof2State => ({ ...s, idleCalls:
 
 
 const STOP = new Set(
+  // en-only: a list of common words for matching a goal against paths, not text
   'about above across after again all also and any are around because been before being below between both but can could did does done each else even every few for from get give goes going gone had has have her here him his how into its just keep let like look made make many may more most much must need never not now off once one only other our out over own please put same see set she should some such take than that the their them then there these they this those through too under until upon use very was way well were what when where which while who why will with would you your add change create fix implement update make sure want want to new old file files code thing things work working use using called named make'.split(/\s+/),
 )
 
@@ -244,17 +246,17 @@ export function newAnomalies(s: Proof2State): Anomaly[] {
     const flag = `file:${s.turn}:${path}`
     if (f !== undefined && f.turnN >= SAME_FILE && !s.flags.includes(flag)) {
       const name = shortName(path)
-      out.push({ flag, band: `${name} edited ${f.turnN} times`, note: `Vaken note: you have edited ${name} ${f.turnN} times in this answer. Stop and tell the person what is not working before you edit it again.`, detail: `${name} edited ${f.turnN} times in one turn`, toast: `The same file was edited ${f.turnN} times in one turn: ${name}.` })
+      out.push({ flag, band: `${name} edited ${f.turnN} times`, note: `Vaken note: you have edited ${name} ${f.turnN} times in this answer. Stop and tell the person what is not working before you edit it again.`, detail: `${name} edited ${f.turnN} times in one turn`, toast: fillIn(tr('The same file was edited {n} times in one turn: {name}.'), { n: f.turnN, name }) })
     }
   }
   if (s.idleCalls >= IDLE_CALLS && s.idleChars >= IDLE_CHARS && !s.flags.includes('idle')) {
     const kb = Math.round(s.idleChars / 1000)
-    out.push({ flag: 'idle', band: `Stuck? ${s.idleCalls} calls, no file changed`, note: `Vaken note: ${s.idleCalls} tool calls in a row changed no file and added about ${kb} thousand characters to the session. Tell the person what you are looking for, or ask.`, detail: `${s.idleCalls} tool calls with no file changed, about ${kb} thousand characters added`, toast: `${s.idleCalls} tool calls changed no file and the session keeps growing.` })
+    out.push({ flag: 'idle', band: `Stuck? ${s.idleCalls} calls, no file changed`, note: `Vaken note: ${s.idleCalls} tool calls in a row changed no file and added about ${kb} thousand characters to the session. Tell the person what you are looking for, or ask.`, detail: `${s.idleCalls} tool calls with no file changed, about ${kb} thousand characters added`, toast: fillIn(tr('{n} tool calls changed no file and the session keeps growing.'), { n: s.idleCalls }) })
   }
   for (const [kind, f] of Object.entries(s.fails)) {
     const flag = `fail:${kind}`
     if (f.n >= FAIL_KIND && f.cmds.length >= 2 && !s.flags.includes(flag)) {
-      out.push({ flag, band: `${kind} failed ${f.n} times`, note: `Vaken note: ${kind} commands have failed ${f.n} times, each with a different command. Find the cause before you try another.`, detail: `${kind} failed ${f.n} times with ${f.cmds.length} different commands`, toast: `${kind} failed ${f.n} times with different commands.` })
+      out.push({ flag, band: `${kind} failed ${f.n} times`, note: `Vaken note: ${kind} commands have failed ${f.n} times, each with a different command. Find the cause before you try another.`, detail: `${kind} failed ${f.n} times with ${f.cmds.length} different commands`, toast: fillIn(tr('{kind} failed {n} times with different commands.'), { kind, n: f.n }) })
     }
   }
   return out
@@ -301,53 +303,55 @@ export function afterTurn2(s: Proof2State, p: ProofState, at: number): Proof2Sta
 export type Item = { label: string; points: number; max: number; why: string }
 export type Confidence = { score?: number; items: Item[]; missing?: string }
 
-const list = (a: string[]): string => (a.length === 0 ? 'none' : a.join(', '))
+const list = (a: string[]): string => (a.length === 0 ? tr('none') : a.join(', '))
+const kindList = (a: readonly ProofKind[]): string => list(a.map(kindName))
 const sizeTier = (lines: number): number => (lines <= 100 ? 15 : lines <= 300 ? 10 : lines <= 800 ? 5 : 0)
 
 // A missing proof earns nothing and says why.
 export function confidence(p: ProofState, s: Proof2State, o: { doneOn: boolean; goal: string | undefined }): Confidence {
   if (p.receipts.length === 0 || (p.edits === 0 && s.edits === 0)) {
-    return { items: [], missing: p.edits === 0 && s.edits === 0 ? 'No file has changed yet, so there is nothing to be sure of.' : 'No check (tests, build, lint or type check) has run yet.' }
+    return { items: [], missing: p.edits === 0 && s.edits === 0 ? tr('No file has changed yet, so there is nothing to be sure of.') : tr('No check (tests, build, lint or type check) has run yet.') }
   }
   const kinds = relevantKinds(p)
   const passed = kinds.filter(k => statusOf(p, k) === 'ok')
   const open = kinds.filter(k => statusOf(p, k) !== 'ok')
   const items: Item[] = [
-    { label: 'Checks passed after the last edit', max: 40, points: Math.round((40 * passed.length) / kinds.length), why: `passed: ${list(passed.map(kindWord))}${open.length === 0 ? '' : `; not yet: ${open.map(k => `${kindWord(k)} (${statusWord(statusOf(p, k))})`).join(', ')}`}` },
+    { label: tr('Checks passed after the last edit'), max: 40, points: Math.round((40 * passed.length) / kinds.length), why: `${fillIn(tr('passed: {list}'), { list: list(passed.map(k => tr(kindWord(k)))) })}${open.length === 0 ? '' : `; ${fillIn(tr('not yet: {list}'), { list: open.map(k => `${tr(kindWord(k))} (${stateWord(k, statusOf(p, k), tr)})`).join(', ') })}`}` },
   ]
   const doneSet = o.doneOn && p.done.length > 0
-  items.push({ label: 'Definition of done met', max: 20, points: doneSet && p.done.every(k => statusOf(p, k) === 'ok') ? 20 : 0, why: doneSet ? (p.done.every(k => statusOf(p, k) === 'ok') ? `every chosen check passed (${list(p.done)})` : `not met: ${list(p.done.filter(k => statusOf(p, k) !== 'ok'))} still open`) : 'not set (/vaken-ship done)' })
+  items.push({ label: tr('Definition of done met'), max: 20, points: doneSet && p.done.every(k => statusOf(p, k) === 'ok') ? 20 : 0, why: doneSet ? (p.done.every(k => statusOf(p, k) === 'ok') ? fillIn(tr('every chosen check passed ({list})'), { list: kindList(p.done) }) : fillIn(tr('not met: {list} still open'), { list: kindList(p.done.filter(k => statusOf(p, k) !== 'ok')) })) : tr('not set (/vaken-ship done)') })
   const unproven = p.last?.unproven.length ?? 0
-  items.push({ label: 'No unproven claims', max: 15, points: p.last !== undefined && unproven === 0 ? 15 : 0, why: p.last === undefined ? 'no finished answer yet' : unproven === 0 ? 'every claim in the last answer has a check behind it, or none was made' : `${tEn('words.claim', { n: unproven })} in the last answer without a check` })
-  items.push({ label: 'Small diff', max: 15, points: s.edits > 0 ? sizeTier(s.lines) : 0, why: `${s.lines} lines changed in ${s.edits} edits (up to 100 lines is the most points)` })
+  items.push({ label: tr('No unproven claims'), max: 15, points: p.last !== undefined && unproven === 0 ? 15 : 0, why: p.last === undefined ? tr('no finished answer yet') : unproven === 0 ? tr('every claim in the last answer has a check behind it, or none was made') : fillIn(tr('{claims} in the last answer without a check'), { claims: tNow('words.claim', { n: unproven }) }) })
+  items.push({ label: tr('Small diff'), max: 15, points: s.edits > 0 ? sizeTier(s.lines) : 0, why: fillIn(tr('{lines} lines changed in {edits} edits (up to 100 lines is the most points)'), { lines: s.lines, edits: s.edits }) })
   const d = driftOf(s, o.goal)
-  items.push({ label: 'No drift', max: 10, points: !d.hasGoal ? 0 : d.edits === 0 ? 10 : d.over ? 0 : 5, why: !d.hasGoal ? 'no goal set (/vaken-tasks goal)' : d.edits === 0 ? 'every edit is near the goal' : `${tEn('words.edit', { n: d.edits })} in folders far from the goal` })
+  items.push({ label: tr('No drift'), max: 10, points: !d.hasGoal ? 0 : d.edits === 0 ? 10 : d.over ? 0 : 5, why: !d.hasGoal ? tr('no goal set (/vaken-tasks goal)') : d.edits === 0 ? tr('every edit is near the goal') : fillIn(tr('{edits} in folders far from the goal'), { edits: tNow('words.edit', { n: d.edits }) }) })
   return { score: items.reduce((n, x) => n + x.points, 0), items }
 }
 
 export function confidenceLines(c: Confidence): string[] {
-  if (c.score === undefined) return ['Confidence: not enough evidence yet.', c.missing ?? '', 'It needs at least one changed file and one check that ran. Then it counts passing checks, the definition of done, claims, diff size and drift.'].filter(x => x !== '')
-  const lines = [`Confidence: ${c.score} out of 100. It is made only of the evidence below.`]
-  for (const x of c.items) lines.push(`  ${String(x.points).padStart(2)} of ${x.max}  ${x.label}: ${x.why}`)
-  lines.push('Points come only from checks that ran, not from words. A proof that is missing earns no points. This is not a promise that the work is right.')
+  if (c.score === undefined) return [tr('Confidence: not enough evidence yet.'), c.missing ?? '', tr('It needs at least one changed file and one check that ran. Then it counts passing checks, the definition of done, claims, diff size and drift.')].filter(x => x !== '')
+  const lines = [fillIn(tr('Confidence: {score} out of 100. It is made only of the evidence below.'), { score: c.score })]
+  for (const x of c.items) lines.push(`  ${String(x.points).padStart(2)} ${tr('of')} ${x.max}  ${x.label}: ${x.why}`)
+  lines.push(tr('Points come only from checks that ran, not from words. A proof that is missing earns no points. This is not a promise that the work is right.'))
   return lines
 }
 
 
 export function intentText(p: ProofState, s: Proof2State, o: { doneOn: boolean; goal: string | undefined }): string {
   const words = goalWords(o.goal)
-  if (o.goal === undefined || words.length === 0) return 'I cannot compare yet: no goal is set, or it has only common words. Set one with /vaken-tasks goal <one sentence>. Then this shows what you asked, what was delivered, what is extra and what is missing.'
-  const parts: string[] = [`Asked: ${words.join(', ')}.`]
+  if (o.goal === undefined || words.length === 0) return tr('I cannot compare yet: no goal is set, or it has only common words. Set one with /vaken-tasks goal <one sentence>. Then this shows what you asked, what was delivered, what is extra and what is missing.')
+  const parts: string[] = [fillIn(tr('Asked: {words}.'), { words: words.join(', ') })]
   const paths = Object.keys(s.files)
   const checks = PROOF_KINDS.filter(k => statusOf(p, k) === 'ok')
   const named = words.filter(w => paths.some(x => namesGoal(x, [w]).length > 0))
-  if (paths.length === 0) parts.push(`Delivered: no file has changed yet${checks.length === 0 ? '' : `; checks that passed: ${checks.map(kindWord).join(', ')}`}.`)
-  else parts.push(`Delivered: ${tEn('words.file', { n: paths.length })} changed (${tEn('words.edit', { n: s.edits })}); ${named.length === 0 ? 'no changed path names a goal word' : `changed paths name ${named.join(', ')}`}; ${checks.length === 0 ? 'no check has passed since the last edit' : `checks that passed: ${checks.map(kindWord).join(', ')}`}.`)
+  const passedList = checks.map(k => tr(kindWord(k))).join(', ')
+  if (paths.length === 0) parts.push(fillIn(tr('Delivered: no file has changed yet{checks}.'), { checks: checks.length === 0 ? '' : `; ${fillIn(tr('checks that passed: {list}'), { list: passedList })}` }))
+  else parts.push(fillIn(tr('Delivered: {files} changed ({edits}); {named}; {checks}.'), { files: tNow('words.file', { n: paths.length }), edits: tNow('words.edit', { n: s.edits }), named: named.length === 0 ? tr('no changed path names a goal word') : fillIn(tr('changed paths name {words}'), { words: named.join(', ') }), checks: checks.length === 0 ? tr('no check has passed since the last edit') : fillIn(tr('checks that passed: {list}'), { list: passedList }) }))
   const d = driftOf(s, o.goal)
-  parts.push(d.folders.length === 0 ? 'Extra: nothing found; every edited folder is near the first ones or named in the goal.' : `Extra: ${tEn('words.edit', { n: d.edits })} in folders the goal does not name: ${d.folders.slice(0, 4).join(', ')}.`)
+  parts.push(d.folders.length === 0 ? tr('Extra: nothing found; every edited folder is near the first ones or named in the goal.') : fillIn(tr('Extra: {edits} in folders the goal does not name: {folders}.'), { edits: tNow('words.edit', { n: d.edits }), folders: d.folders.slice(0, 4).join(', ') }))
   const set = o.doneOn && p.done.length > 0
   const open = (set ? p.done : paths.length > 0 ? relevantKinds(p) : []).filter(k => statusOf(p, k) !== 'ok')
-  if (set) parts.push(open.length === 0 ? 'Missing: nothing; every check in your definition of done passed after the last edit.' : `Missing: ${open.map(k => `${kindWord(k)} (${statusWord(statusOf(p, k))})`).join(', ')} from your definition of done.`)
-  else parts.push(`Missing: no definition of done is set, so this cannot say.${open.length === 0 ? '' : ` Checks that have not passed since the last edit: ${open.map(kindWord).join(', ')}.`}`)
+  if (set) parts.push(open.length === 0 ? tr('Missing: nothing; every check in your definition of done passed after the last edit.') : fillIn(tr('Missing: {list} from your definition of done.'), { list: open.map(k => `${tr(kindWord(k))} (${stateWord(k, statusOf(p, k), tr)})`).join(', ') }))
+  else parts.push(fillIn(tr('Missing: no definition of done is set, so this cannot say.{more}'), { more: open.length === 0 ? '' : ` ${fillIn(tr('Checks that have not passed since the last edit: {list}.'), { list: open.map(k => tr(kindWord(k))).join(', ') })}` }))
   return parts.join(' ')
 }

@@ -119,10 +119,11 @@ test('the light twins: Teal gets one, the amber of dark mode is untouched, a bar
   const was = look.accent
   look.accent = THEME_TEAL
   expect(levelColorLight(10)).toBe(THEME_TEAL_LIGHT)
-  expect(levelColorLight(75)).toBe(AMBER_LIGHT)
+  expect(levelColorLight(75)).not.toBe(AMBER_LIGHT)
+  expect(levelColorLight(85)).toBe(AMBER_LIGHT)
   expect(levelColorLight(95)).toBe(RED_LIGHT)
   look.accent = was
-  const bar = pillSvg(75, 100)
+  const bar = pillSvg(85, 100)
   expect(bar).toContain(AMBER_LIGHT)
   expect(bar).toContain(AMBER)
   expect(bar).toMatch(/prefers-color-scheme: dark/)
@@ -134,13 +135,15 @@ test('the dots differ by shape, not by colour alone', () => {
   expect(sources.waiting, 'active is a disc').toMatch(/<circle class="m"/)
   expect(sources.waiting).not.toContain('<polygon')
   expect(sources.idle, 'calm is a ring').toContain('fill="none"')
-  expect(sources.working, 'working is a ring with a core').toMatch(/<circle class="wr"[^>]*fill="none"[\s\S]*<circle class="wc"/)
+  // Working is the app's own full grey disc, never a ring: a ring with a small core read as calm at a glance
+  expect(sources.working, 'working is a full grey disc').toMatch(/<circle class="wc" cx="3" cy="3" r="3"\/>/)
+  expect(sources.working).not.toContain('fill="none"')
   expect(new Set(Object.values(sources)).size).toBe(4)
   expect(sources.needs).toContain(AMBER_LIGHT)
   expect(sources.needs).toContain(AMBER)
 })
 
-test('an off switch in light mode has an outline and a grey knob, in dark mode neither; an on switch is the chosen colour (item 135: the accent, its light twin in light mode), with no outline', () => {
+test('an off switch in light mode has an outline and a grey knob, in dark mode neither; an on switch is the chosen colour (the accent, its light twin in light mode), with no outline', () => {
   const off = switchSvg(false).source
   expect(off).toContain(SWITCH_OFF_OUTLINE_LIGHT)
   expect(off).toContain(SWITCH_OFF_KNOB_LIGHT)

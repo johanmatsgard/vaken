@@ -20,10 +20,16 @@ export type HomeEngine = {
   after: (ms: number, f: () => void) => unknown
   toast: (text: string) => void
   messages: () => Promise<SessionMessage[]>
+  // `$.session.messages({ agentId })`: one of this session's agents' messages, or why they cannot be read; read at a press, never kept
+  agentMessages?: (agentId: string) => Promise<SessionMessage[] | { deny: string }>
   runnerOps: () => RunnerOps  // the task runner's engine calls
   send: (sessionId: string, text: string) => Promise<SessionSendResult>
   titleSource?: () => TitleSource
   pluginName: () => string
   probe?: Probe
   agentsRunning?: () => Promise<number>
+  // `$.ui.copy`: true when the text reached a clipboard
+  copy?: (text: string) => Promise<boolean>
+  // `$.ui.selection()`: the text selected in the chat at this moment, read only when a Selected text press asks; undefined with nothing selected
+  selection?: () => Promise<string | undefined>
 }

@@ -6,8 +6,9 @@ import { shownTitle } from './ledger'
 import type { Entry } from './ledger'
 import type { HelpEntry } from './registry'
 import type { Setting } from './settings'
-import { t, tEn } from '../i18n/t'
+import { t, tEn, tr, trFill } from '../i18n/t'
 import { ageWord } from './time'
+import { fillIn } from './fillin'
 
 export const INBOX_SETTINGS: Setting[] = [
   {
@@ -39,10 +40,12 @@ export const steerKey = (sid: string): string => `cockpit:steer:queue:${sid}`
 // { item id: first-seen time } for items without a time of their own.
 export const INBOX_SEEN_KEY = 'cockpit:inbox:seen'
 export const INBOX_BAND_ID = 'inbox'
-export const ROW_KINDS: ReadonlyArray<InboxItem['kind']> = ['hold', 'budget', 'cap', 'halt', 'review']
+// A turn waiting for a look ('review') is no row of Needs you: it is a calm line on This session (cards/here.tsx), counted nowhere.
+export const ROW_KINDS: ReadonlyArray<InboxItem['kind']> = ['hold', 'budget', 'cap', 'halt']
 export const isRowItem = (x: InboxItem): boolean => ROW_KINDS.includes(x.kind) && !(x.kind === 'halt' && x.here)
-// A turn waiting for a look ('review') is shown but not counted, like a finished session.
-export const isCountedItem = (x: InboxItem): boolean => isRowItem(x) && x.kind !== 'review'
+// A stopped step whose Allow once has timed out (only Dismiss left) is no real wait: a calm row, not counted.
+export const isStaleHold = (x: InboxItem): boolean => x.kind === 'hold' && x.stale === true
+export const isCountedItem = (x: InboxItem): boolean => isRowItem(x) && !isStaleHold(x)
 // The one rule for the held count, shared by the loader and the card header so they cannot drift. It counts groups, not entries.
 export const heldNeedsCount = (items: InboxItem[]): number => items.filter(isCountedItem).length
 
@@ -228,37 +231,42 @@ export function buildInbox(f: InboxFacts): InboxItem[] {
   return out.sort((a, b) => ORDER[a.kind] - ORDER[b.kind] || (a.since ?? Infinity) - (b.since ?? Infinity))
 }
 
-export const heldCount = (items: InboxItem[]): number => items.filter(x => x.kind === 'hold' || x.kind === 'budget').reduce((n, x) => n + x.count, 0)
+// One per row, as the Needs you card shows them: repeats of one step are one row.
+export const heldCount = (items: InboxItem[]): number => items.filter(x => (x.kind === 'hold' && !isStaleHold(x)) || x.kind === 'budget').length
 
 export const inboxBandWords = (held: number): string => tEn('words.stopped_steps_wait', { n: held })
 
 
-const whereOf = (it: InboxItem): string => (it.here && it.name === HERE_FALLBACK ? HERE_FALLBACK : `${it.name}${it.here ? ' (this session)' : ''}`)
+// In the language of this draw (English when none is set, as in a test)
+const whereOf = (it: InboxItem): string => (it.here && it.name === HERE_FALLBACK ? tr(HERE_FALLBACK) : `${it.name}${it.here ? ` (${tr('this session')})` : ''}`)
 export const isOpenHold = (it: InboxItem): boolean => it.kind === 'hold' && !it.allowed && it.stale !== true
 // Same clock as the 30 minutes of the yes.
 export const stoppedAt = (it: InboxItem): number | undefined => it.lastAt ?? it.since
 // Ages use the pane's one age word (ageWord), not waitWord.
-const stoppedWords = (ms: number): string => (ms < 60_000 ? 'Stopped just now. It will not run unless you allow it.' : `Stopped ${ageWord(ms)} ago. It will not run unless you allow it.`)
+const stoppedWords = (ms: number): string => (ms < 60_000 ? tr('Stopped just now. It will not run unless you allow it.') : tr('Stopped {age} ago. It will not run unless you allow it.').replace('{age}', ageWord(ms, tr)))
 const howLong = (it: InboxItem, now: number): string => {
   const at = isOpenHold(it) ? stoppedAt(it) : undefined
   if (at !== undefined) return `${stoppedWords(now - at)} `
-  return it.since === undefined ? '' : `${it.approx ? 'Waiting at least' : 'Waiting'} ${ageWord(now - it.since)}. `
+  return it.since === undefined ? '' : `${(it.approx ? t('chat.waiting_at_least', { age: ageWord(now - it.since, tr) }) : t('chat.waiting', { age: ageWord(now - it.since, tr) }))} `
 }
 
-export const itemLines = (it: InboxItem, now: number): string[] => [`${whereOf(it)}: ${shownWhat(it.what)}`, `   ${howLong(it, now)}${it.todo}`]
-export const itemShort = (it: InboxItem, now: number): string => `${whereOf(it)}: ${shownWhat(it.what).replace(/\s+/g, ' ')} ${howLong(it, now)}${it.todo}`.trim()
+export const itemLines = (it: InboxItem, now: number): string[] => [`${whereOf(it)}: ${trFill(shownWhat(it.what))}`, `   ${howLong(it, now)}${trFill(it.todo)}`]
+export const itemShort = (it: InboxItem, now: number): string => `${whereOf(it)}: ${trFill(shownWhat(it.what)).replace(/\s+/g, ' ')} ${howLong(it, now)}${trFill(it.todo)}`.trim()
 
 export const LIMITS_NOTE = 'Vaken can only tell you where to go. It cannot press OK or answer a permission box for you, and it cannot send a push to your phone.'
 
+// The /vaken inbox answer: one numbered item per wait, its age and what to do in a paragraph of its own, so markdown keeps them apart
 export function inboxText(items: InboxItem[], now: number, on: boolean): string {
   const lines: string[] = []
-  if (!on) lines.push('The inbox is off. Turn it on: Settings > Notices.', '')
-  if (items.length === 0) lines.push('Nothing waits for you.')
-  else {
-    lines.push(`Waiting for you: ${tEn('words.thing', { n: items.length })}.`, '')
-    items.forEach((it, k) => lines.push(`${k + 1}. ${itemLines(it, now)[0]}`, itemLines(it, now)[1] as string))
-  }
-  lines.push('', LIMITS_NOTE)
+  if (!on) lines.push(t('chat.inbox_off'), '')
+  // Calm is quiet: no note on what vaken cannot do when nothing waits
+  if (items.length === 0) return [...lines, tr('Nothing waits for you.')].join('\n')
+  lines.push(t('chat.inbox_head', { things: t('words.thing', { n: items.length }) }), '')
+  items.forEach((it, k) => {
+    const [head, how] = itemLines(it, now)
+    lines.push(`${k + 1}. ${head}`, '', how as string, '')
+  })
+  lines.push(tr(LIMITS_NOTE))
   return lines.join('\n')
 }
 
@@ -284,9 +292,9 @@ export const cleanQueued = (text: string): string => text.replace(/\s+/g, ' ').t
 export function addQueued(queue: QueueItem[], text: string, at: number, by: string): { queue: QueueItem[]; ok: boolean; why?: string } {
   const clean = cleanQueued(text)
   const live = queue.filter(x => x.offers < OFFER_MAX)
-  if (clean === '') return { queue, ok: false, why: 'There is no sentence to queue.' }
-  if (live.length >= QUEUE_MAX) return { queue, ok: false, why: `That session already has ${QUEUE_MAX} queued. /vaken-pause steer clear empties this session's queue.` }
-  if (live.some(x => x.text === clean)) return { queue, ok: false, why: 'That sentence is already in the queue.' }
+  if (clean === '') return { queue, ok: false, why: tr('There is no sentence to queue.') }
+  if (live.length >= QUEUE_MAX) return { queue, ok: false, why: fillIn(tr('That session already has {n} queued. /vaken-pause steer clear empties this session\'s queue.'), { n: QUEUE_MAX }) }
+  if (live.some(x => x.text === clean)) return { queue, ok: false, why: tr('That sentence is already in the queue.') }
   return { queue: [...live, { text: clean, at, by, offers: 0 }], ok: true }
 }
 
@@ -303,7 +311,7 @@ type SteerAsk =
   | { kind: 'stop' }
   | { kind: 'bad'; why: string }
 
-const STEER_USAGE = 'Use: /vaken-pause steer (the list), /vaken-pause steer queue <sentence>, /vaken-pause steer queue @2 <sentence>, /vaken-pause steer send @2 <sentence>, /vaken-pause steer clear, /vaken-pause steer stop'
+const steerUsage = (): string => tr('Use: /vaken-pause steer (the list), /vaken-pause steer queue <sentence>, /vaken-pause steer queue @2 <sentence>, /vaken-pause steer send @2 <sentence>, /vaken-pause steer clear, /vaken-pause steer stop')
 
 export function parseSteerAsk(args: string): SteerAsk {
   const trimmed = args.trim()
@@ -312,16 +320,16 @@ export function parseSteerAsk(args: string): SteerAsk {
   const word = (m[1] ?? '').toLowerCase()
   const rest = (m[2] ?? '').trim()
   if (word === 'list' || word === 'status') return { kind: 'list' }
-  if (word === 'stop' || word === 'clear') return rest === '' ? { kind: word } : { kind: 'bad', why: STEER_USAGE }
+  if (word === 'stop' || word === 'clear') return rest === '' ? { kind: word } : { kind: 'bad', why: steerUsage() }
   if (word === 'queue' || word === 'send') {
     const t = /^@(\d{1,3})\s+([\s\S]+)$/.exec(rest)
     const target = t === null ? undefined : Number(t[1])
     const text = (t === null ? rest : (t[2] ?? '')).trim()
-    if (text === '') return { kind: 'bad', why: STEER_USAGE }
-    if (word === 'send') return target === undefined ? { kind: 'bad', why: 'Say which session: /vaken-pause steer send @2 <sentence>. /vaken-pause steer shows the numbers.' } : { kind: 'send', target, text }
+    if (text === '') return { kind: 'bad', why: steerUsage() }
+    if (word === 'send') return target === undefined ? { kind: 'bad', why: tr('Say which session: /vaken-pause steer send @2 <sentence>. /vaken-pause steer shows the numbers.') } : { kind: 'send', target, text }
     return target === undefined ? { kind: 'queue', text } : { kind: 'queue', target, text }
   }
-  return { kind: 'bad', why: STEER_USAGE }
+  return { kind: 'bad', why: steerUsage() }
 }
 
 export type SteerOther = { n: number; name: string; state: string; queued: number }
@@ -329,28 +337,29 @@ type SteerFacts = { name: string; queue: QueueItem[]; halted: boolean; others: S
 
 export function steerText(f: SteerFacts): string {
   const lines: string[] = []
-  lines.push(`This session (${f.name}): ${f.queue.length === 0 ? 'no prompt queued.' : `${tEn('words.prompt', { n: f.queue.length })} queued.`}${f.halted ? ' It is paused.' : ''}`)
-  f.queue.forEach((q, k) => lines.push(`  ${k + 1}. "${q.text.length > 80 ? `${q.text.slice(0, 79)}…` : q.text}" (queued ${ageWord(f.now - q.at)} ago${q.offers === 0 ? '' : `, offered ${tEn('words.time', { n: q.offers })}`})`))
+  const queued = f.queue.length === 0 ? tr('no prompt queued.') : fillIn(tr('{prompts} queued.'), { prompts: t('words.prompt', { n: f.queue.length }) })
+  lines.push(`${fillIn(tr('This session ({name}):'), { name: f.name })} ${queued}${f.halted ? ` ${tr('It is paused.')}` : ''}`)
+  f.queue.forEach((q, k) => lines.push(`  ${k + 1}. "${q.text.length > 80 ? `${q.text.slice(0, 79)}…` : q.text}" (${fillIn(tr('queued {age} ago'), { age: ageWord(f.now - q.at) })}${q.offers === 0 ? '' : `, ${fillIn(tr('offered {times}'), { times: t('words.time', { n: q.offers }) })}`})`))
   if (f.others.length > 0) {
-    lines.push('', 'Other sessions:')
-    for (const o of f.others) lines.push(`  @${o.n} ${o.name}: ${o.state}${o.queued === 0 ? '' : `, ${o.queued} queued`}`)
-  } else lines.push('', 'No other session is open.')
+    lines.push('', tr('Other sessions:'))
+    for (const o of f.others) lines.push(`  @${o.n} ${o.name}: ${o.state}${o.queued === 0 ? '' : `, ${fillIn(tr('{n} queued'), { n: o.queued })}`}`)
+  } else lines.push('', tr('No other session is open.'))
   lines.push(
     '',
-    'Queue a sentence: /vaken-pause steer queue <sentence>, or /vaken-pause steer queue @2 <sentence> for another session. When that session is quiet, the sentence shows dim in its prompt box. Its owner presses Tab to take it. Nothing is sent by itself.',
-    'To send a message into another session: /vaken-pause steer send @2 <sentence>. Vaken asks you first.',
-    '/vaken-pause steer stop halts changes in this session. It stops steps that change things, not thinking.',
+    tr('Queue a sentence: /vaken-pause steer queue <sentence>, or /vaken-pause steer queue @2 <sentence> for another session. When that session is quiet, the sentence shows dim in its prompt box. Its owner presses Tab to take it. Nothing is sent by itself.'),
+    tr('To send a message into another session: /vaken-pause steer send @2 <sentence>. Vaken asks you first.'),
+    tr('/vaken-pause steer stop halts changes in this session. It stops steps that change things, not thinking.'),
   )
   return lines.join('\n')
 }
 
-export const queuedWords = (target: string, text: string): string => `Queued for ${target}: "${text.length > 80 ? `${text.slice(0, 79)}…` : text}". It shows dim in the prompt box when that session is quiet. Press Tab to take it.`
-export const noSuchSession = (n: number): string => `There is no session @${n}. /vaken-pause steer shows the numbers.`
+export const queuedWords = (target: string, text: string): string => fillIn(tr('Queued for {target}: "{text}". It shows dim in the prompt box when that session is quiet. Press Tab to take it.'), { target, text: text.length > 80 ? `${text.slice(0, 79)}…` : text })
+export const noSuchSession = (n: number): string => fillIn(tr('There is no session @{n}. /vaken-pause steer shows the numbers.'), { n })
 // The answer is compared with the button as it was shown.
 export const sendQuestion = (name: string): string => t('talk.send_this_message_into_name', { name })
 export const sendButtons = (): { yes: string; no: string } => ({ yes: t('talk.send'), no: t('do.cancel') })
-export const sentWords = (name: string): string => `Sent to "${name}". It reads it as a message from this session.`
-export const notSentWords = (why: string): string => `Not sent. ${why}`
+export const sentWords = (name: string): string => fillIn(tr('Sent to "{name}". It reads it as a message from this session.'), { name })
+export const notSentWords = (why: string): string => `${tr('Not sent.')} ${why}`
 export const offerToast = 'A queued prompt is ready in the prompt box. Press Tab to take it.'
 export const stopWords = (turnStopped: boolean | undefined): string =>
-  `Paused for safety. Commands, edits, tools, agents and web fetches are stopped in this session until /vaken-pause off. This stops doing, not thinking: Claude may still write.${turnStopped === true ? ' The running answer was also cancelled.' : turnStopped === false ? ' The running answer could not be cancelled; press Escape to stop it.' : ''}`
+  `${tr('Paused for safety. Commands, edits, tools, agents and web fetches are stopped in this session until /vaken-pause off. This stops doing, not thinking: Claude may still write.')}${turnStopped === true ? ` ${tr('The running answer was also cancelled.')}` : turnStopped === false ? ` ${tr('The running answer could not be cancelled; press Escape to stop it.')}` : ''}`

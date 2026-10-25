@@ -11,6 +11,7 @@ import { readRecord } from '../core/record'
 import { readSetting } from '../core/settings'
 import { LEDGER_KEY, pushLog } from './compaction'
 import { subArgs } from '../core/menu'
+import { sayIn } from './saylang'
 
 // IO-BLOCK-START
 function io($: EngineInterface): Io {
@@ -48,7 +49,7 @@ export async function freshCheck(i: Io, msg: { text: string; origin?: { kind?: s
   await holdNote(i, freshKey(id), advanceFresh(state, v, now), 'own')
   if (v.fire) {
     await pushLog(i, LEDGER_KEY, { at: now, session: id, what: FRESH_WHAT, detail: v.why, how: 'auto', did: true })
-    await postBand(i, 'warn', FRESH_BAND_ID, FRESH_TEXT, FRESH_TTL_MS)
+    await postBand(i, 'info', FRESH_BAND_ID, FRESH_TEXT, FRESH_TTL_MS)
   }
 }
 
@@ -73,6 +74,7 @@ export function registerFreshStart(on: On): void {
     const rest0 = subArgs(e.args, 'fresh')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i)
     return { text: freshLine(await readSetting(i, SETTING_KEY), readFresh(await readNote(i, freshKey(await i.sessionId())))) }
   })
 }

@@ -19,7 +19,7 @@ test('the contract catches a broken row', () => {
 
 test('Detail has three options, Glance, Short and Full; a stored Minimal reads as Short', () => {
   expect(SETTINGS[0].options.map(o => o.value)).toEqual(['glance', 'simple', 'explained'])
-  expect(SETTINGS[0].options.map(o => o.label)).toEqual(['Glance', 'Short', 'All'])
+  expect(SETTINGS[0].options.map(o => o.label)).toEqual(['Glance', 'Short', 'Explained'])
   expect(validValue(SETTINGS[0], 'minimal')).toBe('simple')
   const card = SETTINGS.find(x => x.key === 'detail.limit')!
   expect(card.options.map(o => o.value)).toEqual(['inherit', 'simple', 'explained'])
@@ -121,6 +121,16 @@ test('with the bundle, every setting of a step costs one read at most, and a cha
   expect(w.mem.get(SETTINGS_KEY)).toEqual({})
   expect(w.mem.has('cockpit:setting:detail')).toBe(false)
   expect(await readSetting(w.io, 'detail')).toBe(validValue(SETTINGS.find(x => x.key === 'detail')!, undefined))
+})
+
+test('Reset clears every choice: All projects, each project\'s own rows and each session\'s own rows; other keys stay', async () => {
+  forgetBundles()
+  const w = storeIo({ 'cockpit:setting:detail': 'simple', 'cockpit:projset:/p': { 'guard.scope': 'off' }, 'cockpit:sessset:s1': { 'detail': 'glance' }, 'cockpit:firstrun': 'done' })
+  await resetSettings(w.io)
+  expect(w.mem.has('cockpit:setting:detail')).toBe(false)
+  expect(w.mem.has('cockpit:projset:/p')).toBe(false)
+  expect(w.mem.has('cockpit:sessset:s1')).toBe(false)
+  expect(w.mem.get('cockpit:firstrun')).toBe('done')
 })
 
 test('a change made in another session shows here once the kept bundle is BUNDLE_TTL_MS old', async () => {

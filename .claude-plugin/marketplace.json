@@ -1,6 +1,6 @@
 {
   "name": "vaken",
-  "description": "vaken: a quiet side pane for Claude Code Desktop.",
+  "description": "vaken: mission control for Claude Code Desktop.",
   "owner": {
     "name": "Johan Matsgard"
   },
@@ -8,7 +8,7 @@
     {
       "name": "vaken",
       "source": "./mods/cockpit",
-      "description": "A quiet side pane for Claude Code Desktop: what needs you, plan limits, context, agents and risky steps."
+      "description": "Mission control for Claude Code Desktop: what needs you, plan limits, context, agents and a safety stop."
     }
   ]
 }

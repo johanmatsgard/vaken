@@ -1,10 +1,12 @@
 // Explained: a bar for memory used and one for the processor, each under its words, then the Claude line, the power line and vaken's own cost (f).
-import { tr } from '../../../core/lang'
+import { langNow, t, tr } from '../../../core/lang'
+import { fmt } from '../../../core/fmt'
 import { awakeCardLines } from '../../../core/awakeplan'
-import { claudeLine, memoryHead, memoryUsedPct, offLine, olderCockpitNote, powerLine, processorFact, processorHead, processorPct, roomBy, roomLine, roomOf, sharesLine } from '../../../core/computer'
+import { claudeLine, memoryHead, memoryUsedPct, offLine, olderCockpitNote, powerLine, pct, processorFact, processorHead, processorPct, roomBy, roomLine, roomOf, sharesLine } from '../../../core/computer'
 import { selfCost, selfCostLine } from '../../../core/selfcost'
 import { ActionButton, Bar, Card, FactRow, vstep } from '../../../ui/kit'
 import { BODY_ROW_GAP } from '../../../ui/tokens'
+import { factOf } from '../../../core/headline'
 import { computerWhat } from '../linecards'
 import type { Detail, View } from '../logic'
 import type { Prefs } from '../prefs'
@@ -35,8 +37,10 @@ export function ComputerCard(c: PaneCtx, m: ComputerModel, lines: LinesModel, gr
       tr('Computer'),
       '',
       <Box flexDirection="column" rowGap={vstep(BODY_ROW_GAP)}>
-        {whatLine(c, 'computer:room', <Text>{offLine(prefs.values['laptop.mode'] ?? 'off', tr)}</Text>, compWhat)}
-        <Text dimColor>{tr(gaugeOn ? 'The first reading comes within a minute.' : 'It runs small programs every few minutes to read memory and the processor.')}</Text>
+        {/* One thing: a reading that came in but could not be used says it reads again, beside its age */}
+        {whatLine(c, 'computer:room', <Text>{gaugeOn && l !== undefined ? tr('Reading again…') : offLine(prefs.values['laptop.mode'] ?? 'off', tr)}</Text>, compWhat)}
+        {/* A reading too old to trust says its age; only a computer never read waits for its first */}
+        <Text dimColor>{!gaugeOn ? tr('It runs small programs every few minutes to read memory and the processor.') : l === undefined ? tr('The first reading comes within a minute.') : t('cardcomputer.last_reading_ago', { ago: fmt.ago(Math.max(0, (c.view.now ?? 0) - l.at), 'days', langNow()) })}</Text>
         {awake}
         {gaugeOn ? null : (
           <Box flexDirection="row">
@@ -63,6 +67,8 @@ export function ComputerCard(c: PaneCtx, m: ComputerModel, lines: LinesModel, gr
   const free = memoryHead(l, tr).split(' · ')[1]
   // Vaken's own cost in this session (f): measured between two gauge readings
   const own = selfCostLine(selfCost(), tr)
+  // The same label and value as the Glance look draws (tidy.tsx lineRow)
+  const claude = factOf(claudeLine(l, undefined, tr))
   return Card(
     el,
     'computer',
@@ -71,13 +77,13 @@ export function ComputerCard(c: PaneCtx, m: ComputerModel, lines: LinesModel, gr
     <Box flexDirection="column" rowGap={vstep(BODY_ROW_GAP)}>
       {head}
       <Box flexDirection="column">
-        {mem === undefined ? FactRow(el, 'comp-mem', tr('Memory'), tr('not read')) : FactRow(el, 'comp-mem', tr('Memory'), `${mem}% ${tr('used')}`, { note: free === undefined ? [] : [free] })}
+        {mem === undefined ? FactRow(el, 'comp-mem', tr('Memory'), tr('not read')) : FactRow(el, 'comp-mem', tr('Memory'), `${pct(mem)} ${tr('used')}`, { note: free === undefined ? [] : [free] })}
         {mem === undefined ? null : Bar(el, mem, 'computer-mem', memoryHead(l, tr), inner)}
         {FactRow(el, 'comp-cpu', cpuFact.label, cpuFact.value, { note: cpuFact.note })}
         {cpu === undefined ? null : Bar(el, cpu, 'computer-cpu', processorHead(l, tr), inner)}
       </Box>
       <Box flexDirection="column">
-        <Text dimColor>{claudeLine(l, undefined, tr)}</Text>
+        {FactRow(el, 'comp-claude', claude.label, claude.value, { note: claude.note, widthPt: inner })}
         {older === undefined ? null : <Text dimColor>{older}</Text>}
         {power === undefined ? null : <Text dimColor>{power}</Text>}
         {own === undefined ? null : <Text dimColor>{own}</Text>}

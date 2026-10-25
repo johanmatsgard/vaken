@@ -18,6 +18,8 @@ import { homeRel, homeShown } from '../hooks/core/platform'
 import { dietText } from '../hooks/core/diet'
 import { byEnglish, englishOf } from '../hooks/i18n/table'
 import { LANGS, langInfo } from '../hooks/i18n/langs'
+import { TEMPLATE, parseTaskFile, templateFor } from '../hooks/core/orchestra'
+import { TASKS_HINT } from '../hooks/features/orchestra'
 const SV = byEnglish('sv')
 
 const MAC = procPlatformOf(undefined)
@@ -122,6 +124,18 @@ test('every Windows line the pane or the phone shows has a twin that differs in 
     expect(Object.values(WIN_SHOWN).filter(en => (own[en] ?? '') === '' || own[en] === en), lang).toEqual([])
   }
   for (const en of englishOf('sys')) expect(Object.values(WIN_SHOWN).includes(en)).toBe(true)
+})
+
+test('the task file and the /vaken-tasks hint say this PC on Windows, the Mac text as before', () => {
+  expect(templateFor(MAC)).toBe(TEMPLATE)
+  expect(templateFor(WIN)).not.toBe(TEMPLATE)
+  expect(templateFor(WIN)).toContain('as many at a time as this PC has room for by default')
+  expect(/\bMac\b/.test(templateFor(WIN))).toBe(false)
+  expect(templateFor(WIN).split('\n').length).toBe(TEMPLATE.split('\n').length)
+  expect(parseTaskFile(templateFor(WIN))).toEqual([])
+  expect(sysWord(TASKS_HINT, MAC)).toBe(TASKS_HINT)
+  expect(sysWord(TASKS_HINT, WIN)).toContain('as many at a time as this PC has room for')
+  expect(/\bMac\b/.test(sysWord(TASKS_HINT, WIN))).toBe(false)
 })
 
 test('no Windows line names the Mac', () => {

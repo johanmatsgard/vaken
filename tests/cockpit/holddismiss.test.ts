@@ -69,7 +69,7 @@ test('a Dismiss line clears the stopped steps of its session, here and elsewhere
 
 test('every stopped step offers Dismiss in its open detail: beside Allow once here, alone elsewhere and when old; in Swedish it says Avfärda', () => {
   const [here] = buildInbox(facts({ ledger: [held('me', 3 * MIN)] as never }))
-  expect(itemRow(here as InboxItem, 0, NOW, id).inside).toEqual({ label: 'Allow once', action: { kind: 'allowOnce' }, more: [{ label: DISMISS_LABEL, action: dismissHold('me') }] })
+  expect(itemRow(here as InboxItem, 0, NOW, id).inside).toEqual({ label: 'Allow once', action: { kind: 'allowOnce' }, more: [{ label: 'Keep stopped', action: { kind: 'keepStopped' } }, { label: DISMISS_LABEL, action: dismissHold('me') }] })
   const [there] = buildInbox(facts({ ledger: [held('web', 3 * MIN)] as never }))
   expect(itemRow(there as InboxItem, 0, NOW, id).inside).toEqual({ label: 'Dismiss', action: { kind: 'dismissHold', sid: 'web' } })
   const [old] = buildInbox(facts({ ledger: [held('me', 40 * MIN)] as never }))
@@ -148,7 +148,7 @@ test('Dismiss in the pane clears another session\'s stopped step and this one\'s
   engine(on)
   const toasts = toastsOf(on)
   const ui = await mountPane($)
-  expect(await textOf(ui, /^s1: Stopped a risky command$/)).toBe(true)
+  expect(await textOf(ui, /^s1$/)).toBe(true)
   await ui.press({ key: 'press-ol-needs:hold-s1-1-0' })
   await clock.settle()
   await ui.redraw()
@@ -159,7 +159,8 @@ test('Dismiss in the pane clears another session\'s stopped step and this one\'s
   expect(toasts).toContain(DISMISSED_SAID)
   await ui.redraw()
   expect(await textOf(ui, /^s1: Stopped a risky command$/)).toBe(false)
-  expect(await textOf(ui, /^app: Stopped a risky command$/)).toBe(true)
+  // This session's own rows carry no session name (the card is about this session)
+  expect(await textOf(ui, /^Stopped a risky command$/)).toBe(true)
   await ui.press({ key: 'press-ol-needs:hold-test-session-0-0' })
   await clock.settle()
   await ui.redraw()
@@ -168,7 +169,7 @@ test('Dismiss in the pane clears another session\'s stopped step and this one\'s
   expect(ledgerOf(mem)[0]).toMatchObject({ what: DISMISS_WHAT, session: 'test-session', how: 'button' })
   expect(mem.has(allowKey('test-session'))).toBe(false)
   await ui.redraw()
-  expect(await textOf(ui, /^app: Stopped a risky command$/)).toBe(false)
+  expect(await textOf(ui, /^Stopped a risky command$/)).toBe(false)
   await ui.unmount()
 })
 

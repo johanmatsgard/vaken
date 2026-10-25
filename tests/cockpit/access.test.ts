@@ -25,23 +25,23 @@ const buttons = (tree: unknown): Node[] => walk(tree).filter(n => typeof n.label
 
 const glance = { value: '12%', dot: 'neutral' as const, isOpen: false, widthPt: 300, onPress: () => {} }
 
-test('A1, A2: a Glance row\'s chevron picture says the row and the action, open or shut', () => {
+test('a Glance row\'s chevron picture says the row and the action, open or shut', () => {
   setLang('en')
   expect(alts(GlanceRow(el(), 'k', 'Plan limits', glance))).toContain('Open Plan limits')
   expect(alts(GlanceRow(el(), 'k', 'Plan limits', { ...glance, isOpen: true }))).toContain('Fold Plan limits')
   expect(alts(ChevronMark(el(), 'c', 'right', () => {}, 'Notices'))).toEqual(['Open Notices'])
-  expect(alts(Chevron(el(), 'c', 'down', () => {}, 'Notices'))).toEqual(['', 'Fold Notices'])
+  expect(alts(Chevron(el(), 'c', 'down', () => {}, 'Notices'))).toEqual(['Fold Notices', 'Fold Notices'])
   expect(alts(ChevronMark(el(), 'c', 'down', () => {}, 'Notices'))).toEqual(['Fold Notices'])
   expect(foldAlt('right')).toBe('Open')
   expect(foldAlt('down')).toBe('Fold')
 })
 
-test('A2: the gear reads "<card> settings"', () => {
+test('the gear reads "<card> settings"', () => {
   setLang('en')
   expect(alts(IconButton(el(), 'g', 'gear', 'Plan limits settings', () => {}))).toEqual(['Plan limits settings'])
 })
 
-test('A3: the switch picture is "<setting>: On" or "<setting>: Off" and its Button keeps one key whichever way it is set', () => {
+test('the switch picture is "<setting>: On" or "<setting>: Off" and its Button keeps one key whichever way it is set', () => {
   setLang('en')
   forgetChanged()
   const draw = (on: boolean) => SwitchRow(el(), 'notify', 'Notices', 'Note', on, on ? 'off' : 'on', () => {}, 300)
@@ -52,7 +52,7 @@ test('A3: the switch picture is "<setting>: On" or "<setting>: Off" and its Butt
   expect(keys(false)).toEqual(['notify-switch'])
 })
 
-test('A6: a Pick option is drawn and named by its words; every option is framed and the chosen one is filled in the chosen colour (item 135; the app draws a Button label, so "selected" would show, seen live on 1.90.0)', () => {
+test('a Pick option is drawn and named by its words; every option is framed and the chosen one is filled in the chosen colour (the app draws a Button label, so "selected" would show)', () => {
   setLang('en')
   const opts = [
     { value: 'auto', label: 'Auto' },
@@ -86,7 +86,7 @@ test('A6: a Pick option is drawn and named by its words; every option is framed 
   expect(bare.find(b => b.key === 'mode-on')?.plain).toBeUndefined()
 })
 
-test('A6: the chosen Pick option is heard: the segmented track picture says "<option>, selected", out of the flow, and only for the chosen one', () => {
+test('the chosen Pick option is heard: the segmented track picture says "<option>, selected", out of the flow, and only for the chosen one', () => {
   setLang('en')
   const opts = [
     { value: 'now', label: 'Now' },
@@ -108,11 +108,11 @@ test('A6: the chosen Pick option is heard: the segmented track picture says "<op
   }
 })
 
-test('A29: the hairline between groups is named, so it is drawn (live, a picture with an empty alt is not drawn; item 139)', () => {
+test('the hairline between groups is named, so it is drawn (a picture with an empty alt is not drawn)', () => {
   expect(alts(GroupBreak(el(), 'br', 300))).toEqual(['Divider'])
 })
 
-test('A7: in a Swedish tree no picture reads an English word', () => {
+test('in a Swedish tree no picture reads an English word', () => {
   setLang('sv')
   try {
     forgetChanged()
@@ -126,7 +126,7 @@ test('A7: in a Swedish tree no picture reads an English word', () => {
     ]
     const got = alts(tree)
     const rest = got.filter(a => a !== 'neutral')
-    expect(rest).toContain('Öppna Gränser i din plan')
+    expect(rest).toContain('Öppna Plangränser')
     expect(rest).toContain('Notiser: På')
     expect(rest).toContain('Visa mer')
     expect(rest).toContain('Visa färre')

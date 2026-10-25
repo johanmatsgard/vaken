@@ -94,7 +94,7 @@ test('Settings opens with every section closed; a section row opens it, and seve
   await safety.unmount()
 })
 
-test('Agents: one filter (all sessions or this session), kept; running and the last hour first, the rest behind Show N more', SLOW, async ($, on) => {
+test('Agents: one filter (all sessions or this session), kept; running and the last hour first, the rest behind Show N older', SLOW, async ($, on) => {
   mock.clock(on, { now: NOW })
   mock.env(on, { HOME: '/home/test' })
   const mem = engine(on)
@@ -106,7 +106,7 @@ test('Agents: one filter (all sessions or this session), kept; running and the l
   expect(await all.find({ type: 'Text', text: /^Helper a1$/ })).toBeDefined()
   expect(await all.find({ type: 'Text', text: /^Helper a2$/ })).toBeDefined()
   expect(await all.find({ type: 'Text', text: /^Helper a3$/ })).toBeUndefined()
-  expect(await labelOf(all, 'morel-agents')).toBe('Show 1 more')
+  expect(await labelOf(all, 'morel-agents')).toBe('Show 1 older')
   expect(await all.find({ key: 'agents-scope-all' })).toBeUndefined()
   await all.press({ key: 'morel-agents' })
   await all.unmount()
@@ -126,7 +126,7 @@ const helper = (id: string, ago: number) => ({ id, session: 'test-ses', type: 'E
 type Pane = { find: (q: unknown) => Promise<unknown>; press: (q: unknown) => Promise<void>; unmount: () => Promise<void> }
 const labelOf = async (pane: Pane, key: string): Promise<string | undefined> => ((await pane.find({ key })) as { props?: { label?: string } } | undefined)?.props?.label?.trim()
 
-test('B11: Show N more opens every row of the Agents card, and the row then says Show fewer; shut, the cap holds', async ($, on) => {
+test('Show N older opens every row of the Agents card, and the row then says Show fewer; shut, the cap holds', async ($, on) => {
   mock.clock(on, { now: NOW })
   mock.env(on, { HOME: '/home/test' })
   const mem = engine(on)
@@ -136,7 +136,7 @@ test('B11: Show N more opens every row of the Agents card, and the row then says
   const now = await mount()
   expect(await now.find({ type: 'Text', text: /^Helper h4$/ })).toBeDefined()
   expect(await now.find({ type: 'Text', text: /^Helper h5$/ })).toBeUndefined()
-  expect(await labelOf(now, 'morel-agents')).toBe('Show 3 more')
+  expect(await labelOf(now, 'morel-agents')).toBe('Show 3 older')
   await now.press({ key: 'morel-agents' })
   await now.unmount()
   const all = await mount()
@@ -145,7 +145,7 @@ test('B11: Show N more opens every row of the Agents card, and the row then says
   await all.unmount()
 })
 
-test('B10: Other sessions on Now with only quiet sessions says so; B15: the end-of-list row and the lines are Swedish when the language is Swedish', async ($, on) => {
+test('Other sessions on Now with only quiet sessions says so; the end-of-list row and the lines are Swedish when the language is Swedish', async ($, on) => {
   mock.clock(on, { now: NOW })
   mock.env(on, { HOME: '/home/test' })
   const mem = engine(on)
@@ -156,15 +156,15 @@ test('B10: Other sessions on Now with only quiet sessions says so; B15: the end-
   mem.set('cockpit:agentboard', Array.from({ length: 7 }, (_, n) => helper(`h${n}`, (n + 1) * MIN)))
   const mount = mountWith($ as never) as () => Promise<Pane>
   const en = await mount()
-  expect(await en.find({ type: 'Text', text: 'No other session is active now.' })).toBeDefined()
-  expect(await labelOf(en, 'morel-others')).toBe('Show 2 more')
-  expect(await labelOf(en, 'morel-agents')).toBe('Show 2 more')
+  expect(await en.find({ type: 'Text', text: 'No other session now' })).toBeDefined()
+  expect(await labelOf(en, 'morel-others')).toBe('2 more sessions')
+  expect(await labelOf(en, 'morel-agents')).toBe('Show 2 older')
   await en.unmount()
   mem.set('cockpit:setting:look.language', 'sv')
   const sv = await mount()
-  expect(await sv.find({ type: 'Text', text: 'Ingen annan session är aktiv nu.' })).toBeDefined()
-  expect(await labelOf(sv, 'morel-others')).toBe('Visa 2 till')
-  expect(await labelOf(sv, 'morel-agents')).toBe('Visa 2 till')
+  expect(await sv.find({ type: 'Text', text: 'Ingen annan session nu' })).toBeDefined()
+  expect(await labelOf(sv, 'morel-others')).toBe('2 sessioner till')
+  expect(await labelOf(sv, 'morel-agents')).toBe('Visa 2 äldre')
   expect(await sv.find({ type: 'Text', text: /^Inget att visa än\./ })).toBeDefined()
   await sv.unmount()
 })
@@ -178,17 +178,18 @@ test('a card\'s own More or Less flips it between Short and Full and is kept per
   mem.set('cockpit:setting:view.problems', 'off')
   const mount = mountWith($ as never) as () => Promise<Pane>
   const full = await mount()
+  // Safety: the Autopilot card has no More or Less while it has nothing to show
   expect(await full.find({ key: 'detail-limit' })).toBeUndefined()
-  expect(await labelOf(full, 'detail-autopilot')).toBe('Show less')
-  await full.press({ key: 'detail-autopilot' })
+  expect(await labelOf(full, 'detail-safety')).toBe('Show less')
+  await full.press({ key: 'detail-safety' })
   await full.unmount()
-  expect(mem.get('cockpit:setting:detail.autopilot')).toBe('simple')
+  expect(mem.get('cockpit:setting:detail.safety')).toBe('simple')
   const short = await mount()
-  expect(await labelOf(short, 'detail-autopilot')).toBe('Show more')
+  expect(await labelOf(short, 'detail-safety')).toBe('Show more')
   expect(await labelOf(short, 'detail-here')).toBe('Show less')
-  await short.press({ key: 'detail-autopilot' })
+  await short.press({ key: 'detail-safety' })
   await short.unmount()
-  expect(mem.get('cockpit:setting:detail.autopilot')).toBe('inherit')
+  expect(mem.get('cockpit:setting:detail.safety')).toBe('inherit')
   mem.set(SETTINGS_KEY, { ...(mem.get(SETTINGS_KEY) as object), detail: 'simple' })
   await clock.advance(BUNDLE_TTL_MS + 1)
   const pane = await mount()
@@ -200,7 +201,7 @@ test('a card\'s own More or Less flips it between Short and Full and is kept per
   await clock.advance(BUNDLE_TTL_MS + 1)
   const sv = await mount()
   expect(await labelOf(sv, 'detail-here')).toBe('Visa mindre')
-  expect(await labelOf(sv, 'detail-autopilot')).toBe('Visa mer')
+  expect(await labelOf(sv, 'detail-safety')).toBe('Visa mer')
   await sv.unmount()
 })
 

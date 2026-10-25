@@ -2,7 +2,7 @@
 import { ANOMALY_WHAT, DRIFT_WHAT } from './proof2'
 import { AWAKE_WHAT, PORT_WHAT } from './crew3'
 import { BLOCK_WHAT, LOOP_WHAT, THRASH_WHAT } from './loopbreaker'
-import { CAP_HOLD_WHAT, CAP_WHAT } from './agentcap'
+import { CAP_DEPTH_WHAT, CAP_HOLD_WHAT, CAP_SPEND_WHAT, CAP_WHAT } from './agentcap'
 import { COACH_WHAT } from './coach'
 import { COLLIDE_WHAT } from './crew'
 import { DIET_WHAT } from './diet'
@@ -20,7 +20,8 @@ import type { Entry } from './ledger'
 import type { AuditRow } from './insight'
 import type { HelpEntry } from './registry'
 import type { Setting } from './settings'
-import { tEn, tLine } from '../i18n/t'
+import { t as tNow, tLine, tr } from '../i18n/t'
+import { fillIn } from './fillin'
 import { pad2 } from './words'
 
 export const VALUE_SETTINGS: Setting[] = [
@@ -60,6 +61,7 @@ export function freedBetween(ledger: Entry[], from: number, to: number): { count
 
 type BucketName = 'Saved usage' | 'Kept you safe' | 'Kept you informed' | 'Other'
 const BUCKETS: { name: Exclude<BucketName, 'Other'>; words: string[] }[] = [
+  // en-only: the words matched against stored English ledger titles
   { name: 'Saved usage', words: ['compacted', 'shortened', 'compact', 'cache', 'kept warm', 'routed', 'trimmed', 'cheaper'] },
   { name: 'Kept you safe', words: ['held', 'stopped', 'refused', 'caught', 'blocked', 'loop', 'circles', 'undo', 'restored', 'fence', 'halt', 'risky'] },
   { name: 'Kept you informed', words: ['digest', 'notice', 'recap', 'update', 'told', 'warned', 'flagged', 'found', 'offered', 'reminded'] },
@@ -89,7 +91,7 @@ export function groupDone(rows: Done[]): Group[] {
 export const BLOCK_TITLES: Record<string, string[]> = {
   'cache.keeper': [KEPT_WHAT],
   'loop.breaker': [LOOP_WHAT, BLOCK_WHAT, THRASH_WHAT],
-  'cap.mode': [CAP_WHAT, CAP_HOLD_WHAT],
+  'cap.mode': [CAP_WHAT, CAP_HOLD_WHAT, CAP_DEPTH_WHAT, CAP_SPEND_WHAT],
   'crew.collide': [COLLIDE_WHAT],
   'crew.ports': [PORT_WHAT],
   'awake.mode': [AWAKE_WHAT],
@@ -141,19 +143,19 @@ type ValueFacts = {
 export const cutIn = (audit: AuditRow[], from: number): boolean => audit.length >= AUDIT_FULL && Math.min(...audit.map(r => r.at)) >= from
 
 export function valueLines(f: ValueFacts): string[] {
-  const span = f.days === 1 ? '1 day' : '7 days'
+  const span = f.days === 1 ? tr('1 day') : tr('7 days')
   const n = f.rows.length
-  const lines: string[] = [n === 0 ? `Vaken wrote nothing down in ${span}.` : `Vaken did ${tEn('words.thing', { n: n })} for you in ${span}.`]
-  for (const g of groupDone(f.rows)) lines.push(`${g.name}: ${g.n} (${g.top.map(t => `${t.what} ${t.n}`).join(', ')})`)
-  if (f.freed.count > 0) lines.push(`Tokens freed by compacting the session ${tEn('words.time', { n: f.freed.count })}: about ${k(f.freed.freed)} (estimate).`)
+  const lines: string[] = [n === 0 ? fillIn(tr('Vaken wrote nothing down in {span}.'), { span }) : fillIn(tr('Vaken did {things} for you in {span}.'), { things: tNow('words.thing', { n }), span })]
+  for (const g of groupDone(f.rows)) lines.push(`${tr(g.name)}: ${g.n} (${g.top.map(t => `${tr(t.what)} ${t.n}`).join(', ')})`)
+  if (f.freed.count > 0) lines.push(fillIn(tr('Tokens freed by compacting the session {times}: about {k} (estimate).'), { times: tNow('words.time', { n: f.freed.count }), k: k(f.freed.freed) }))
   if (f.quiet.length > 0) {
     const shown = f.quiet.slice(0, QUIET_SHOWN)
     const more = f.quiet.length - shown.length
-    lines.push(`Never fired in ${span}. Did nothing (fine if you had no need): ${shown.join(', ')}${more > 0 ? ` and ${more} more` : ''}.`)
+    lines.push(fillIn(tr('Never fired in {span}. Did nothing (fine if you had no need): {list}{more}.'), { span, list: shown.map(x => tr(x)).join(', '), more: more > 0 ? ` ${fillIn(tr('and {n} more'), { n: more })}` : '' }))
   }
-  lines.push('This counts what vaken wrote down. It is not a measure of money saved.')
-  if (f.cut) lines.push('The audit is full (500 actions), so the oldest ones in this time may be missing.')
-  lines.push(f.days === 1 ? 'Keep what helps. Switch off the rest in Settings. /vaken-today value shows 7 days.' : 'Keep what helps. Switch off the rest in Settings. /vaken-today value day shows 1 day.')
+  lines.push(tr('This counts what vaken wrote down. It is not a measure of money saved.'))
+  if (f.cut) lines.push(tr('The audit is full (500 actions), so the oldest ones in this time may be missing.'))
+  lines.push(f.days === 1 ? tr('Keep what helps. Switch off the rest in Settings. /vaken-today value shows 7 days.') : tr('Keep what helps. Switch off the rest in Settings. /vaken-today value day shows 1 day.'))
   return lines.slice(0, 14)
 }
 

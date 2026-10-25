@@ -5,7 +5,7 @@ export const ROWS: Rows = {
   "access.divider": {"en":"Divider","sv":"Avdelare"},
   "access.dot_active": {"en":"Active","sv":"Aktiv"},
   "access.dot_calm": {"en":"OK","sv":"OK"},
-  "access.dot_unknown": {"en":"Not read yet","sv":"Inte läst än"},
+  "access.dot_unknown": {"en":"Not known yet","sv":"Inte känt än"},
   "access.fold": {"en":"Fold","sv":"Dölj"},
   "access.fold_name": {"en":"Fold {name}","sv":"Dölj {name}"},
   "access.name_selected": {"en":"{name}, selected","sv":"{name}, vald"},

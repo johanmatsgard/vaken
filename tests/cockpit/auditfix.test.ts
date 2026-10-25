@@ -52,10 +52,10 @@ const say = async ($: EngineInterface, command: string, args: string): Promise<s
 
 test('an unknown word is named with the words the command takes; an empty line and the command\'s own words still answer as before', SLOW, async ($, on) => {
   world(on)
-  expect(await say($, 'vaken', 'zzz')).toBe('Unknown word: zzz. Words: inbox | neighbors')
-  expect(await say($, 'vaken-usage', 'zzz')).toBe('Unknown word: zzz. Words: cost | budget | limits | fit | why')
-  expect(await say($, 'vaken-compact', 'zzz')).toBe('Unknown word: zzz. Words: now | why')
-  expect(await say($, 'vaken-today', 'zzz')).toBe('Unknown word: zzz. Words: value | recap | glance | standup | waits')
+  expect(await say($, 'vaken', 'zzz')).toBe('Unknown word: `zzz`. Words: \n- `inbox`\n- `neighbors`\n- `show <file>`\n- `run <command>`\n- `pic [port]`\n- `quick [name]`')
+  expect(await say($, 'vaken-usage', 'zzz')).toBe('Unknown word: `zzz`. Words: \n- `cost`\n- `budget`\n- `limits`\n- `fit`\n- `why`')
+  expect(await say($, 'vaken-compact', 'zzz')).toBe('Unknown word: `zzz`. Words: \n- `now`\n- `why`')
+  expect(await say($, 'vaken-today', 'zzz')).toBe('Unknown word: `zzz`. Words: \n- `value`\n- `recap`\n- `glance`\n- `standup`\n- `waits`')
   for (const [c, a] of [['vaken', ''], ['vaken-usage', ''], ['vaken-compact', ''], ['vaken-compact', 'why'], ['vaken-today', ''], ['vaken-usage', 'fit']] as const) expect(await say($, c, a), `${c} ${a}`).not.toMatch(/^Unknown word/)
 })
 
@@ -80,7 +80,7 @@ test('small answers: no empty note, one reason once, fit says the command, here 
   const reasons = (/Not everything could be read just now: (.*)\.$/m.exec(usage)?.[1] ?? '').split('; ')
   expect(new Set(reasons).size).toBe(reasons.length)
   expect(await say($, 'vaken-usage', 'fit 20')).toMatch(/Type \/vaken-usage to read them now/)
-  expect(await say($, 'vaken-settings', 'here compact.from 40')).toBe('No such choice: compact.from 40. compact.from takes: 30, 50, 70.')
+  expect(await say($, 'vaken-settings', 'here compact.from 40')).toBe('No such choice: compact.from 40. compact.from takes: 50, 60, 70.')
   expect(await say($, 'vaken-settings', 'card limits')).toMatch(/^Settings of the limit card:/)
   expect(await say($, 'vaken-settings', 'card session')).toMatch(/^Settings of the here card:/)
   const found = await say($, 'vaken-resume', 'find hello')

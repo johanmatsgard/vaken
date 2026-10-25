@@ -255,13 +255,14 @@ test('the button says Start anyway only after the first press showed this check'
   delete checkShown.sig
 })
 
-test('the text of /vaken: the goal, what done means, plan first and the estimate', () => {
+test('the text of /vaken: a goal the person typed, what done means, and where to start it', () => {
   const proof = { ...emptyState(), goal: { text: 'Add a dark mode toggle', setAt: NOW, how: 'typed' as const }, done: ['tests' as const, 'lint' as const] }
   const check = checkRun(goalRun(proof, {}, NOW)!, facts())
   const lines = startTaskText({ proof, values: { 'plan.first': 'suggest' }, startCheck: { check, forGoal: true } } as never)
-  expect(lines[0]).toBe('Run one task: Add a dark mode toggle; done when tests, lint pass; plan first on.')
-  expect(lines[1]).toMatch(/^Estimate: about \$/)
-  expect(startTaskText({ proof: emptyState(), values: {} } as never)).toEqual(['Run one task: no goal yet (press Add a task to start a run); plan first off.', 'To set the goal by typing: /vaken-tasks goal <one sentence>.'])
+  expect(lines[0]).toBe('Run one task: Add a dark mode toggle, done when tests, lint pass. Start it in the Agents card in the pane.')
+  // Calm is quiet: no goal, or one taken from the first message, says nothing
+  expect(startTaskText({ proof: emptyState(), values: {} } as never)).toEqual([])
+  expect(startTaskText({ proof: { ...proof, goal: { ...proof.goal, how: 'first' as const } }, values: {} } as never)).toEqual([])
   expect(startTaskText({ proof, values: {}, run: { ...newRun(['A'], NOW), status: 'running' } } as never)).toEqual([])
 })
 
@@ -273,9 +274,9 @@ test('every new word has a Swedish line that is not the English one, and is amon
   setLang('sv')
   try {
     const c = checkRun(editChoices(newRun(['A'], NOW), { runUsd: 0.1 }), facts())
-    expect(estimateLine(c, tr)).toMatch(/^Uppskattning: ungefär \d+,\d+ USD/)
+    expect(estimateLine(c, tr)).toMatch(/^Uppskattning: ungefär \d+,\d+\u00a0USD/)
     expect(reasonLines(c, tr)[0]).toContain('körningens gräns')
-    expect(estimateLine(c)).toMatch(/^Estimate: about \d+,\d+ USD/)
+    expect(estimateLine(c)).toMatch(/^Estimate: about \d+,\d+\u00a0USD/)
     expect(reasonLines(c)[0]).toMatch(/^This may cost more than the run limit/)
   } finally {
     setLang('en')
@@ -353,7 +354,7 @@ test('the Run one task row is one folded line by default: no goal, switches or S
   await ui.unmount()
 })
 
-test('the Agents card shows the Run one task row: with no goal its one button leads to the add-a-task box, never a toast about /vaken-tasks goal, and starts nothing (U6)', { timeoutMs: 15_000 }, async ($, on) => {
+test('the Agents card shows the Run one task row: with no goal its one button leads to the add-a-task box, never a toast about /vaken-tasks goal, and starts nothing', { timeoutMs: 15_000 }, async ($, on) => {
   forgetStartCheck()
   delete checkShown.sig
   const clock = mock.clock(on, { now: NOW })
@@ -388,14 +389,15 @@ test('with a goal the row shows it and the estimate; a switch flips the definiti
   await ui.press({ key: 'start-done-tests-switch' })
   await clock.settle()
   expect((w.mem.get('cockpit:proof:test-session') as { done: string[] }).done).toEqual(['tests'])
-  await ui.press({ key: 'start-plan-switch' })
+  // Plan first offers Settings' three choices
+  await ui.press({ key: 'start-plan-off' })
   await clock.settle()
   await ui.redraw()
   expect(w.mem.get('cockpit:setting:plan.first')).toBe('off')
   for (const t0 = Date.now(); Date.now() - t0 < FIRST_CLICK_REPEAT_MS + 50; );
-  await ui.press({ key: 'start-plan-switch' })
+  await ui.press({ key: 'start-plan-ask' })
   await clock.settle()
-  expect(w.mem.get('cockpit:setting:plan.first')).toBe('suggest')
+  expect(w.mem.get('cockpit:setting:plan.first')).toBe('ask')
   await ui.unmount()
   forgetStartCheck()
 })

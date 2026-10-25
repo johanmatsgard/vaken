@@ -91,18 +91,25 @@ const RECEIVERS: RegExp[] = [
   new RegExp(`\\(\\s*new-object\\s+(?:-typename\\s+)?${INFO}\\s+(?:-argumentlist\\s+)?\\(?\\s*(${ARG})\\s*\\)?\\s*\\)\\s*$`, 'i'),
   new RegExp(`\\(\\s*(?:get-item|gi)\\s+(?:-(?:path|literalpath|force)\\s+)*(${ARG}|[^\\s()'"|;,$]+)(?:\\s+-force)?\\s*\\)\\s*$`, 'i'),
 ]
+// A listing as the receiver gives back every item in the folder, and each one is deleted: read as the folder and everything inside.
+const LISTING = new RegExp(`\\(\\s*(?:get-childitem|gci|dir|ls)\\s+(?:-(?:path|literalpath|force|recurse|file|directory)\\s+)*(${ARG}|[^\\s()'"|;,$-][^\\s()'"|;,]*)(?:\\s+-\\w+)*\\s*\\)\\s*$`, 'i')
 const VAR_RECEIVER = /\$[\w:?]+(?:\.\w+|\[[^\]]*\])*\s*$/
 
-function receiverOf(text: string, dot: number): NetArg {
+function receiverOf(text: string, dot: number): { arg: NetArg; many?: boolean } {
   const tail = text.slice(Math.max(0, dot - 400), dot)
   for (const re of RECEIVERS) {
     const m = re.exec(tail)
-    if (m !== null) return netArg(m[1] ?? '')
+    if (m !== null) return { arg: netArg(m[1] ?? '') }
+  }
+  const l = LISTING.exec(tail)
+  if (l !== null) {
+    const a = netArg(l[1] ?? '')
+    return { arg: /^['"$]/.test(l[1] ?? '') ? a : { raw: a.raw, known: true }, many: true }
   }
   const v = VAR_RECEIVER.exec(tail)
-  if (v !== null) return { raw: v[0].trim(), known: true }
+  if (v !== null) return { arg: { raw: v[0].trim(), known: true } }
   const shown = tail.trim().split(/[;|\n]/).pop()?.trim() ?? ''
-  return { raw: shown === '' ? 'an object' : shown.slice(-60), known: false }
+  return { arg: { raw: shown === '' ? 'an object' : shown.slice(-60), known: false } }
 }
 
 export function dotnetOps(text: string): NetOp[] {
@@ -160,9 +167,10 @@ export function dotnetOps(text: string): NetOp[] {
     if (args === undefined) continue
     const who = receiverOf(text, at)
     const name = (m[1] ?? '').toLowerCase()
-    if (name === 'delete') out.push({ act: 'delete', arg: who, recursive: isTrue(args[0]) })
+    // `.Delete()` on an object vaken cannot read may be a folder or a list of items, so it is read as wide; [IO.File]::Delete of one file is not.
+    if (name === 'delete') out.push({ act: 'delete', arg: who.arg, recursive: who.many === true || !who.arg.known || isTrue(args[0]) })
     else {
-      if (name === 'moveto') out.push({ act: 'source', arg: who })
+      if (name === 'moveto') out.push({ act: 'source', arg: who.arg })
       write(args[0], isTrue(args[1]))
     }
   }

@@ -25,6 +25,9 @@ test('waits: short and day-long waits are not counted; the text says where the t
   w = addWait(w, 'permission', 60_000)
   w = addWait(w, 'after', 30 * 60_000)
   w = addWait(w, 'after', 30 * HOUR)
+  // a night away is a break, not a wait: 14 h after Claude finished is not counted
+  w = addWait(w, 'after', 14 * HOUR)
+  w = addWait(w, 'question', 3 * HOUR)
   expect(w.question.n).toBe(1)
   expect(w.after.n).toBe(1)
   expect(w.longest).toBe(30 * 60_000)
@@ -43,6 +46,8 @@ test('the planner says fits, fits but risky, or does not fit with the reset time
   expect(text).toMatch(/Weekly: 90% used, 10% left\. A 20% job does not fit\. It resets at/)
   expect(fitText(undefined, 20, NOW)).toBe('The plan limits are not known yet. Type /vaken-usage to read them now, then /vaken-usage fit again.')
   expect(fitText(usage, 0, NOW)).toMatch(/from 1 to 100/)
+  // an almost full window is not called full
+  expect(fitText({ at: NOW, windows: [{ label: '5-hour', percent: 99.6, resetsAt: reset(3) }] }, 1, NOW)).toMatch(/5-hour: 99% used, 1% left\. A 1% job does not fit\./)
 })
 
 test('the story groups what you would see first and starts with why', () => {

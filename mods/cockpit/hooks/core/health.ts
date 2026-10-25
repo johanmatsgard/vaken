@@ -1,10 +1,11 @@
 // Counts failing and slow parts of vaken per area per day; counts and short names only, never error text.
-import { tEn, tLine } from '../i18n/t'
+import { langNow, t, tLine, tr } from '../i18n/t'
+import { fillIn } from './fillin'
+import { fmt } from './fmt'
 import type { HelpEntry } from './registry'
 import type { Setting } from './settings'
 import { postBand } from './band'
 import type { Io } from './io'
-import { timesWord } from './words'
 import { ymd } from './time'
 import { serialUpdate } from './serial'
 
@@ -18,7 +19,7 @@ export const HEALTH_SETTINGS: Setting[] = [
     key: HEALTH_SETTING,
     group: 'Health',
     label: 'Vaken health',
-    note: 'Counts failing and slow parts of vaken, and warns.',
+    note: 'Counts failing and slow parts of vaken, says when Claude is down, and warns.', // en-only: a setting note; /vaken-settings text stays English
     options: [
       { value: 'off', label: 'Off' },
       { value: 'on', label: 'On' },
@@ -30,7 +31,7 @@ export const HEALTH_SETTINGS: Setting[] = [
 export const HEALTH_HELP: HelpEntry[] = [
   {
     title: 'What the self-check of vaken does',
-    text: 'Vaken counts its own parts that fail or run slow, per day. If one part fails 3 times in a day, a warning shows above the prompt. /vaken-help run modhealth shows the counts.',
+    text: 'Vaken counts its own parts that fail or run slow, per day, and warns above the prompt when one fails 3 times in a day. To say when Claude is down, it reads the public status.claude.com page. /vaken-help run modhealth shows the counts.',
   },
 ]
 
@@ -169,7 +170,7 @@ export async function readCounts(i: Io): Promise<Counts> {
 
 type Load = { problems: string[] }
 
-const secs = (ms: number): string => `${(ms / 1000).toFixed(1)} s`
+const secs = (ms: number): string => `${fmt.decimal(ms / 1000, langNow())} s`
 
 export function slowestArea(c: Counts, now: number): { area: string; maxMs: number; slow: number } | undefined {
   const today = c[dayOf(now)] ?? {}
@@ -184,33 +185,33 @@ export function slowestArea(c: Counts, now: number): { area: string; maxMs: numb
 export function healthText(mode: 'on' | 'off', c: Counts, now: number, load: Load): string {
   const today = c[dayOf(now)] ?? {}
   const lines: string[] = []
-  lines.push(mode === 'on' ? 'Vaken health: on. Vaken counts its own parts that fail or run slow (a step over 1.5 seconds is slow).' : 'Vaken health: off. Nothing is counted. Turn it on in Settings > Health.')
+  lines.push(mode === 'on' ? tr('Vaken health: on. Vaken counts its own parts that fail or run slow (a step over 1.5 seconds is slow).') : tr('Vaken health: off. Nothing is counted. Turn it on in Settings > Health.'))
   lines.push('')
   const areas = Object.entries(today).filter(([, v]) => v.failed > 0 || v.slow > 0)
-  if (areas.length === 0) lines.push('Today: no failure and no slow step counted.')
+  if (areas.length === 0) lines.push(tr('Today: no failure and no slow step counted.'))
   else {
-    lines.push('Today:')
+    lines.push(tr('Today:'))
     for (const [area, v] of areas.sort((a, b) => b[1].failed - a[1].failed || b[1].slow - a[1].slow)) {
       const parts: string[] = []
-      if (v.failed > 0) parts.push(`failed ${timesWord(v.failed)}${Object.keys(v.kinds).length > 0 ? ` (${Object.entries(v.kinds).map(([k, n]) => `${k} ${n}`).join(', ')})` : ''}`)
-      if (v.slow > 0) parts.push(`${tEn('words.slow_step', { n: v.slow })}, slowest ${secs(v.maxMs)}`)
-      lines.push(`  ${area}: ${parts.join('; ')}${v.failed >= WARN_AT ? '  <- warning in the band' : ''}`)
+      if (v.failed > 0) parts.push(`${fillIn(tr('failed {times}'), { times: t('words.times', { n: v.failed }) })}${Object.keys(v.kinds).length > 0 ? ` (${Object.entries(v.kinds).map(([k, n]) => `${k} ${n}`).join(', ')})` : ''}`)
+      if (v.slow > 0) parts.push(fillIn(tr('{steps}, slowest {time}'), { steps: t('words.slow_step', { n: v.slow }), time: secs(v.maxMs) }))
+      lines.push(`  ${area}: ${parts.join('; ')}${v.failed >= WARN_AT ? `  ${tr('<- warning in the band')}` : ''}`)
     }
     const s = slowestArea(c, now)
-    if (s !== undefined) lines.push(`Slowest: ${s.area}, ${secs(s.maxMs)} for one step.`)
+    if (s !== undefined) lines.push(fillIn(tr('Slowest: {area}, {time} for one step.'), { area: s.area, time: secs(s.maxMs) }))
   }
   const earlier = Object.keys(c).filter(d => d !== dayOf(now)).sort().reverse().slice(0, 3)
   const earlierLines = earlier.map(d => {
     const v = Object.values(c[d] ?? {})
     return { d, failed: v.reduce((n, x) => n + x.failed, 0), slow: v.reduce((n, x) => n + x.slow, 0) }
   }).filter(x => x.failed + x.slow > 0)
-  if (earlierLines.length > 0) lines.push('', 'Earlier days:', ...earlierLines.map(x => `  ${x.d}: ${tEn('words.failure', { n: x.failed })}, ${tEn('words.slow_step', { n: x.slow })}`))
+  if (earlierLines.length > 0) lines.push('', tr('Earlier days:'), ...earlierLines.map(x => `  ${x.d}: ${t('words.failure', { n: x.failed })}, ${t('words.slow_step', { n: x.slow })}`))
   lines.push('')
-  if (load.problems.length > 0) lines.push('Plugins refused at load (this session):', ...load.problems.map(p => `  ${p}`))
-  else lines.push('Plugins refused at load: none seen.')
+  if (load.problems.length > 0) lines.push(tr('Plugins refused at load (this session):'), ...load.problems.map(p => `  ${p}`))
+  else lines.push(tr('Plugins refused at load: none seen.'))
   lines.push(
     '',
-    'Not knowable from here: why a hook of another plugin fails or runs slow, and whether a plugin failed to load before vaken did. The engine keeps those in its own debug log. Vaken counts only its own parts, and a plugin that the engine refused after vaken loaded.',
+    tr('Not knowable from here: why a hook of another plugin fails or runs slow, and whether a plugin failed to load before vaken did. The engine keeps those in its own debug log. Vaken counts only its own parts, and a plugin that the engine refused after vaken loaded.'),
   )
   return lines.join('\n')
 }

@@ -73,7 +73,8 @@ function memStore(on: On, seed: Record<string, unknown> = {}): Map<string, unkno
 
 function world(on: On, seed: Record<string, unknown> = {}): Map<string, unknown> {
   mock.clock(on, { now: NOW })
-  const mem = memStore(on, seed)
+  // The working habits note is on by default; it is held off here so only this feature's note is seen.
+  const mem = memStore(on, { 'cockpit:setting:tasks.visible': 'off', 'cockpit:setting:habit.summary': 'off', 'cockpit:setting:habit.ask': 'off', 'cockpit:setting:habit.chapters': 'off', ...seed })
   mock.session(on)
   mock.env(on, { HOME: '/home/test' })
   on('session.id', () => ({ value: 'me' }))
@@ -106,6 +107,14 @@ test('On: a long prompt carries the note, a short one and a slash command do not
   expect(long.context).toEqual([ASSUME_NOTE])
   expect((await submit($, words(10))).context ?? []).toEqual([])
   expect((await submit($, `/vaken-settings ${words(30)}`)).context ?? []).toEqual([])
+})
+
+test('On: the note goes at most once an hour in a session', SLOW, async ($, on) => {
+  const mem = world(on, { 'cockpit:setting:assume.check': 'on' })
+  expect((await submit($, words(30))).context).toEqual([ASSUME_NOTE])
+  expect((await submit($, words(30))).context ?? []).toEqual([])
+  mem.set('cockpit:assume:sent:me', NOW - 61 * MIN)
+  expect((await submit($, words(30))).context).toEqual([ASSUME_NOTE])
 })
 
 test('On: after the turn the lines are counted, kept short, and one band line is posted with a 10 minute life', SLOW, async ($, on) => {

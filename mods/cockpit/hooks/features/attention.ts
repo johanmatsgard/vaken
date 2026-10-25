@@ -1,23 +1,34 @@
-// Attention runtime: the heartbeat (a working session that went quiet), the notification router (toasts for other sessions)
+// Attention runtime: the heartbeat (a working session that went quiet, or one shell step that runs long), the notification router (toasts for other sessions)
 import type { EngineInterface, On } from 'claude-code'
 
 import { parseStoredUsage, APP_USAGE_KEY } from '../core/appusage'
 import { parseStoredSessions, APP_SESSIONS_KEY } from '../core/appsessions'
-import { RECAP_AFTER_MS, batchText, glanceLines, heartbeat, isQuiet, notices, recapWords } from '../core/attention'
-import type { Seen } from '../core/attention'
+import { RECAP_AFTER_MS, RUNAWAY_BAND_ID, batchText, glanceLines, heartbeat, isQuiet, noticePlan, notices, recapWords, runawayLine, runawayMem, runawayNow, stepChecked, stepEnd, stepStart, stepsReset } from '../core/attention'
+import { stepHash } from '../core/allowrules'
+import { fieldsOf } from '../core/eventfields'
+import { redrawIfChanged } from '../core/redraw'
+import { isShellTool } from '../core/tools'
+import type { NoticeRow, Seen } from '../core/attention'
 import { clearBand, postBand } from '../core/band'
 import { cacheWords } from '../core/cachefacts'
-import { didToday, todaySummary } from '../core/ledger'
+import { actedToday } from '../core/ledger'
 import { withToastGate } from '../core/io'
 import { homeFrom } from '../core/platform'
 import type { Io } from '../core/io'
 import { alivePids, listRecords, readRecord } from '../core/record'
+import type { SessionRecord } from '../core/record'
+import { readNote } from '../core/flush'
+import { readState, stateKey } from '../core/proof'
 import { readSetting } from '../core/settings'
 import { WATCH_BAND_ID, WATCH_BAND_MS, stepWatches } from '../core/watch'
 import { buildView, cacheTtlMs, hereWord, limitAgo, limitBlocks, limitLabel, needsCount, resetSaid } from './home/logic'
+import type { View } from './home/logic'
 import { loadView } from './home/load'
 import { armOnce } from './everyonce'
 import { subArgs } from '../core/menu'
+import { tellNow } from '../core/tellme'
+import { sayIn } from './saylang'
+import { tr } from '../core/lang'
 
 // IO-BLOCK-START
 function io($: EngineInterface): Io {
@@ -43,6 +54,24 @@ function io($: EngineInterface): Io {
 const CHECK_MS = 20_000
 const TOLD_KEY = 'cockpit:notified'
 
+// The runaway step's band line (core/attention.ts runawayNow): posted again only when its minutes change or its time to live runs low
+const RUNAWAY_TTL_MS = 2 * 60_000
+const RUNAWAY_REPOST_MS = 60_000
+let runawayPosted: { text: string; at: number } | undefined
+let ownIds = 0
+async function postRunaway(i: Io, minutes: number, now: number): Promise<void> {
+  const text = runawayLine(minutes, runawayMem.turnId !== undefined)
+  if (runawayPosted !== undefined && runawayPosted.text === text && now - runawayPosted.at < RUNAWAY_REPOST_MS) return
+  runawayPosted = { text, at: now }
+  await postBand(i, 'info', RUNAWAY_BAND_ID, text, RUNAWAY_TTL_MS)
+}
+async function dropRunaway(i: Io): Promise<void> {
+  if (runawayPosted === undefined) return
+  runawayPosted = undefined
+  await clearBand(i, RUNAWAY_BAND_ID)
+  await redrawIfChanged(i)
+}
+
 let prev: Record<string, Seen> = {}
 
 async function viewNow(i: Io) {
@@ -57,18 +86,26 @@ async function check($: EngineInterface): Promise<void> {
   try {
     const now = await i.now()
     const id = await i.sessionId()
-    if ((await readSetting(i, 'heartbeat.mode')) === 'on') {
-      const rec = await readRecord(i, id)
-      if (rec !== undefined) {
-        const silent = now - rec.lastEventAt
-        const beat = rec.ask !== undefined ? 'ok' : heartbeat(rec.state, silent)
-        if (beat === 'ok') await clearBand(i, 'heartbeat')
-        else await postBand(i, beat === 'stuck' ? 'urgent' : 'warn', 'heartbeat', beat === 'stuck' ? 'May be stuck' : 'Gone idle', 2 * 60_000)
+    const step = (await readSetting(i, 'heartbeat.mode')) === 'on' ? runawayNow(now) : undefined
+    // A long shell step is the reason for the silence: its own calm line stands in for Gone idle and May be stuck
+    if (step !== undefined) {
+      await clearBand(i, 'heartbeat')
+      await postRunaway(i, step.minutes, now)
+    } else {
+      await dropRunaway(i)
+      if ((await readSetting(i, 'heartbeat.mode')) === 'on') {
+        const rec = await readRecord(i, id)
+        if (rec !== undefined) {
+          const silent = now - rec.lastEventAt
+          const beat = rec.ask !== undefined ? 'ok' : heartbeat(rec.state, silent)
+          if (beat === 'ok') await clearBand(i, 'heartbeat')
+          else await postBand(i, beat === 'stuck' ? 'urgent' : 'warn', 'heartbeat', beat === 'stuck' ? 'May be stuck' : 'Gone idle', 2 * 60_000)
+        }
       }
     }
     const mode = await readSetting(i, 'notify.mode')
     const view = await viewNow(i)
-    const rows = [...view.needs, ...view.waiting, ...view.working].map(r => ({ id: r.rec.sessionId, name: r.name, kind: r.kind, reason: r.reason, since: r.rec.ask !== undefined && r.kind === 'needs' ? r.rec.ask.since : r.rec.stateSince }))
+    const rows = noticeRows(view)
     const raw = await i.get(TOLD_KEY)
     const told: Record<string, string> = typeof raw === 'object' && raw !== null ? (raw as Record<string, string>) : {}
     const fired = await stepWatches(i, [...view.needs, ...view.working, ...view.waiting, ...view.idle].map(w => ({ id: w.rec.sessionId, name: w.name, kind: w.kind, ...(w.rec.done === undefined ? {} : { done: w.rec.done }) })), now)
@@ -77,16 +114,32 @@ async function check($: EngineInterface): Promise<void> {
       await postBand(i, 'info', WATCH_BAND_ID, f.text, WATCH_BAND_MS)
     }
     const r = notices(prev, rows, told, mode, now)
-    prev = r.next
     r.notices = r.notices.filter(n => !fired.some(f => f.id === n.id) || !n.marker.startsWith('done:'))
-    if (r.notices.length > 0) {
-      for (const n of r.notices) told[n.id] = n.marker
+    const plan = noticePlan(prev, r, r.notices.length > 0 && isQuiet(await readSetting(i, 'notify.quiet'), new Date(now).getHours()))
+    prev = plan.next
+    if (plan.tell.length > 0) {
+      for (const n of plan.tell) told[n.id] = n.marker
       await i.set(TOLD_KEY, told)
-      if (!isQuiet(await readSetting(i, 'notify.quiet'), new Date(now).getHours())) i.toast(batchText(r.notices))
+      i.toast(batchText(plan.tell), plan.urgent)
+      const needs = plan.tell.filter(n => n.marker.startsWith('needs')).length
+      if (needs > 0) tellNow({ kind: 'needs', n: needs })
     }
   } catch {
     // the router never breaks the session
   }
+}
+
+// A working session that went silent reads idle on the board, but for the notices it is still at work, so its finish is told.
+export function noticeRows(view: Pick<View, 'needs' | 'waiting' | 'working' | 'idle'>): NoticeRow[] {
+  const silent = view.idle.filter(r => r.rec.state === 'working').map(r => ({ ...r, kind: 'working' as const }))
+  return [...view.needs, ...view.waiting, ...view.working, ...silent].map(r => ({ id: r.rec.sessionId, name: r.name, kind: r.kind, reason: r.reason, since: r.rec.ask !== undefined && r.kind === 'needs' ? r.rec.ask.since : r.rec.stateSince }))
+}
+
+// The recap's facts: the goal, and how many sessions need you, counted now.
+async function recapOf(i: Io, rec: SessionRecord, now: number, say?: (s: string) => string): Promise<string> {
+  const goal = readState(await readNote(i, stateKey(rec.sessionId))).goal?.text
+  const needs = (await viewNow(i)).needs.length
+  return recapWords({ gapMs: now - rec.lastEventAt, branch: rec.branch, cache: rec.cache === undefined ? undefined : cacheWords(rec.cache, now, cacheTtlMs(parseStoredUsage(await i.get(APP_USAGE_KEY))), false, say), ...(goal === undefined || goal === '' ? {} : { goal }), needs }, say)
 }
 
 export function registerAttention(on: On): void {
@@ -100,6 +153,58 @@ export function registerAttention(on: On): void {
     return next(e)
   }).catch(($, e, next) => next(e))
 
+  // The runaway step's clock (core/attention.ts): a main-loop shell step from its call to its end; a hash and times only, never the command
+  on('tool.call', { tool: /(?<runaway>)/ }, async ($, e, next) => {
+    // A call with no id of its own (a plugin's own call) gets one here, so its end still finds it
+    const id = e.agentId === undefined && isShellTool(e.tool) ? (typeof e.tool_use_id === 'string' ? e.tool_use_id : `own-${(ownIds += 1)}`) : undefined
+    if (id !== undefined) {
+      try {
+        const startedAt = await $.clock.now()
+        stepStart(id, stepHash(e.tool, { command: fieldsOf(e).command }), startedAt)
+      } catch {
+      }
+    }
+    try {
+      return await next(e)
+    } finally {
+      if (id !== undefined) {
+        stepEnd(id)
+        void dropRunaway(io($)).catch(() => undefined)
+      }
+    }
+  }).catch(($, e, next) => next(e))
+
+  // Claude Code's own check: an allowed step's clock starts now; a step it asks the person about is not timed
+  on('tool.check', { tool: /(?<runaway>)/ }, async ($, e, next) => {
+    const r = await next(e)
+    try {
+      const checkedAt = await $.clock.now()
+      if (typeof e.tool_use_id === 'string') stepChecked(e.tool_use_id, r.decision, checkedAt)
+    } catch {
+    }
+    return r
+  }).catch(($, e, next) => next(e))
+
+  // The main loop's running answer, so Stop the answer can end it; a new or ended answer has no step left running
+  on('turn.start', { turnId: /(?<runaway>)/ }, async ($, e, next) => {
+    try {
+      if (fieldsOf(e).agentId === undefined) stepsReset(e.turnId)
+    } catch {
+    }
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  on('turn.complete', { turnId: /(?<runaway>)/ }, async ($, e, next) => {
+    try {
+      if (e.agentId === undefined) {
+        stepsReset()
+        await dropRunaway(io($))
+      }
+    } catch {
+    }
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
   on('prompt.submit', { text: /(?<attention>)/ }, async ($, e, next) => {
     try {
       const i = io($)
@@ -107,7 +212,7 @@ export function registerAttention(on: On): void {
         const rec = await readRecord(i, await i.sessionId())
         const now = await i.now()
         if (rec !== undefined && rec.state !== 'working' && now - rec.lastEventAt >= RECAP_AFTER_MS) {
-          await postBand(i, 'info', 'recap', recapWords({ gapMs: now - rec.lastEventAt, branch: rec.branch, contextPercent: rec.contextPercent, cache: rec.cache === undefined ? undefined : cacheWords(rec.cache, now, cacheTtlMs(parseStoredUsage(await i.get(APP_USAGE_KEY)))) }), 3 * 60_000)
+          await postBand(i, 'info', 'recap', await recapOf(i, rec, now), 3 * 60_000)
         }
       }
     } catch {
@@ -119,15 +224,17 @@ export function registerAttention(on: On): void {
     const rest0 = subArgs(e.args, 'recap')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i)
     const rec = await readRecord(i, await i.sessionId())
     const now = await i.now()
-    if (rec === undefined) return { text: 'Nothing to recap yet.' }
-    return { text: recapWords({ gapMs: now - rec.lastEventAt, branch: rec.branch, contextPercent: rec.contextPercent, cache: rec.cache === undefined ? undefined : cacheWords(rec.cache, now, cacheTtlMs(parseStoredUsage(await i.get(APP_USAGE_KEY)))) }) }
+    if (rec === undefined) return { text: tr('Nothing to recap yet.') }
+    return { text: await recapOf(i, rec, now, tr) }
   })
 
   on('command.run', { command: 'vaken-today' }, async ($, e, next) => {
     const rest0 = subArgs(e.args, 'glance')
     if (rest0 === undefined) return next(e)
+    await sayIn(io($))
     // The same load as the pane and /vaken (loadView): the limit that leads with its reset and age
     const { view, now } = await loadView(io($))
     const ledger = view.ledger ?? []
@@ -137,12 +244,12 @@ export function registerAttention(on: On): void {
         needs: view.needs.map(r => ({ name: r.name, reason: r.reason })),
         needsTotal: needsCount(view),
         limitPercent: lead?.percent,
-        limitLabel: lead === undefined ? undefined : limitLabel(lead.label),
-        limitReset: lead === undefined || lead.reset === '' ? undefined : resetSaid(lead.reset),
-        limitAgo: lead === undefined ? undefined : limitAgo([lead]),
-        hereState: hereWord(view.here, 'explained', view.hereWaits),
-        didCount: todaySummary(ledger, now, view.counts).count + didToday(ledger, now, view.counts).reduce((n, d) => n + d.n, 0),
-      }).join('\n'),
+        limitLabel: lead === undefined ? undefined : limitLabel(lead.label, tr),
+        limitReset: lead === undefined || lead.reset === '' ? undefined : resetSaid(lead.reset, tr),
+        limitAgo: lead === undefined ? undefined : limitAgo([lead], tr),
+        hereState: hereWord(view.here, 'explained', view.hereWaits, tr),
+        didCount: actedToday(ledger, now, view.counts),
+      }, tr).join('\n'),
     }
   })
 }

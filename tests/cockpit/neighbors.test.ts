@@ -63,10 +63,12 @@ test('the verdict: off clears; nobody clears; a neighbour posts once, then waits
 test('/vaken neighbors lists the neighbours by name and state, or says there are none', () => {
   const some = neighborsText('on', [{ name: 'Fix login', state: 'working' }, { name: 'Docs', state: 'waiting' }, { name: 'Billing', state: 'needs' }, { name: 'Old', state: 'idle' }], true)
   expect(some).toMatch(/^Same-folder awareness: on\./)
-  expect(some).toMatch(/File overlap \(\/vaken-help run claims\) warns about one file; this warns about the folder\./)
-  expect(some).toMatch(/4 other sessions work in this folder:\n {2}Fix login: is working\n {2}Docs: finished its turn and waits for you\n {2}Billing: waits for an answer or an OK\n {2}Old: is idle$/)
-  expect(neighborsText('on', [{ name: 'Fix login', state: 'working' }], true)).toMatch(/Another session works in this folder:\n {2}Fix login: is working$/)
+  expect(some).toMatch(/File overlap \(`\/vaken-help run claims`\) warns about one file; this warns about the folder\./)
+  expect(some).toMatch(/4 other sessions work in this folder:\n- Fix login: Working\n- Docs: Your turn\n- Billing: Needs you\n- Old: Idle$/)
+  expect(neighborsText('on', [{ name: 'Fix login', state: 'working' }], true)).toMatch(/Another session works in this folder:\n- Fix login: Working$/)
   expect(neighborsText('on', [], true)).toMatch(/No other live session works in this folder\.$/)
+  // Said once, the note on what it watches is left out after that
+  expect(neighborsText('on', [], true, false)).toBe('Same-folder awareness: on.\n\nNo other live session works in this folder.')
   expect(neighborsText('off', [], true)).toMatch(/Same-folder awareness: off\.[\s\S]*Turn it on: Settings > Agents\./)
   expect(neighborsText('on', [], false)).toMatch(/does not know the folder/)
   expect(NEIGHBORS_BAND_TEXT).toBe('Another session is in this folder.')
@@ -237,7 +239,7 @@ test('/vaken neighbors lists the neighbour by name and state; a message adds not
   const cwd = '/t/hook/a'
   engine(on, cwd, { 'cockpit:session:me': rec('me', cwd), 'cockpit:session:x': rec('x', cwd, { title: 'Fix login' }), 'cockpit:session:z': rec('z', '/t/hook/z', { title: 'Elsewhere' }) })
   const t = ((await $.command.run(viaParent('vaken-neighbors', '') as never)) as { text: string }).text
-  expect(t).toMatch(/Another session works in this folder:\n {2}Fix login: is working/)
+  expect(t).toMatch(/Another session works in this folder:\n- Fix login: Working/)
   expect(t).not.toMatch(/Elsewhere/)
   const sent = (await $.prompt.submit({ text: 'hello' } as never).catch(() => undefined)) as { context?: string[] } | undefined
   expect(sent?.context ?? []).toEqual([])

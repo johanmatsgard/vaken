@@ -6,7 +6,7 @@ import { test } from './slow'
 import { BUNDLE_TTL_MS } from '../hooks/core/io'
 import { HOST_NOTE_KEY, noteHostView, parseHostNote, warnReading } from '../hooks/core/guardhost'
 import { headerWraps, nameTabLabel } from '../hooks/ui/kit'
-import { BORDER_X_PT, COL_PT, ROW_PT } from '../hooks/ui/tokens'
+import { BORDER_X_PT, columnPt, ROW_PT } from '../hooks/ui/tokens'
 
 const NOW = Date.parse('2026-10-12T12:00:00Z')
 const MIN = 60_000
@@ -45,7 +45,7 @@ function fill(mem: Map<string, unknown>) {
   mem.set('cockpit:session:test-session', rec('test-session', { cwd: '/work/app', contextPercent: 38 }))
   for (let n = 1; n <= 3; n += 1) mem.set(`cockpit:session:s${n}`, rec(`s${n}`))
 }
-const propsAt = (wPt: number) => ({ title: 'Vaken', isFocused: false, bodyColumns: wPt / COL_PT, placement: 'dock' as const, scroll: { bodyRows: Math.round(1400 / ROW_PT), offset: 0, total: 200 }, view: {} })
+const propsAt = (wPt: number) => ({ title: 'Vaken', isFocused: false, bodyColumns: wPt / columnPt(), placement: 'dock' as const, scroll: { bodyRows: Math.round(1400 / ROW_PT), offset: 0, total: 200 }, view: {} })
 
 type Node = { type?: string; key?: string; text?: string; props?: Record<string, unknown>; children?: unknown[] }
 type Pane = { drawn: () => Promise<Node>; redraw: (p?: unknown) => Promise<void>; press: (q: unknown) => Promise<void>; unmount: () => Promise<void> }
@@ -61,16 +61,16 @@ const texts = (n: Node): string[] => walk(n).flatMap(x => [...(x.children ?? [])
 const wide = (n: Node): number => {
   if (n.type === 'Svg') return Number(n.props?.width ?? 0)
   if (n.type === 'Client') return 0
-  if (n.type === 'Button') return String(n.props?.label ?? '').length * COL_PT
-  const own = typeof n.props?.width === 'number' ? (n.props.width as number) * COL_PT : 0
-  const text = (n.children ?? []).filter((c): c is string => typeof c === 'string').join('').length * COL_PT
+  if (n.type === 'Button') return String(n.props?.label ?? '').length * columnPt()
+  const own = typeof n.props?.width === 'number' ? (n.props.width as number) * columnPt() : 0
+  const text = (n.children ?? []).filter((c): c is string => typeof c === 'string').join('').length * columnPt()
   const parts = kids(n).map(wide).filter(w => w > 0)
-  const gap = (typeof n.props?.columnGap === 'number' ? (n.props.columnGap as number) * COL_PT : 0) * Math.max(0, parts.length - 1)
+  const gap = (typeof n.props?.columnGap === 'number' ? (n.props.columnGap as number) * columnPt() : 0) * Math.max(0, parts.length - 1)
   const inner = n.props?.flexDirection === 'row' ? (n.props?.flexWrap === 'wrap' ? Math.max(0, ...parts) : parts.reduce((a, b) => a + b, 0) + gap) : Math.max(0, ...parts)
   return Math.max(own, text, inner)
 }
 
-test('LV8: at 288 pt the footer goes in even right-aligned lines, no word alone on a line, and no word in it is cut', { timeoutMs: 60_000 }, async ($, on) => {
+test('at 288 pt the footer goes in even right-aligned lines, no word alone on a line, and no word in it is cut', { timeoutMs: 60_000 }, async ($, on) => {
   const mem = new Map<string, unknown>([['cockpit:setting:look.view', 'custom']])
   mock.clock(on, { now: NOW })
   mock.env(on, { HOME: '/home/test' })
@@ -94,7 +94,7 @@ test('LV8: at 288 pt the footer goes in even right-aligned lines, no word alone 
   await ui.unmount()
 })
 
-test('LV9: at 288 pt every Settings section header fits its pane: the title and the chip on one row (the chip takes a shorter form), a chip never cut', { timeoutMs: 60_000 }, async ($, on) => {
+test('at 288 pt every Settings section header fits its pane: the title and the chip on one row (the chip takes a shorter form), a chip never cut', { timeoutMs: 60_000 }, async ($, on) => {
   const mem = new Map<string, unknown>([['cockpit:setting:look.view', 'custom']])
   mock.clock(on, { now: NOW })
   mock.env(on, { HOME: '/home/test' })
@@ -125,16 +125,21 @@ test('LV9: at 288 pt every Settings section header fits its pane: the title and 
     }
   }
   expect(withChip).toBeGreaterThanOrEqual(5)
-  // The link is a row of the body now and the chip shortens to fit: no header needs a second line at 288 pt.
-  expect(split).toBe(0)
+  // The link is a row of the body now; the chip has one form ("3 of 4 on · 2 changed"), so a chip that
+  // does not fit beside the title goes on its own line under it, whole: a second line holds the chip and nothing else
+  for (const card of cards) {
+    const line = walk(card).find(p => keyOf(p)?.endsWith('-controls-line'))
+    if (line !== undefined) expect(walk(line).some(x => keyOf(x)?.startsWith('count-settings-'))).toBe(true)
+  }
+  expect(split).toBeLessThan(cards.length)
   await ui.unmount()
 })
 
-test('LV9: the header rule, from the real strings, and the project tab', () => {
+test('the header rule, from the real strings, and the project tab', () => {
   const inner = PANE_PT - 2 * BORDER_X_PT
   const chip = 22
   const chipPt = Math.round(chip * 6.2 + 12)
-  const jumpPt = (label: string) => (label.length + 2) * COL_PT
+  const jumpPt = (label: string) => (label.length + 2) * columnPt()
   expect(headerWraps(inner, { title: 'Safety', fold: false, restPt: jumpPt('Open the Safety card ›') + 6 + chipPt + 6 })).toBe(true)
   expect(headerWraps(900, { title: 'Safety', fold: false, restPt: jumpPt('Open the Safety card ›') + 6 + chipPt + 6 })).toBe(false)
   const name = 'my-website-app-with-a-very-long-name'
@@ -146,7 +151,7 @@ test('LV9: the header rule, from the real strings, and the project tab', () => {
   expect(nameTabLabel(120, ['All projects'], 'This project', name)).toBe('This project')
 })
 
-test('LV10: the Guard says what really happens: worst stop where nothing asks, all warn where Claude Code asks or the person chose, careful words while unknown', { timeoutMs: 60_000 }, async ($, on) => {
+test('the Guard says what really happens: worst stop where nothing asks, all warn where Claude Code asks or the person chose, careful words while unknown', { timeoutMs: 60_000 }, async ($, on) => {
   const mem = new Map<string, unknown>([['cockpit:setting:look.view', 'custom']])
   const clock = mock.clock(on, { now: NOW })
   mock.env(on, { HOME: '/home/test' })
@@ -156,7 +161,7 @@ test('LV10: the Guard says what really happens: worst stop where nothing asks, a
     await ui.redraw(propsAt(900))
     const all = texts(await ui.drawn())
     await ui.unmount()
-    return all.find(s => /^(all warn|worst stop|warn, worst may stop)$/i.test(s.trim())) ?? all.filter(s => /warn|worst/i.test(s)).join(' | ')
+    return all.find(s => /^(warns only|warns, stops the worst|warns, worst may stop)$/i.test(s.trim())) ?? all.filter(s => /warn|worst/i.test(s)).join(' | ')
   }
   const keep = (key: string, value: unknown) => {
     mem.set(key, value)
@@ -166,23 +171,23 @@ test('LV10: the Guard says what really happens: worst stop where nothing asks, a
   }
   const wait = () => clock.advance(BUNDLE_TTL_MS + 1)
   fill(mem)
-  expect((await ruleWord()).toLowerCase()).toBe('warn, worst may stop')
+  expect((await ruleWord()).toLowerCase()).toBe('warns, worst may stop')
   keep(HOST_NOTE_KEY, { sid: 'test-session', view: 'unasked' })
   await wait()
-  expect((await ruleWord()).toLowerCase()).toBe('worst stop')
+  expect((await ruleWord()).toLowerCase()).toBe('warns, stops the worst')
   keep(HOST_NOTE_KEY, { sid: 'test-session', view: 'asks' })
   await wait()
-  expect((await ruleWord()).toLowerCase()).toBe('all warn')
+  expect((await ruleWord()).toLowerCase()).toBe('warns only')
   keep(HOST_NOTE_KEY, { sid: 'other', view: 'asks' })
   await wait()
-  expect((await ruleWord()).toLowerCase()).toBe('warn, worst may stop')
+  expect((await ruleWord()).toLowerCase()).toBe('warns, worst may stop')
   keep(HOST_NOTE_KEY, { sid: 'test-session', view: 'unasked' })
   keep('cockpit:setting:guard.destructive', 'warn')
   await wait()
-  expect((await ruleWord()).toLowerCase()).toBe('all warn')
+  expect((await ruleWord()).toLowerCase()).toBe('warns only')
 })
 
-test('LV10: the pure parts: the reading, the note kept only on a change', async () => {
+test('the pure parts: the reading, the note kept only on a change', async () => {
   expect(warnReading('unasked', false)).toBe('worst')
   expect(warnReading('asks', false)).toBe('warn')
   expect(warnReading('unknown', false)).toBe('maybe')
@@ -201,7 +206,7 @@ test('LV10: the pure parts: the reading, the note kept only on a change', async 
   expect(writes).toHaveLength(2)
 })
 
-test('LV11: the Delete everything preview and the Reset ask are one left-aligned block, the link at rest sits at the left (LW4)', { timeoutMs: 60_000 }, async ($, on) => {
+test('the Delete everything preview and the Reset ask are one left-aligned block, the link at rest sits at the left', { timeoutMs: 60_000 }, async ($, on) => {
   const mem = new Map<string, unknown>([['cockpit:setting:look.view', 'custom']])
   mock.clock(on, { now: NOW })
   mock.env(on, { HOME: '/home/test' })
@@ -210,7 +215,7 @@ test('LV11: the Delete everything preview and the Reset ask are one left-aligned
   const ui = (await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: propsAt(PANE_PT) })) as unknown as Pane
   await ui.press({ key: 'settings' })
   await ui.redraw(propsAt(PANE_PT))
-  for (const [link, ask, block] of [['settings-reset', 'settings-reset-ask', 'settings-reset-block'], ['settings-erase', 'settings-erase-ask', 'settings-erase-block']]) {
+  for (const [link, ask, block] of [['settings-reset', 'settings-reset-ask', 'settings-reset-card-body'], ['settings-erase', 'settings-erase-ask', 'settings-erase-card-body']]) {
     const rest = await ui.drawn()
     expect(walk(rest).some(d => keyOf(d) === link)).toBe(true)
     expect(walk(rest).some(x => x.props?.justifyContent === 'flex-end' && walk(x).some(d => keyOf(d) === link))).toBe(false)

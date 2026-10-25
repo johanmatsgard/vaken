@@ -131,7 +131,8 @@ export function weekTight(w: Week | undefined, now: number): boolean {
 
 
 export type FitChange = { effort: Effort } | { model: Family }
-export type Suggestion = { why: 'looks' | 'week' | 'fails'; change: FitChange }
+// `fails`: how many checks failed in a row (a 'fails' suggestion says the real count)
+export type Suggestion = { why: 'looks' | 'week' | 'fails'; change: FitChange; fails?: number }
 export type FitInput = {
   on: boolean
   isHelper?: boolean
@@ -149,9 +150,10 @@ export function suggestFit(x: FitInput): Suggestion | undefined {
   const fit = x.fit ?? {}
   const effort = fit.effort
   if ((fit.fails ?? 0) >= FAILS_IN_ROW) {
-    if (effort !== undefined && effortRank(effort) < effortRank('high')) return { why: 'fails', change: { effort: 'high' } }
+    const fails = fit.fails ?? FAILS_IN_ROW
+    if (effort !== undefined && effortRank(effort) < effortRank('high')) return { why: 'fails', change: { effort: 'high' }, fails }
     const up = stepUp(x.model)
-    return up === undefined ? undefined : { why: 'fails', change: { model: up } }
+    return up === undefined ? undefined : { why: 'fails', change: { model: up }, fails }
   }
   if (!isLookStretch(fit, x.now)) return undefined
   if (weekTight(x.week, x.now) && familyIn(x.model) !== undefined && rankOf(x.model) > rankOf(x.lookup)) return { why: 'week', change: { model: x.lookup } }
@@ -213,7 +215,14 @@ export const FIT_FAILS = 'Checks failed twice in a row'
 export const FIT_LOWER = 'Lower the effort (saves usage)'
 export const FIT_RAISE = 'Raise the effort'
 export const FIT_USE = 'Use {model}'
+export const FIT_FAILS_N = 'Checks failed {n} times in a row'
 export const whyWord = (s: Suggestion): string => (s.why === 'looks' ? FIT_LOOKS : s.why === 'week' ? FIT_WEEK : FIT_FAILS)
+// Three or more failures say the real count ("Checks failed 3 times in a row"); two say "twice"
+const manyFails = (s: Suggestion): number | undefined => (s.why === 'fails' && (s.fails ?? 0) > FAILS_IN_ROW ? s.fails : undefined)
+export const whyText = (s: Suggestion, t: (x: string) => string): string => {
+  const n = manyFails(s)
+  return n === undefined ? t(whyWord(s)) : t(FIT_FAILS_N).replace('{n}', String(n))
+}
 export const pressWord = (s: Suggestion, t: (x: string) => string): string => ('model' in s.change ? t(FIT_USE).replace('{model}', modelLabel(s.change.model)) : t(isLower(s.change) ? FIT_LOWER : FIT_RAISE))
 
 export const FIT_ASKED_LOWER = 'Asked the app to lower the effort of {name}. It may ask you to confirm.'
@@ -237,11 +246,64 @@ export const FIT_HERE_LOWER = 'This session only reads files. You can lower the 
 export const FIT_HERE_WEEK = 'The week is tight and this session only reads files. You can pick {model} in the model menu.'
 export const FIT_HERE_RAISE = 'Checks failed twice in a row. You can raise the effort in the model menu.'
 export const FIT_HERE_MODEL = 'Checks failed twice in a row. You can pick {model} in the model menu.'
+export const FIT_HERE_RAISE_N = 'Checks failed {n} times in a row. You can raise the effort in the model menu.'
+export const FIT_HERE_MODEL_N = 'Checks failed {n} times in a row. You can pick {model} in the model menu.'
 export const FIT_NOT_NOW = 'Not now'
 export function hereWord(s: Suggestion, t: (x: string) => string): string {
   if (s.why === 'week' && 'model' in s.change) return t(FIT_HERE_WEEK).replace('{model}', modelLabel(s.change.model))
-  if ('model' in s.change) return t(FIT_HERE_MODEL).replace('{model}', modelLabel(s.change.model))
-  return t(isLower(s.change) ? FIT_HERE_LOWER : FIT_HERE_RAISE)
+  const n = manyFails(s)
+  const count = (x: string): string => (n === undefined ? x : x.replace('{n}', String(n)))
+  if ('model' in s.change) return count(t(n === undefined ? FIT_HERE_MODEL : FIT_HERE_MODEL_N)).replace('{model}', modelLabel(s.change.model))
+  return isLower(s.change) ? t(FIT_HERE_LOWER) : count(t(n === undefined ? FIT_HERE_RAISE : FIT_HERE_RAISE_N))
 }
+
+// ---- Effort fits the ask: a simple ask (a look-up or a small edit) at high effort gets one calm line; never switched by itself.
+// Only the label and counts are kept, never the words of the ask.
+export const ASK_KINDS = ['lookup', 'edit', 'debug', 'plan'] as const
+export type AskKind = (typeof ASK_KINDS)[number]
+export const isSimpleAsk = (k: AskKind | undefined): boolean => k === 'lookup' || k === 'edit'
+// A longer ask is never called simple by the local rule: the person's own effort is kept.
+export const ASK_SHORT_CHARS = 240
+export const ASK_EDIT_CHARS = 160
+const PLAN_WORDS = /(?:^|[^\p{L}])(plan|planning|design|architect\w*|refactor\w*|migrat\w*|implement\w*|build|rewrite|roadmap|strategy|feature|planera|designa|bygg|implementera|skriv om)(?![\p{L}])/u
+const DEBUG_WORDS = /(?:^|[^\p{L}])(bug|bugs|error|errors|fail\w*|broken|crash\w*|exception|stack ?trace|debug\w*|not working|doesn'?t work|does not work|why does|why is|fix|bugg|felet|kraschar|funkar inte|fungerar inte|varför)(?![\p{L}])/u
+const EDIT_WORDS = /(?:^|[^\p{L}])(rename|replace|bump|change|update|remove|delete|add a (?:comment|line|test)|byt namn|ändra|ersätt|ta bort)(?![\p{L}])/u
+const TYPO_WORDS = /(?:^|[^\p{L}])(typo|typos|stavfel)(?![\p{L}])/u
+const LOOKUP_WORDS = /^(what|where|which|who|when|how many|how much|is there|are there|does|do we|show|list|find|look at|read|explain|tell me|vad|var|vilken|vilka|visa|lista|hitta|läs|förklara|finns)(?![\p{L}])/u
+// The cheap local rule; undefined when unsure. A typo fix is a small edit, not a debug.
+export function askKindLocal(text: string): AskKind | undefined {
+  const t = text.trim().toLowerCase()
+  if (t === '' || t.startsWith('/')) return undefined
+  if (PLAN_WORDS.test(t)) return 'plan'
+  if (TYPO_WORDS.test(t) && t.length <= ASK_EDIT_CHARS) return 'edit'
+  if (DEBUG_WORDS.test(t)) return 'debug'
+  if (t.length > ASK_SHORT_CHARS) return undefined
+  if (EDIT_WORDS.test(t)) return t.length <= ASK_EDIT_CHARS ? 'edit' : undefined
+  if (LOOKUP_WORDS.test(t) || t.endsWith('?')) return 'lookup'
+  return undefined
+}
+
+// A run of similar asks: simple ones together, any other ask ends it. `shown`: put away this run (Back pressed), so it does not come again.
+export type AskRun = { simple: boolean; n: number; shown: boolean }
+export const ASK_RUN_START: AskRun = { simple: false, n: 0, shown: false }
+export function nextAskRun(r: AskRun, k: AskKind): AskRun {
+  const simple = isSimpleAsk(k)
+  return simple === r.simple && r.n > 0 ? { ...r, n: r.n + 1 } : { simple, n: 1, shown: false }
+}
+export const isHighEffort = (e: Effort | undefined): boolean => e !== undefined && effortRank(e) >= effortRank('high')
+// An ask this short, or a plain yes, no or ok, says too little to tell: it keeps the current run as it is.
+export const ASK_MODEL_MIN_CHARS = 20
+const PLAIN_REPLY = /^(?:yes|yep|yeah|yup|no|nope|ok|okay|sure|please do|go ahead|do it|ja|nej|okej|kör)[\s,.!]*(?:please|thanks|thank you|tack|gärna)?[\s.!]*$/u
+export const keepsRun = (text: string): boolean => {
+  const t = text.trim().toLowerCase()
+  return t.length < ASK_MODEL_MIN_CHARS || PLAIN_REPLY.test(t)
+}
+// The line: a simple run at high effort, not lowered, not put away, the setting on.
+export const askFits = (x: { on: boolean; run: AskRun; effort: Effort | undefined; low: boolean }): boolean => x.on && !x.low && x.run.simple && x.run.n > 0 && !x.run.shown && isHighEffort(x.effort)
+
+export const FIT_ASK_FITS = 'Low effort fits this'
+export const FIT_ASK_USE = 'Use low effort for quick asks'
+export const FIT_ASK_ON = 'Low effort for quick asks'
+export const FIT_ASK_DONE = 'Low effort for these quick asks. A bigger ask goes back to {old}.'
 
 export const FIT_VIEW_STRINGS: string[] = englishOf('fit')

@@ -87,6 +87,8 @@ test('Windows names: PowerShell blocks and cmdlet lines are found on Windows onl
   for (const s of ['schtasks /query', 'reg query HKLM', 'netsh show', 'Set-ExecutionPolicy RemoteSigned', 'icacls x']) expect(findBlocks(plain(s), 'win32'), s).toHaveLength(0)
   expect(findBlocks(plain('Get-ChildItem'))).toEqual([])
   expect(findBlocks(plain('npm test'), 'win32')).toHaveLength(1)
+  for (const s of ['git.exe status', 'npm.cmd test', 'C:\\tools\\node.exe x.js', '.\\build.cmd']) expect(findBlocks(plain(s), 'win32'), s).toHaveLength(1)
+  for (const s of ['C:\\tools\\odd.exe x', 'git.exe status']) expect(findBlocks(plain(s)), s).toHaveLength(0)
 })
 
 test('the card run: the Mac runs sh -c, Windows runs PowerShell with exactly the judged script', async () => {

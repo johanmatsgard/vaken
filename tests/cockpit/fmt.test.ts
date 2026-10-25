@@ -33,7 +33,7 @@ test('moneyPlain is always two decimals', () => {
 })
 
 test('moneyAbout says an estimate', () => {
-  const table: [number, string][] = [[0.004, 'under $0.01'], [0.84, 'about $0.84'], [1, 'about $1.0'], [12.54, 'about $12.5']]
+  const table: [number, string][] = [[0.004, 'under\u00a0$0.01'], [0.84, 'about\u00a0$0.84'], [1, 'about\u00a0$1.0'], [12.54, 'about\u00a0$12.5']]
   for (const [n, want] of table) expect(fmt.moneyAbout(n)).toBe(want)
 })
 
@@ -51,7 +51,7 @@ test('tokensOf says used of window', () => {
   expect(fmt.tokensOf(68_000, 1_000_000)).toBe('68k of 1M')
 })
 
-test('ago: one counting for every style name (T14): floor, just now under a minute, N min, N h, N d', () => {
+test('ago: one counting for every style name: floor, just now under a minute, N min, N h, N d', () => {
   const table: [AgoName, number, string][] = [
     ['plain', 0, 'just now'],
     ['plain', 59_999, 'just now'],
@@ -76,7 +76,7 @@ test('ago: one counting for every style name (T14): floor, just now under a minu
   expect(ageWord(47 * H)).toBe('1 d')
 })
 
-test('tokens choose the unit after rounding and a percent under 100 never reads 100 (T17)', () => {
+test('tokens choose the unit after rounding and a percent under 100 never reads 100', () => {
   expect(fmt.tokens(999_600)).toBe('1M')
   expect(fmt.tokens(999_400)).toBe('999k')
   expect(fmt.tokens(1_000_000)).toBe('1M')
@@ -110,7 +110,7 @@ test('decimal and figure: one decimal, a comma in Swedish', () => {
   expect(fmt.figure(44.4, 'sv')).toBe('44')
   expect(fmt.tokensFine(1500, 'sv')).toBe('1,5k')
   expect(fmt.tokens(1_500_000, 'sv')).toBe('1,5M')
-  expect(fmt.moneyAbout(12.5, 'sv')).toBe('ungefär 12,5 USD')
+  expect(fmt.moneyAbout(12.5, 'sv')).toBe('ungefär\u00a012,5\u00a0USD')
 })
 
 test('a language code gives its decimal mark and its words', () => {
@@ -118,8 +118,8 @@ test('a language code gives its decimal mark and its words', () => {
   expect(fmt.decimal(1.34, 'en')).toBe('1.3')
   expect(fmt.gb(3700, 'sv')).toBe('3,6 GB')
   expect(fmt.tokensOf(68_000, 1_500_000, 'sv')).toBe('68k av 1,5M')
-  expect(fmt.moneyAbout(0.5, 'sv')).toBe('ungefär 0,50 USD')
-  expect(fmt.moneyAbout(0.001, 'sv')).toBe('under 0,01 USD')
+  expect(fmt.moneyAbout(0.5, 'sv')).toBe('ungefär\u00a00,50\u00a0USD')
+  expect(fmt.moneyAbout(0.001, 'sv')).toBe('under\u00a00,01\u00a0USD')
   expect(fmt.ago(30_000, 'days', 'sv')).toBe('nyss')
   expect(fmt.ago(5 * MIN, 'days', 'sv')).toBe('för 5 min sedan')
   expect(fmt.ago(180 * MIN, 'days', 'sv')).toBe('för 3 h sedan')
@@ -132,9 +132,24 @@ test('a language code gives its decimal mark and its words', () => {
 
 test('money follows the language', () => {
   expect(fmt.moneyPlain(1.8, 'en')).toBe('$1.80')
-  expect(fmt.moneyPlain(1.8, 'sv')).toBe('1,80 USD')
-  expect(fmt.money(0.42, 'sv')).toBe('0,42 USD')
-  expect(fmt.money(0.035, 'sv')).toBe('0,035 USD')
-  expect(fmt.money(0.004, 'sv')).toBe('0,0040 USD')
+  expect(fmt.moneyPlain(1.8, 'sv')).toBe('1,80\u00a0USD')
+  expect(fmt.money(0.42, 'sv')).toBe('0,42\u00a0USD')
+  expect(fmt.money(0.035, 'sv')).toBe('0,035\u00a0USD')
+  expect(fmt.money(0.004, 'sv')).toBe('0,0040\u00a0USD')
   expect(fmt.money(4.2, 'en')).toBe('$4.20')
+})
+
+test('moneyIn says the app\'s currency: USD as moneyPlain, another code by its sign, Swedish after the figure', () => {
+  expect(fmt.moneyIn(12.4, 'USD', 'en')).toBe('$12.40')
+  expect(fmt.moneyIn(12.4, 'USD', 'sv')).toBe('12,40\u00a0USD')
+  expect(fmt.moneyIn(50, 'EUR', 'en')).toBe('€50.00')
+  expect(fmt.moneyIn(50, 'SEK', 'en')).toBe('SEK 50.00')
+  expect(fmt.moneyIn(50, 'EUR', 'sv')).toBe('50,00\u00a0EUR')
+  expect(fmt.moneyIn(50, undefined, 'sv')).toBe('50,00')
+})
+
+test('figureDown never says more is left than there is: 16.9 is 16, under 10 one decimal', () => {
+  expect(fmt.figureDown(16.9)).toBe('16')
+  expect(fmt.figureDown(3.64)).toBe('3.6')
+  expect(fmt.figureDown(3.64, 'sv')).toBe('3,6')
 })

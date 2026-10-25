@@ -1,6 +1,7 @@
 // Destructive hold: finds shell commands and SQL statements that cannot be undone. A speed bump, not a boundary.
 import { REBUILDABLE, absolute, expandHome, isInside, isInsideTemp, isRebuildable, isScratch, looksWin } from './guardpaths'
-import { basename, commandsOf, flagsOf } from './guardshell'
+import { basename, commandsOf, flagsOf, remoteScripts, withoutDataHeredocs } from './guardshell'
+import { dotnetOps } from './guardnet'
 import { checkWindows, isWindowsShape, mergeWin, netOverwriteTargets, splitArgs, winCommandsOf } from './guardwin'
 import { WIN_EN } from './guardwinwords'
 import type { Cmd, Tok } from './guardshell'
@@ -154,14 +155,16 @@ function checkGit(c: Cmd, env: Env): Finding[] {
   if (g.sub === 'reset' && long.has('--hard')) {
     out.push({ id: 'git-reset-hard', what: 'Throws away every uncommitted change in', where: g.dir, risk: 'Edits that were never committed cannot be brought back (git reset --hard).' })
   } else if (g.sub === 'push') {
-    const force = short.has('f') || long.has('--force') || long.has('--force-with-lease') || long.has('--force-if-includes') || pos.some(p => p.startsWith('+'))
+    const hard = short.has('f') || long.has('--force') || pos.some(p => p.startsWith('+'))
+    const force = hard || long.has('--force-with-lease') || long.has('--force-if-includes')
     const deleting = long.has('--delete') || short.has('d') || pos.some(p => p.startsWith(':'))
     const refspecs = pos.slice(1)
     if (force || deleting) {
       const targets = refspecs.map(branchOf).filter(b => b !== '')
       const unknown = refspecs.length === 0 || targets.some(b => b === 'HEAD')
       const hits = targets.filter(b => protectedNames.includes(b))
-      if (force && (unknown || hits.length > 0)) {
+      // A lease push with no branch named is not flagged: the branch is not known to be a protected one, and the lease refuses when someone else pushed there.
+      if (force && ((unknown && hard) || hits.length > 0)) {
         out.push({
           id: 'git-push-force',
           what: 'Force-pushes over',
@@ -282,6 +285,15 @@ function checkOther(c: Cmd, env: Env): Finding[] {
   if ((c.prog === 'echo' || c.prog === 'printf') && c.into !== undefined && SQL_PROGRAMS.has(c.into.prog)) {
     for (const a of c.args) if (a.op !== true && !(c.prog === 'echo' && /^-[neE]+$/.test(a.t))) out.push(...checkSql(a.t))
   }
+  // rsync --delete removes every file in the target that the source does not have; a target in temp or a rebuildable folder is fine.
+  if (c.prog === 'rsync' && c.args.some(a => !a.quoted && /^--(?:del|delete(?:-[a-z]+)?)$/.test(a.t))) {
+    const raw = positional.filter(t => t.op !== true).pop()?.t
+    const remote = raw !== undefined && /^[^/:]+:/.test(raw) && !/^[A-Za-z]:[\\/]/.test(raw)
+    const dest = raw === undefined || remote ? raw : absolute(raw, env.home, env.cwd)
+    if (dest !== undefined && (remote || (!isInsideTemp(dest) && !isRebuildable(dest, env.cwd)))) {
+      out.push({ id: 'rsync-delete', what: 'Deletes every file the source does not have, in', where: dest, risk: 'rsync --delete skips the Trash, so there is no undo.' })
+    }
+  }
   if (c.prog === 'mongorestore' && c.args.some(a => a.t === '--drop')) {
     out.push({ id: 'mongo-drop', what: 'Restores a Mongo backup and first drops each collection it restores', risk: 'What is in those collections now is gone for good unless there is a backup.' })
   }
@@ -313,10 +325,26 @@ export function checkCommand(command: string, env: Env, flavor: ShellFlavor = 'p
   // In PowerShell a backslash is a path character: the escape reading would read rm .\build as rm .build.
   const ps = flavor === 'powershell'
   const plain = uncommented === command ? checkPosix(command, env, false, ps) : mergeWin(checkPosix(command, env, false, ps), checkPosix(uncommented, env, false, ps))
-  const posix = mergeWin(mergeWin(plain, forkBomb(uncommented)), dbHeredocs(command))
+  const posix = mergeWin(mergeWin(mergeWin(plain, forkBomb(uncommented)), dbHeredocs(command)), checkRemote(uncommented, ps))
   const known = flavor === 'powershell'
   if (!known && (!isWindowsShape(command) || searchOnly(uncommented))) return posix
   return mergeWin(mergeWin(posix, checkPosix(command, env, true)), checkWindows(command, env, known))
+}
+
+// A command run on another computer over ssh is read with that computer as its place: its home and folder stand for the remote ones (ssh starts in the
+// remote home), and each finding says the host. ~ in a finding is the remote home. Nested ssh is read a few levels deep.
+const REMOTE_HOME = '/~'
+const REMOTE_ENV: Env = { home: REMOTE_HOME, cwd: REMOTE_HOME, project: '' }
+const REMOTE_DEPTH = 3
+
+function checkRemote(command: string, ps: boolean, depth = 0): Finding[] {
+  if (depth >= REMOTE_DEPTH) return []
+  let out: Finding[] = []
+  for (const r of remoteScripts(command, ps)) {
+    const found = mergeWin(checkPosix(r.script, REMOTE_ENV, false), checkRemote(r.script, ps, depth + 1))
+    out = mergeWin(out, found.map(f => ({ ...f, where: `${(f.where ?? '').split(REMOTE_HOME).join('~')} on ${r.host}`.trim() })))
+  }
+  return out
 }
 
 const SEARCHERS = new Set(['grep', 'egrep', 'fgrep', 'rg', 'ag', 'head', 'tail', 'wc', 'sort', 'uniq', 'cut', 'tr', 'nl', 'cat', 'less', 'more', 'column'])
@@ -630,14 +658,18 @@ export function shellWriteTargets(command: string, env: Env, flavor: 'posix' | '
     for (const r of c.redirects) if ((r.op === '>' || r.op === '>>' || r.op === '>|') && r.target !== '' && !r.target.startsWith('&')) out.push(r.target)
     if (c.prog === 'tee') out.push(...flagsOf(c.args).positional.map(t => t.t))
   }
-  if (flavor === 'powershell' || isWindowsShape(command) || /\$profile\b/i.test(command)) {
-    for (const c of winCommandsOf(command)) {
+  // A bash line drops heredoc bodies that are only data; their redirect is still read above.
+  const win = flavor === 'powershell' ? command : withoutDataHeredocs(command)
+  if (flavor === 'powershell' || isWindowsShape(command) || /\$profile\b/i.test(win)) {
+    for (const c of winCommandsOf(win)) {
       for (const r of c.redirects) if (r.target !== '' && !r.target.startsWith('&')) out.push(r.target)
       if (!PS_WRITERS.has(c.prog)) continue
       const a = splitArgs(c.args, { known: ['path', 'literalpath', 'filepath', 'value', 'append', 'encoding', 'force', 'inputobject'], values: ['path', 'literalpath', 'filepath', 'value', 'encoding', 'inputobject'] })
       const t = a.params.get('filepath') ?? a.params.get('path') ?? a.params.get('literalpath') ?? a.positional[0]
       if (t !== undefined) out.push(t)
     }
+    // A .NET call such as [IO.File]::WriteAllText writes the same as Set-Content.
+    for (const op of dotnetOps(win)) if (op.act === 'write' && op.arg.known) out.push(op.arg.raw)
   }
   const paths = out.filter(t => !/^(?:\/dev\/|nul$|\$null$)/i.test(t)).map(t => (PS_PROFILE.test(t) ? PROFILE_WORD : absolute(t, env.home, env.cwd)))
   return [...new Set(paths)]

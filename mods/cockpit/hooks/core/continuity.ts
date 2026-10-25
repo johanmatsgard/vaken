@@ -2,11 +2,13 @@
 import type { HelpEntry } from './registry'
 import type { Setting } from './settings'
 import { hideSecrets } from './guardcmds'
-import { PROOF_KINDS, doneMet, gapWords, kindWord, latestOf, relevantKinds, staleWords, statusOf, statusWord } from './proof'
+import { PROOF_KINDS, doneMet, gapWords, kindWord, latestOf, relevantKinds, staleWords, stateWord, statusOf, statusWord } from './proof'
 import type { ProofKind, ProofState } from './proof'
 import { below } from './platform'
 import { hhmm } from './time'
-import { tEn } from '../i18n/t'
+import { t as tn, tEn, tr } from '../i18n/t'
+import type { Lang } from '../i18n/types'
+import { fillIn } from './fillin'
 import { fmt } from './fmt'
 
 
@@ -15,7 +17,7 @@ export const CONTINUITY_SETTINGS: Setting[] = [
     key: 'brief.mode',
     group: 'Notes for the next session',
     label: 'Handoff notes',
-    note: 'Brief, packet, timeline, standup, story and search commands.',
+    note: 'Brief, packet, timeline, standup, story and search commands.', // en-only: a setting note; /vaken-settings text stays English
     options: [
       { value: 'off', label: 'Off' },
       { value: 'on', label: 'On' },
@@ -37,22 +39,25 @@ export const CONTINUITY_HELP: HelpEntry[] = [
 
 export const PACKET_WHAT = 'Wrote a session packet'
 export const PACKET_PATH = '.claude/cockpit-packet.md'
-export const OFF_TEXT = 'Handoff notes are off. Turn them on: Settings > Prompts and memory.'
+export const OFF_TEXT = 'Handoff notes are off. Turn them on: Settings > Prompts and memory.' // en-only: the key; features/continuity.ts says it with tr() where it answers
 
 
 const sameDay = (a: number, b: number): boolean => new Date(a).toDateString() === new Date(b).toDateString()
-export function stamp(at: number, now: number): string {
+export function stamp(at: number, now: number, lang: Lang = 'en'): string {
   const d = new Date(at)
-  return sameDay(at, now) ? hhmm(at) : `${d.getDate()} ${fmt.month(d.getMonth())} ${hhmm(at)}`
+  return sameDay(at, now) ? hhmm(at) : `${d.getDate()} ${fmt.month(d.getMonth(), lang)} ${hhmm(at)}`
 }
 export const plainList = (items: string[]): string => items.join(', ')
 const stripDot = (text: string): string => text.replace(/[.!?\s]+$/, '')
-export function fewOf(items: string[], max: number): string {
-  return items.length <= max ? plainList(items) : `${plainList(items.slice(0, max))} and ${items.length - max} more`
+export function fewOf(items: string[], max: number, more: (n: number) => string = n => `and ${n} more`): string {
+  return items.length <= max ? plainList(items) : `${plainList(items.slice(0, max))} ${more(items.length - max)}`
 }
 
 
 export type GitFile = { code: string; path: string }
+// The one git status vaken reads for changed files: short form, paths from the folder it runs in, names not escaped. It takes no optional lock, so a read
+// never makes the person's own git command (or another session's) fail with "index.lock exists".
+export const STATUS_ARGV: readonly string[] = ['git', '--no-optional-locks', '-c', 'core.quotepath=off', 'status', '--short']
 
 // `git status --short`: two status letters, a space, the path; a rename shows "old -> new".
 export function parseGitStatus(stdout: string): GitFile[] {
@@ -79,7 +84,8 @@ export const looksPrivate = (path: string): boolean => /(^|\/)(\.env[^/]*|[^/]*(
 export const relativeTo = (cwd: string, path: string): string => (cwd !== '' ? below(cwd, path) : path)
 
 
-type Claim = { topic: string; ok: boolean; src: string; text: string; lines: string[] }
+// `fixed`: a line no check can ever back (your goal, Claude's own list): it carries no checked or not checked mark
+type Claim = { topic: string; ok: boolean; src: string; text: string; lines: string[]; fixed?: boolean }
 
 export type BriefFacts = {
   now: number
@@ -151,8 +157,8 @@ function doneClaim(s: ProofState): Claim {
 export function briefClaims(f: BriefFacts): Claim[] {
   const s = f.proof
   const out: Claim[] = []
-  if (s.goal === undefined) out.push({ topic: 'Goal', ok: false, src: 'not set', text: 'Not set. /vaken-tasks goal <one sentence> sets it.', lines: [] })
-  else out.push({ topic: 'Goal', ok: false, src: s.goal.how === 'first' ? 'key words of your first message, not checked' : 'your words, not checked', text: stripDot(hideSecrets(s.goal.text)), lines: [] })
+  if (s.goal === undefined) out.push({ topic: 'Goal', ok: false, src: 'not set', text: 'Not set. /vaken-tasks goal <one sentence> sets it.', lines: [], fixed: true })
+  else out.push({ topic: 'Goal', ok: false, src: s.goal.how === 'first' ? 'key words of your first message, not checked' : 'your words, not checked', text: stripDot(hideSecrets(s.goal.text)), lines: [], fixed: true })
   const branch = branchClaim(f)
   if (branch !== undefined) out.push(branch)
   out.push(filesClaim(f), checksClaim(s), doneClaim(s))
@@ -170,16 +176,16 @@ export function briefClaims(f: BriefFacts): Claim[] {
   }
   if (f.pr === 'none') out.push({ topic: 'Pull request', ok: true, src: 'gh', text: 'None found for this branch.', lines: [] })
   else if (f.pr !== undefined) out.push({ topic: 'Pull request', ok: true, src: `gh, ${hhmm(f.pr.at)}`, text: `#${f.pr.number}, ${f.pr.isDraft ? 'draft' : f.pr.state.toLowerCase()}`, lines: f.pr.url === '' ? [] : [f.pr.url] })
-  if (s.todo !== undefined) out.push({ topic: "Claude's task list", ok: false, src: "Claude's own list", text: `${s.todo.done} of ${s.todo.total} done.`, lines: [] })
+  if (s.todo !== undefined) out.push({ topic: "Claude's task list", ok: false, src: "Claude's own list", text: `${s.todo.done} of ${s.todo.total} done.`, lines: [], fixed: true })
   if (s.debt > 0) out.push({ topic: 'Waiting for your look', ok: true, src: 'Checks', text: `${tEn('words.finished_answer', { n: s.debt })} that changed files.`, lines: [] })
   return out
 }
 
 const markOf = (c: Claim): string => `${c.ok ? 'verified' : 'unverified'}: ${c.src}`
 
-export function briefMarkLines(f: BriefFacts): { verified: number; total: number; lines: string[] } {
+export function briefMarkLines(f: BriefFacts): { verified: number; total: number; lines: string[]; marks: { topic: string; ok: boolean; fixed?: boolean }[] } {
   const claims = briefClaims(f)
-  return { verified: claims.filter(c => c.ok).length, total: claims.length, lines: claims.map(c => `${c.topic}: ${markOf(c)}`) }
+  return { verified: claims.filter(c => c.ok).length, total: claims.length, lines: claims.map(c => `${c.topic}: ${markOf(c)}`), marks: claims.map(c => ({ topic: c.topic, ok: c.ok, ...(c.fixed === true ? { fixed: true } : {}) })) }
 }
 
 export function firstSteps(f: BriefFacts): string[] {
@@ -239,29 +245,44 @@ export function renderPacket(f: BriefFacts, folderName: string): string {
 
 type StoryFacts = { proof: ProofState; anomalies: number; unproven: number; askingSince?: number }
 
-const pluralKinds = (kinds: ProofKind[]): string => plainList(kinds.map(kindWord))
+const pluralKinds = (kinds: ProofKind[]): string => plainList(kinds.map(k => tr(kindWord(k))))
 
 export function storyLines(f: StoryFacts): string[] {
   const s = f.proof
   const out: string[] = []
-  out.push(s.goal === undefined ? 'The goal was not set for this session.' : `The goal: ${stripDot(hideSecrets(s.goal.text))}.`)
+  out.push(s.goal === undefined ? tr('The goal was not set for this session.') : fillIn(tr('The goal: {goal}.'), { goal: stripDot(hideSecrets(s.goal.text)) }))
   const ran = PROOF_KINDS.filter(k => latestOf(s, k) !== undefined)
-  if (s.edits === 0 && s.receipts.length === 0) out.push('So far Claude has not changed a file or run a check.')
-  else out.push(`Claude changed ${tEn('words.file', { n: s.files.length })} in ${tEn('words.edit', { n: s.edits })} over ${tEn('words.finished_answer', { n: s.turns })}, and ran ${tEn('words.check', { n: s.receipts.length })}${ran.length === 0 ? '' : ` (${pluralKinds(ran)})`}.`)
+  if (s.edits === 0 && s.receipts.length === 0) out.push(tr('So far Claude has not changed a file or run a check.'))
+  else out.push(fillIn(tr('Claude changed {files} in {edits} over {answers}, and ran {checks}{kinds}.'), { files: tn('words.file', { n: s.files.length }), edits: tn('words.edit', { n: s.edits }), answers: tn('words.finished_answer', { n: s.turns }), checks: tn('words.check', { n: s.receipts.length }), kinds: ran.length === 0 ? '' : ` (${pluralKinds(ran)})` }))
   const failed = PROOF_KINDS.map(k => ({ k, n: s.receipts.filter(r => r.kind === k && r.ok === false).length })).filter(x => x.n > 0)
-  const bad = [...failed.map(x => `${kindWord(x.k)} failed ${tEn('words.times', { n: x.n })}`), ...(f.anomalies > 0 ? [tEn('words.warning_about_odd_behaviour', { n: f.anomalies })] : []), ...(f.unproven > 0 ? [tEn('words.claim_with_no_proof', { n: f.unproven })] : [])]
-  out.push(bad.length === 0 ? 'Vaken saw nothing fail.' : `What went wrong: ${plainList(bad)}.`)
+  const bad = [...failed.map(x => fillIn(tr('{kind} failed {times}'), { kind: tr(kindWord(x.k)), times: tn('words.times', { n: x.n }) })), ...(f.anomalies > 0 ? [tn('words.warning_about_odd_behaviour', { n: f.anomalies })] : []), ...(f.unproven > 0 ? [tn('words.claim_with_no_proof', { n: f.unproven })] : [])]
+  out.push(bad.length === 0 ? tr('Vaken saw nothing fail.') : fillIn(tr('What went wrong: {list}.'), { list: plainList(bad) }))
   const relevant = relevantKinds(s)
-  out.push(s.edits === 0 && s.receipts.length === 0 ? 'It stands at the start: no work is counted yet.' : `Where it stands: ${relevant.map(k => `${kindWord(k)} ${statusWord(statusOf(s, k))}`).join('; ')}.`)
+  out.push(s.edits === 0 && s.receipts.length === 0 ? tr('It stands at the start: no work is counted yet.') : fillIn(tr('Where it stands: {list}.'), { list: relevant.map(k => `${tr(kindWord(k))} ${stateWord(k, statusOf(s, k), tr)}`).join('; ') }))
   const next: string[] = []
-  if (f.askingSince !== undefined) next.push('answer the question Claude asked')
+  if (f.askingSince !== undefined) next.push(tr('answer the question Claude asked'))
   const unmet = (s.done.length > 0 ? s.done : []).filter(k => statusOf(s, k) !== 'ok')
-  if (s.done.length > 0 && unmet.length > 0) next.push(`make ${pluralKinds(unmet)} pass, as the definition of done asks`)
+  if (s.done.length > 0 && unmet.length > 0) next.push(fillIn(tr('make {kinds} pass, as the definition of done asks'), { kinds: pluralKinds(unmet) }))
   else if (s.done.length === 0 && s.edits > 0) {
     const open = relevant.filter(k => statusOf(s, k) !== 'ok')
-    if (open.length > 0) next.push(`run ${pluralKinds(open)}`)
+    if (open.length > 0) next.push(fillIn(tr('run {kinds}'), { kinds: pluralKinds(open) }))
   }
-  if (s.debt > 0 && next.length < 2) next.push('look at the finished work')
-  out.push(next.length === 0 ? 'Next: nothing waits that vaken can see.' : `Next: ${next.slice(0, 2).join(', then ')}.`)
+  if (s.debt > 0 && next.length < 2) next.push(tr('look at the finished work'))
+  out.push(next.length === 0 ? tr('Next: nothing waits that vaken can see.') : fillIn(tr('Next: {list}.'), { list: next.slice(0, 2).join(tr(', then ')) }))
   return out
 }
+
+// ---- Finish safely (Plan limits): the window runs out before the work ends. One press saves the handover note (the fresh-start brief, features/continuity.ts
+// writeFreshBrief) and sends Claude one fixed request. Nothing happens without the press.
+export const FINISH_PRESS = 'Finish safely'
+export const FINISH_MEANS = 'At this pace the plan limit runs out before the work ends. Finish safely lets Claude stop at a safe point instead of being cut off mid-step. Nothing happens before you press.'
+export const FINISH_NEXT = 'The press saves a handover note for the next session, then asks Claude to stop at the next safe point, commit nothing you did not ask for, and say where it stopped.'
+export const FINISH_SAID = 'Handover note saved at {path}. Asked Claude to stop at a safe point.'
+export const FINISH_QUEUED = 'Handover note saved at {path}. Claude gets the request at its next step.'
+export const FINISH_FAILED = 'Could not save the handover note. Nothing was sent to Claude.'
+export const FINISH_WORDS: string[] = [FINISH_PRESS, FINISH_MEANS, FINISH_NEXT, FINISH_SAID, FINISH_QUEUED, FINISH_FAILED]
+// Sent to Claude as the person's own message (or, while Claude works, with its next step's result), so English by rule.
+export const finishPrompt = (path: string): string =>
+  `The plan limit runs out soon. Stop at the next safe point: finish or undo the step you are in, so nothing is left half done. Do not start anything new. Do not commit anything I did not ask you to commit. Vaken saved a handover note for the next session at ${path}. Then tell me in two or three lines where you stopped and what is left.` // en-only: a prompt sent to Claude as the person
+// The request waiting for Claude's next step while it works (features/cost.ts hands it over once); sent as a message when the turn ends without a step.
+export const finishMem: { note?: string } = {}

@@ -11,7 +11,7 @@ import { shipCardText } from '../hooks/core/shipcard'
 
 const NOW = 1_800_000_000_000
 
-test('U45: a run runs again from its own tasks: every task waits, the roles and the order are kept, the folder copies are not', () => {
+test('a run runs again from its own tasks: every task waits, the roles and the order are kept, the folder copies are not', () => {
   let run: Run = newRun(['Fix the header (builder, strong)', 'Check the header (reviewer, after 1)'], NOW)
   run = withTask(run, 1, { state: 'done', path: '/w/wt1', branch: 'task-1', usd: 0.4, check: 'passed' })
   run = { ...run, status: 'done' }
@@ -25,21 +25,21 @@ test('U45: a run runs again from its own tasks: every task waits, the roles and 
   expect(parseSteer('again')).toEqual({ kind: 'again' })
 })
 
-test('U96: a run that paused for its cost says so with the limit; the person\'s own pause keeps the old word', () => {
+test('a run that paused for its cost says so with the limit; the person\'s own pause keeps the old word', () => {
   const run: Run = { ...newRun(['One', 'Two'], NOW), status: 'paused', costPause: 25 }
   expect(runSummary(run)).toMatch(/^Paused: it cost more than \$25\./)
   expect(runSummary({ ...run, costPause: undefined })).toMatch(/^Paused: /)
   expect(runSummary({ ...run, costPause: undefined })).not.toMatch(/cost more/)
 })
 
-test('U57: the Steer lines give a sentence to every verb the command knows', () => {
+test('the Steer lines give a sentence to every verb the command knows', () => {
   const text = tasksText(newRun(['One'], NOW), undefined, NOW, () => '1 min')
   for (const verb of ['add', 'set N', 'remove N', 'start', 'pause', 'go', 'stop', 'retry N', 'again', 'keep N', 'throw N', 'say N', 'at auto', 'check', 'limit', 'reviewer', 'afterlimit', 'name', 'template', 'clear']) expect(text).toContain(`/vaken-tasks ${verb}`)
   expect(STEER_LINES.every(l => l.includes(': '))).toBe(true)
   expect(text).toContain('deletes the work and the branch')
 })
 
-test('T25: a dev server is the project\'s only when it runs from the project\'s folder or one inside it', () => {
+test('a dev server is the project\'s only when it runs from the project\'s folder or one inside it', () => {
   expect(lsofCwdArgv([11, 22])).toEqual(['lsof', '-nP', '-a', '-p', '11,22', '-d', 'cwd', '-Fpn'])
   const got = parseCwds(0, 'p11\nfcwd\nn/work/app/web\np22\nfcwd\nn/work/other\n')
   expect([...got]).toEqual([[11, '/work/app/web'], [22, '/work/other']])
@@ -50,7 +50,7 @@ test('T25: a dev server is the project\'s only when it runs from the project\'s 
   expect(inProject('/work/other', '/work/app')).toBe(false)
 })
 
-test('T35: only a row that says running and was read more than 5 minutes ago is asked about again, another branch of this repository, oldest first', () => {
+test('only a row that says running and was read more than 5 minutes ago is asked about again, another branch of this repository, oldest first', () => {
   const view = (running: boolean) => ({ number: 1, state: 'OPEN', isDraft: false, mergeable: 'MERGEABLE', url: 'u', merge: 'CLEAN', review: '', checks: [{ name: 'ci', state: running ? 'IN_PROGRESS' : 'SUCCESS', conclusion: running ? '' : 'SUCCESS' }] })
   const raw = {
     'r\nown': { at: NOW - 20 * 60_000, view: view(true) },
@@ -70,6 +70,6 @@ test('T35: only a row that says running and was read more than 5 minutes ago is 
   expect(prViewArgvFor('--web').slice(-2)).toEqual(['--', '--web'])
 })
 
-test('U56: the Ship line of the text twin has no stray full stop', () => {
+test('the Ship line of the text twin has no stray full stop', () => {
   expect(shipCardText({ ledger: [], now: NOW })[0]).toBe('Ship: Nothing to ship yet · /vaken-ship')
 })

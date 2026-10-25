@@ -34,12 +34,15 @@ export const APPEARS: Record<string, (f: AppearFacts) => boolean> = {
 }
 
 export const isFirstCard = (id: string): boolean => (FIRST_CARDS as readonly string[]).includes(id)
+// Cards the Desktop app now covers itself start hidden: Preview, as the app's browser pane shows the page. A stored Show or Auto keeps it.
+export const HIDDEN_FIRST = ['preview'] as const
+const isHiddenFirst = (id: string): boolean => (HIDDEN_FIRST as readonly string[]).includes(id)
 export const cardsOptions = (id: string): Setting['options'] => [
   ...(isFirstCard(id) ? [] : [{ value: 'auto', label: 'Auto' }]),
   { value: 'show', label: 'Show' },
   { value: 'hide', label: 'Hide' },
 ]
-export const cardsDefault = (id: string): string => (isFirstCard(id) ? 'show' : 'auto')
+export const cardsDefault = (id: string): string => (isFirstCard(id) ? 'show' : isHiddenFirst(id) ? 'hide' : 'auto')
 
 export function autoHidden<T extends string>(ids: readonly T[], values: Record<string, string>, facts: AppearFacts): T[] {
   return ids.filter(id => {
@@ -47,10 +50,6 @@ export function autoHidden<T extends string>(ids: readonly T[], values: Record<s
     return rule !== undefined && (values[`cards.${id}`] ?? cardsDefault(id)) === 'auto' && !rule(facts)
   })
 }
-
-export const MORE_CARDS_ONE = '1 more card when it has something to show'
-export const MORE_CARDS_MANY = '{n} more cards when they have something to show'
-export const moreCardsLabel = (n: number, t: (s: string) => string): string => (n === 1 ? t(MORE_CARDS_ONE) : t(MORE_CARDS_MANY).replace('{n}', String(n)))
 
 export const NEW_TOAST = 'New card: {title}'
 export const NEW_TOAST_MANY = 'New cards: {title}'
@@ -80,17 +79,16 @@ export function newToast(titles: readonly string[], t: (s: string) => string): s
 export const WELCOME_TITLE = 'Start here'
 export const WELCOME_ABOUT = 'Vaken watches your sessions and warns you before a limit or a risky step.'
 export const WELCOME_CARDS = 'Cards appear when they have something to show.'
+// The band's Needs you chip, after its ◆, in amber words: "◆ 1 needs you", "◆ 2 need you", the same words as the band's own page
 export const NEEDS_CHIP = '{n} needs you'
 export const NEEDS_CHIP_MANY = '{n} need you'
 export const needsChip = (n: number, t: (s: string) => string): string => t(n === 1 ? NEEDS_CHIP : NEEDS_CHIP_MANY).replace('{n}', String(n))
 export const WELCOME_FIRST = 'Send your first message. The plan, this session and your other sessions show here after the first answer.'
 export const USUAL_CHOICE = 'the usual choice'
 export const MODE_IS_ON = '{mode} is on. Change it any time in Settings.'
-export const SEE_ALL_CARDS = 'About the {n} cards ›'
-export const seeAllCardsLabel = (total: number, t: (s: string) => string): string => t(SEE_ALL_CARDS).replace('{n}', String(total))
 
-export const START_VIEW_ABOUT = 'Standard shows Needs you and six cards. All shows every card. Custom: you pick the cards.'
+export const START_VIEW_ABOUT = 'Standard: Needs you plus seven cards. All: every card. Custom: your own choice and order.'
 export const START_MODE_LABEL = 'How much it tells you'
 export const START_VIEW_LABEL = 'Which cards show'
 
-export const CARDS_VIEW_STRINGS: string[] = [START_VIEW_ABOUT, START_MODE_LABEL, START_VIEW_LABEL, MORE_CARDS_ONE, MORE_CARDS_MANY, 'Auto', NEW_TOAST, NEW_CHIP, 'and {n} more', NEW_TOAST_MANY, NEEDS_CHIP_MANY, WELCOME_TITLE, WELCOME_ABOUT, WELCOME_CARDS, NEEDS_CHIP, WELCOME_FIRST, USUAL_CHOICE, MODE_IS_ON, SEE_ALL_CARDS]
+export const CARDS_VIEW_STRINGS: string[] = [START_VIEW_ABOUT, START_MODE_LABEL, START_VIEW_LABEL, 'Auto', NEW_TOAST, NEW_CHIP, 'and {n} more', NEW_TOAST_MANY, NEEDS_CHIP_MANY, WELCOME_TITLE, WELCOME_ABOUT, WELCOME_CARDS, NEEDS_CHIP, WELCOME_FIRST, USUAL_CHOICE, MODE_IS_ON]

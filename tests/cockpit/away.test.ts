@@ -147,7 +147,7 @@ test('what waits is listed with the session and the way out; more than eight are
   const d = buildDigest(base({ waiting, ledger: [done('Kept the cache warm', NOW + MIN), done('Kept the cache warm', NOW + 2 * MIN), done('Caught a repeating step', NOW + 3 * MIN)] }))
   expect(d.text).toMatch(/\nWaiting for you:\n- Job 0: Asks you a question\. Waiting 2 h\. Open that session and answer it\.\n/)
   expect(d.text).toMatch(/- and 2 more\. \/vaken inbox lists them all\./)
-  expect(d.text).toMatch(/\n\nVaken also did this: Kept the cache warm 2 times\. Caught a repeating step once\.$/)
+  expect(d.text).toMatch(/\n\nVaken also did this: Kept the session cheap 2 times\. Caught a repeating step once\.$/)
 })
 
 test('lines before the switch, after the end, or not marked as actions of vaken do not count; "so far" says so', () => {

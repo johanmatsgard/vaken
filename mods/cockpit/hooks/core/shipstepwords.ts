@@ -5,7 +5,7 @@ export const SS_T_GH = 'Could not ask GitHub. Nothing was changed. Try again in 
 export const SS_T_NOGUARD = 'The safety check would not let this through: {x}. Nothing ran.'
 export const SS_T_WRONGPR = 'The pull request of this branch is {n}, not the number you typed. Nothing ran.'
 
-export const SS_T_CHECK_NEXT_FIX = 'A check failed. Press Fix in Needs you or on the Pull requests card, or type /vaken-ship fix yes.'
+export const SS_T_CHECK_NEXT_FIX = 'A check failed. Open the pull request in Needs you, or type /vaken-ship fix yes.'
 export const SS_T_CHECK_NEXT_WAIT = 'Checks still run. Type /vaken-ship check again in a few minutes.'
 export const SS_T_CHECK_NEXT_MERGE = 'Green and nothing blocks it. To merge, type /vaken-ship merge yes yes.'
 export const SS_T_CHECK_NEXT_OTHER = 'Not ready to merge yet.'

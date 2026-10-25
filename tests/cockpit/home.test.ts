@@ -1,6 +1,7 @@
 // Mounts the home pane and the band on every surface, feeds the collector real events and checks what lands on the shared record.
 import { expect, mock } from 'claude-code/testing'
 import { forgetProjectSet } from '../hooks/core/io'
+import { flushNotes } from '../hooks/core/flush'
 import type { On } from 'claude-code'
 import { columnsFor } from '../hooks/ui/tokens'
 import { APPEARS } from '../hooks/core/cardrules'
@@ -22,6 +23,8 @@ const sectionLabel = async (ui: { find: (q: unknown) => Promise<unknown>; findAl
 const NOW = Date.parse('2026-10-09T12:00:00Z')
 const MIN = 60_000
 
+// A body of 150 columns (1320 pt) holds three card columns at 8.8 pt cells (COLUMNS_3_FROM_PT to COLUMNS_4_FROM_PT)
+const THREE_COLUMNS = 150
 const paneProps = { title: 'Vaken', isFocused: false, bodyColumns: 60, placement: 'inline' as const, scroll: { bodyRows: 40, offset: 0, total: 40 }, view: {} }
 const bandProps = { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 100, scroll: { bodyRows: 5, offset: 0, total: 5 }, view: {} }
 
@@ -71,6 +74,8 @@ const seed = (id: string, over: Record<string, unknown>) => ({
 const ALL_SHOWN: Record<string, string> = Object.fromEntries([['cockpit:setting:look.view', 'custom'], ...Object.keys(APPEARS).map(id => [`cockpit:setting:cards.${id}`, 'show']), ['cockpit:setting:detail', 'explained']])
 const world = () => ({
   ...ALL_SHOWN,
+  // Setup is done: until then the first screen shows only Start here and Needs you
+  'cockpit:firstrun': 'done',
   'cockpit:session:test-session': seed('test-session', { cwd: '/work/app', contextPercent: 38, costUsd: 1.2, fiveHourPercent: 62, fiveHourResetsAt: '2026-10-09T18:00:00Z' }),
   'cockpit:session:s1': seed('s1', { ask: { kind: 'question', tool: 'AskUserQuestion', since: NOW - 4 * MIN } }),
   'cockpit:session:s2': seed('s2', { state: 'waiting', stateSince: NOW - 12 * MIN }),
@@ -86,15 +91,18 @@ test('the home pane draws on every surface with the cards, and draws the bar as 
     const ui = await $.ui.mount({ plugin: 'vaken', surface, component: 'Pane', requestId: 'cockpit-home', props: paneProps })
     expect(await ui.find({ type: 'Text', text: /Needs you/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /s1/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /asks you a question/ })).toBeDefined()
+    // Where the amber chip shows (pictures), the dim line does not say it again
+    const noPictures = (await ui.find({ type: 'Svg' })) === undefined
+    expect((await ui.find({ type: 'Text', text: /asks you a question/ })) !== undefined).toBe(noPictures)
     expect(await ui.find({ type: 'Text', text: /Plan limits/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /^5-hour limit$/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /^62% used$/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /This session/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /Context is 38% full/ })).toBeDefined()
+    // The percent beside the bar (a picture), or the bar said in words where there are no pictures
+    expect(await ui.find({ type: 'Text', text: /^38%$|^38% of context used$/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /Other sessions/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /Your turn/ })).toBeDefined()
-    expect(((await ui.find({ key: 'morel-others' })) as { props?: { label?: string } } | undefined)?.props?.label).toBe('Show 1 more')
+    expect(((await ui.find({ key: 'morel-others' })) as { props?: { label?: string } } | undefined)?.props?.label).toBe('1 more session')
     const hasSvg = (await ui.find({ type: 'Svg' })) !== undefined
     expect(hasSvg).toBe(surface !== 'terminal')
     await ui.unmount()
@@ -103,16 +111,39 @@ test('the home pane draws on every surface with the cards, and draws the bar as 
 
 test('the home pane says so, in words, when no session needs you and none has reported', async ($, on) => {
   mock.clock(on, { now: NOW })
-  mock.store(on, { 'cockpit:setting:detail': 'explained' })
+  mock.store(on, { 'cockpit:setting:detail': 'explained', 'cockpit:firstrun': 'done' })
   mock.env(on, { HOME: '/home/test' })
   engine(on)
   const ui = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
   expect(await ui.find({ key: 'needs' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: 'Nothing needs you.' })).toBeDefined()
+  // Calm is quiet: one row, its header word and None (no line under a header)
+  expect(await ui.find({ type: 'Text', text: 'Nothing needs you' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: 'None' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /Nothing to show yet/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /Nothing to show yet/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /No other session is active now/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /No other session now/ })).toBeDefined()
   await ui.unmount()
+})
+
+test('the first screen: until Start here is done or skipped, the page shows only Start here and Needs you, with no Arrange and no view switch', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  const mem = memStore(on)
+  for (const [k, v] of Object.entries(world())) if (k !== 'cockpit:firstrun') mem.set(k, v)
+  mock.env(on, { HOME: '/home/test' })
+  engine(on)
+  const ui = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: { ...paneProps, bodyColumns: 160 } })
+  expect(await ui.find({ key: 'needs' }), 'Needs you').toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^Plan limits$/ }), 'no card').toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /^This session$/ }), 'no card').toBeUndefined()
+  expect(await ui.find({ key: 'arrange' }), 'Arrange needs two cards').toBeUndefined()
+  expect(await ui.find({ key: 'view-switch-all' }), 'no view switch').toBeUndefined()
+  expect(await ui.find({ key: 'settings' }), 'Settings stays').toBeDefined()
+  await ui.unmount()
+  // Setup ends: the cards come back
+  mem.set('cockpit:firstrun', 'done')
+  const after = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: { ...paneProps, bodyColumns: 160 } })
+  expect(await after.find({ type: 'Text', text: /^This session$/ })).toBeDefined()
+  await after.unmount()
 })
 
 test('the band is one row: the one thing that matters on the left, the plan chip on the right', async ($, on) => {
@@ -149,7 +180,7 @@ test('the band says only the plan chip when nothing needs you; an old stored ban
 
 test('the collector writes this session from real events and drops it at the end', async ($, on) => {
   mock.clock(on, { now: NOW })
-  mock.store(on, {})
+  const mem = memStore(on)
   mock.env(on, { HOME: '/home/test' })
   engine(on)
   on('tool.call', () => ({ result: 'ok', text: 'ok', ref: 1 }) as never)
@@ -162,11 +193,12 @@ test('the collector writes this session from real events and drops it at the end
     changed: ['context', 'rateLimits', 'cost'],
   })
   const r = await $.command.run({ ...viaParent('vaken', ''), origin: { kind: 'composer' } } as never)
-  expect(r.text).toContain('5-hour limit: 40% used')
-  expect(r.text).toContain('This session: Working, context 25% full, $1.50 so far.')
+  // The chat answer holds only hot facts (a calm 40% limit and a working session are the pane's)
+  expect(r.text).toBe('Nothing needs you.')
+  const stored = mem.get('cockpit:session:test-session') as { contextPercent?: number; costUsd?: number; fiveHourPercent?: number } | undefined
+  expect([stored?.contextPercent, stored?.costUsd, stored?.fiveHourPercent]).toEqual([25, 1.5, 40])
   await $.session.end({ reason: 'other', sessionId: 'test-session', resume: { sessionId: 'test-session' } } as never)
-  const after = await $.command.run({ ...viaParent('vaken', ''), origin: { kind: 'composer' } } as never)
-  expect(after.text).toContain('This session: Nothing to show yet. This appears after the first answer.')
+  expect(mem.get('cockpit:session:test-session')).toBeUndefined()
 })
 
 test('the first message that is not a slash command names the session, and later messages leave the name alone', async ($, on) => {
@@ -179,9 +211,9 @@ test('the first message that is not a slash command names the session, and later
   await $.prompt.submit({ text: '/vaken' } as never)
   expect((mem.get('cockpit:session:test-session') as { title?: string }).title).toBeUndefined()
   await $.prompt.submit({ text: 'Fix the login bug on the checkout page' } as never)
-  expect((mem.get('cockpit:session:test-session') as { title?: string }).title).toBe('Fix login bug')
+  expect((mem.get('cockpit:session:test-session') as { title?: string }).title).toBe('Fix the login bug')
   await $.prompt.submit({ text: 'Now something else entirely' } as never)
-  expect((mem.get('cockpit:session:test-session') as { title?: string }).title).toBe('Fix login bug')
+  expect((mem.get('cockpit:session:test-session') as { title?: string }).title).toBe('Fix the login bug')
 })
 
 test('a question is marked while it waits for you and cleared when you answer', async ($, on) => {
@@ -200,7 +232,7 @@ test('a question is marked while it waits for you and cleared when you answer', 
   expect((mem.get('cockpit:session:test-session') as { ask?: unknown }).ask).toBeUndefined()
 })
 
-test('a permission notice marks the session as asking; other notices, a subagent and a question do not', async ($, on) => {
+test('a permission notice marks the session as asking; other notices and a question do not', async ($, on) => {
   mock.clock(on, { now: NOW })
   const mem = memStore(on)
   mock.env(on, { HOME: '/home/test' })
@@ -211,12 +243,32 @@ test('a permission notice marks the session as asking; other notices, a subagent
   const note = (over: object) => $.classic.Notification({ session_id: 'test-session', transcript_path: '', cwd: '/work/app', hook_event_name: 'Notification', message: 'Claude needs your permission to use Bash', notification_type: 'permission_prompt', ...over } as never)
   await note({ notification_type: 'idle_prompt', message: 'Claude is waiting for your input' })
   expect(askOf()).toBeUndefined()
-  await note({ agent_id: 'sub1' })
-  expect(askOf()).toBeUndefined()
   await note({ message: 'Claude needs your permission to use AskUserQuestion' })
   expect(askOf()).toBeUndefined()
   await note({})
   expect(askOf()).toMatchObject({ kind: 'permission', tool: 'Bash' })
+})
+
+test('an agent permission ask shows too, and only a finished step of that one agent clears it, not one of the main loop', async ($, on) => {
+  mock.clock(on, { now: NOW })
+  const mem = memStore(on)
+  mock.env(on, { HOME: '/home/test' })
+  engine(on)
+  on('classic.Notification', () => ({}) as never)
+  on('tool.call', () => ({ result: 'ok', text: 'ok', ref: 1 }) as never)
+  await $.session.start({ cwd: '/work/app', surface: 'desktop', isInteractive: true })
+  const askOf = () => (mem.get('cockpit:session:test-session') as { ask?: { kind: string; tool: string; agentId?: string } }).ask
+  await $.classic.Notification({ session_id: 'test-session', transcript_path: '', cwd: '/work/app', hook_event_name: 'Notification', message: 'Claude needs your permission to use Bash', notification_type: 'permission_prompt', agent_id: 'sub1' } as never)
+  expect(askOf()).toMatchObject({ kind: 'permission', tool: 'Bash', agentId: 'sub1' })
+  await $.tool.call({ tool: 'Read', file_path: '/work/app/a.ts' } as never)
+  await flushNotes()
+  expect(askOf()).toMatchObject({ agentId: 'sub1' })
+  await $.tool.call({ tool: 'Bash', command: 'ls', agentId: 'sub2' } as never)
+  await flushNotes()
+  expect(askOf()).toMatchObject({ agentId: 'sub1' })
+  await $.tool.call({ tool: 'Bash', command: 'ls', agentId: 'sub1' } as never)
+  await flushNotes()
+  expect(askOf()).toBeUndefined()
 })
 
 test('the pane has a toggle between simple and explained wording that is kept for every session', SLOW, async ($, on) => {
@@ -227,8 +279,9 @@ test('the pane has a toggle between simple and explained wording that is kept fo
   engine(on)
   const props = paneProps
   const explained = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props })
-  expect(await explained.find({ type: 'Text', text: /Context is 38% full/ })).toBeDefined()
-  expect(await explained.find({ type: 'Text', text: /It resets at/ })).toBeDefined()
+  // Explained: the cost on its own Cost row
+  expect(await explained.find({ key: 'ol-here-cost' })).toBeDefined()
+  expect(await explained.find({ type: 'Text', text: /^Resets \d\d:\d\d \(in / })).toBeDefined()
   expect(await explained.find({ type: 'Text', text: /Working means Claude did something/ })).toBeUndefined()
   expect(await explained.find({ key: 'detail-simple' })).toBeUndefined()
   await explained.press({ key: 'settings' })
@@ -243,7 +296,7 @@ test('the pane has a toggle between simple and explained wording that is kept fo
   const simple = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props })
   expect(await simple.find({ type: 'Text', text: /Working, \$1\.20/ })).toBeDefined()
   expect(await simple.find({ type: 'Text', text: /^38%$/ })).toBeDefined()
-  expect(await simple.find({ type: 'Text', text: /It resets at/ })).toBeUndefined()
+  expect(await simple.find({ type: 'Text', text: /^Resets / })).toBeUndefined()
   expect(await simple.find({ type: 'Text', text: /Working means Claude did something/ })).toBeUndefined()
   expect(await simple.find({ type: 'Svg' })).toBeDefined()
   await simple.press({ key: 'settings' })
@@ -363,24 +416,27 @@ test('arranging: Arrange cards on the home screen swaps the cards for a board, a
 })
 
 test('dragging a tile on the board moves it across the slots and a release keeps the new order', async ($, on) => {
+  // A pane of three card columns (160 columns of 8.8 pt cells is four): the board below is three columns
   mock.clock(on, { now: NOW })
   const mem = memStore(on)
   for (const [k, v] of Object.entries(world())) mem.set(k, v)
   mem.set('cockpit:setting:cards.preview', 'hide')
   mem.set('cockpit:setting:cards.do', 'hide')
   mem.set('cockpit:setting:look.needs', 'hidden') // the board's geometry below is of the fifteen cards alone (Needs you is the first, fixed tile otherwise)
+  mem.set('cockpit:setting:compact.mode', 'auto') // the card heights below are those with Auto compaction
   mock.env(on, { HOME: '/home/test' })
   engine(on)
-  const start = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: { ...paneProps, bodyColumns: 160 } })
+  const start = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: { ...paneProps, bodyColumns: THREE_COLUMNS } })
   await start.press({ key: 'arrange' })
   await start.unmount()
-  const ui = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: { ...paneProps, bodyColumns: 160 } })
+  const ui = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: { ...paneProps, bodyColumns: THREE_COLUMNS } })
   const at = (type: 'down' | 'move' | 'up', x: number, y = 1) => ui.pointer({ type, x, y, button: 'left', in: 'arrange-board' })
   await at('down', 5)
   for (const x of [20, 40, 60, 80]) await at('move', x)
   await at('up', 85)
-  // 85 cells at the top is the first slot of the third column on the test's 90-cell board (fifteen tiles).
-  expect(mem.get('cockpit:pref:gorder:3')).toBe('here,others,back,context,ship,prs,agents,setup,computer,skills,limit,guard,safety,autopilot,proof,preview,do')
+  // The board starts from the pane's even columns. 85 cells at the top is the first place of the third column on the test's 90-cell board (fifteen tiles):
+  // the first tile (Plan limits) stays there, each column keeps its list, and the hidden cards wait under the last column.
+  expect(mem.get('cockpit:pref:gorder:3')).toBe('context,computer,skills,autopilot|here,ship,agents,guard,proof|limit,others,back,prs,setup,safety,preview,do')
   await ui.press({ key: 'arrange-done' })
   await ui.unmount()
 })
@@ -505,8 +561,8 @@ test('/vaken-settings lists the rows, changes one, refuses a bad value and reset
   expect(mem.get('cockpit:setting:detail')).toBe('simple')
   expect((await run('detail loud')).text).toMatch(/takes: glance, simple, explained/)
   expect(mem.get('cockpit:setting:detail')).toBe('simple')
-  expect((await run('detail explained')).text).toMatch(/detail: All \(was Short\)/)
-  expect((await run('detail minimal')).text).toMatch(/^"minimal" is gone, so it is now Short\. detail: Short \(was All\)/)
+  expect((await run('detail explained')).text).toMatch(/detail: Explained \(was Short\)/)
+  expect((await run('detail minimal')).text).toMatch(/^"minimal" is gone, so it is now Short\. detail: Short \(was Explained\)/)
   expect(mem.get('cockpit:setting:detail')).toBe('simple')
   expect((await run('colour red')).text).toMatch(/No setting named/)
   mem.set('cockpit:pref:marks', '{"s2":"hide"}')
@@ -604,7 +660,7 @@ test('a card can have its own detail level, set by its own More or Less, not in 
   const mount = () => $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
   const ui = await mount()
   expect(await ui.find({ type: 'Text', text: /5-hour limit: 62% used/ })).toBeUndefined()
-  expect(await ui.find({ type: 'Text', text: /Context is 38% full/ })).toBeDefined()
+  expect(await ui.find({ key: 'ol-here-cost' })).toBeDefined()
   await ui.press({ key: 'detail-here' })
   expect(mem.get('cockpit:setting:detail.here')).toBe('simple')
   await ui.press({ key: 'detail-limit' })
@@ -725,13 +781,17 @@ test('the plan card draws the week and the spend limit too, in each detail level
   engine(on)
   const mount = () => $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
   const explained = await mount()
-  for (const text of [/^5-hour limit$/, /^62% used$/, /^Week$/, /^31% used$/, /^Under half used$/, /^Spend 5% used$/, /^69% of your weekly limit is left\. To make it last until it resets, use about \d+% a day\.$/]) expect(await explained.find({ type: 'Text', text }), String(text)).toBeDefined()
-  for (const kind of ['session', 'week']) expect(await explained.find({ key: `limit-bar-${kind}` }), kind).toBeDefined()
-  expect(await explained.find({ key: 'limit-bar-spend' })).toBeUndefined()
+  // Every limit is a row with its bar (no fold)
+  for (const text of [/^5-hour limit$/, /^62% used$/, /^Week$/, /^31% used$/, /^Spend$/, /^5% used$/]) expect(await explained.find({ type: 'Text', text }), String(text)).toBeDefined()
+  // A calm week says only its reset
+  expect(await explained.find({ type: 'Text', text: /a day$/ })).toBeUndefined()
+  expect(await explained.find({ type: 'Text', text: /^Under half used$/ })).toBeUndefined()
+  for (const kind of ['session', 'week', 'spend']) expect(await explained.find({ key: `limit-bar-${kind}` }), kind).toBeDefined()
   await explained.unmount()
   mem.set('cockpit:setting:detail.limit', 'simple')
   const short = await mount()
-  for (const text of [/^5-hour limit 62% used, resets \d\d:\d\d · $/, /^Week 31% used, resets \S+ \d\d:\d\d · $/, /^Spend 5% used$/]) expect(await short.find({ type: 'Text', text })).toBeDefined()
+  // Short: one row per limit as the band draws it, a weekly reset by its day only
+  for (const text of [/^5 h$/, /^62% · \d\d:\d\d$/, /^Week$/, /^31% · \S+$/, /^Spend$/, /^5%/]) expect(await short.find({ type: 'Text', text }), String(text)).toBeDefined()
   expect(await short.find({ key: 'limit-bar-week' })).toBeUndefined()
   await short.unmount()
 })
@@ -754,12 +814,18 @@ test('with the app usage card the plan card draws a bar for every window, in eac
   engine(on)
   const mount = () => $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
   const explained = await mount()
-  for (const text of [/^5-hour limit$/, /^60% used$/, /^Week$/, /^25% used$/, /^Under half used$/, /^Fable 4% used(, resets \S+ \d\d:\d\d)?$/, /^Estimate: /, /^Subscription$/, /^Max$/, /^Extra usage$/, /^Off$/]) expect(await explained.find({ type: 'Text', text })).toBeDefined()
-  expect(await sectionLabel(explained, /^Plan$/)).toBeDefined()
+  for (const text of [/^5-hour limit$/, /^60% used$/, /^Week$/, /^25% used$/, /^Week · Fable$/, /^4% used$/, /^Runs out/, /^Extra usage$/, /^Off$/]) expect(await explained.find({ type: 'Text', text }), String(text)).toBeDefined()
+  // The plan's name repeats the app's usage ring: no row of its own, a fact in the lead row's open detail
+  for (const text of [/^Subscription$/, /^Max$/]) expect(await explained.find({ type: 'Text', text }), String(text)).toBeUndefined()
+  for (const kind of ['5-hour limit', 'Weekly · all models', 'Weekly · Fable']) expect(await explained.find({ key: `limit-bar-${kind}` }), kind).toBeDefined()
+  // No group titles
+  expect(await sectionLabel(explained, /^Plan$/)).toBeUndefined()
+  expect(await explained.find({ type: 'Text', text: /^Under half used$/ })).toBeUndefined()
   await explained.unmount()
   mem.set('cockpit:setting:detail.limit', 'simple')
   const short = await mount()
-  for (const text of [/^5-hour limit 60% used, resets \d\d:\d\d · $/, /^Week 25% used(, resets \S+ \d\d:\d\d)? · $/, /^Fable 4% used(, resets \S+ \d\d:\d\d)?$/]) expect(await short.find({ type: 'Text', text })).toBeDefined()
+  for (const text of [/^5 h$/, /^60% · \d\d:\d\d$/, /^Week$/, /^25% · \S+$/, /^Week · Fable$/, /^4% · \S+$/]) expect(await short.find({ type: 'Text', text }), String(text)).toBeDefined()
+  expect(await short.find({ type: 'Text', text: /^Max/ })).toBeUndefined()
   await short.unmount()
 })
 
@@ -785,12 +851,14 @@ test('this session card says when it is a good moment to compact, once the turn 
   engine(on)
   const view = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
   expect(await view.find({ type: 'Text', text: /Compacting it saves usage/ })).toBeDefined()
-  expect(await view.find({ type: 'Text', text: /62% · compacts at 97%/ })).toBeDefined()
-  expect(await view.find({ type: 'Text', text: /620k of 1M tokens/ })).toBeDefined()
+  // The percent beside the bar, one dim line under it: who compacts where (vaken's Auto at 60%, Claude Code at 97%)
+  expect(await view.find({ type: 'Text', text: /^62%$/ })).toBeDefined()
+  expect(await view.find({ type: 'Text', text: /^Claude Code compacts at 97%$/ })).toBeDefined()
+  // At 62% the context is past vaken's own 60%, so the line no longer names it
   await view.unmount()
 })
 
-test('Why not now? on the This session card: a whole-row press shows the first hard stop and the score; a quiet finished session is told it is a good moment', async ($, on) => {
+test('When to compact on the This session card: only with the advice; a whole-row press shows what Auto waits for', async ($, on) => {
   mock.clock(on, { now: NOW })
   const mem = memStore(on)
   for (const [k, v] of Object.entries(world())) mem.set(k, v)
@@ -798,12 +866,18 @@ test('Why not now? on the This session card: a whole-row press shows the first h
   mock.env(on, { HOME: '/home/test' })
   engine(on)
   const view = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
-  expect(await view.find({ type: 'Text', text: /^When to compact$/ })).toBeDefined()
-  expect(await view.find({ type: 'Text', text: /^Not yet: Claude is working/ })).toBeUndefined()
-  await view.press({ key: 'press-ol-here:why-0' })
+  // Working, no advice: no When to compact row
+  expect(await view.find({ type: 'Text', text: /^When to compact$/ })).toBeUndefined()
   await view.unmount()
+  // Waiting with the advice: the row is there and opens one plain sentence
+  mem.set('cockpit:session:test-session', seed('test-session', { cwd: '/work/app', state: 'waiting', stateSince: NOW - 1 * MIN, contextPercent: 62, ctx: { compactAt: 97, tokens: 620000, window: 1000000 } }))
+  const advised = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
+  expect(await advised.find({ type: 'Text', text: /^When to compact$/ })).toBeDefined()
+  const shut = (await advised.findAll({ type: 'Text', text: /good moment/ })).length
+  await advised.press({ key: 'press-ol-here:why-0' })
+  await advised.unmount()
   const open = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
-  expect(await open.find({ type: 'Text', text: /^Not yet: Claude is working\. Score \d+ of 70\.$/ })).toBeDefined()
+  expect((await open.findAll({ type: 'Text', text: /good moment/ })).length).toBe(shut + 1)
   await open.unmount()
 })
 
@@ -812,12 +886,14 @@ test('this session card shows the cache: the hit share and how long it stays war
   const mem = memStore(on)
   for (const [k, v] of Object.entries(world())) mem.set(k, v)
   mem.set('cockpit:usage:app', { at: NOW, windows: [{ label: 'Session (5 hour)', percent: 10 }], extra: { enabled: false } })
-  mem.set('cockpit:session:test-session', seed('test-session', { cwd: '/work/app', state: 'waiting', stateSince: NOW - 3 * MIN, contextPercent: 55, ctx: { compactAt: 97, tokens: 150000, window: 1000000 }, cache: { read: 90000, write: 9800, fresh: 200, hit: 90, at: NOW - 3 * MIN } }))
+  mem.set('cockpit:session:test-session', seed('test-session', { cwd: '/work/app', state: 'waiting', stateSince: NOW - 3 * MIN, contextPercent: 62, ctx: { compactAt: 97, tokens: 150000, window: 1000000 }, cache: { read: 90000, write: 9800, fresh: 200, hit: 90, at: NOW - 3 * MIN } }))
   mock.env(on, { HOME: '/home/test' })
   engine(on)
   const view = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
   expect(await view.find({ type: 'Text', text: /Cache warm 55 min/ })).toBeDefined()
-  expect(await view.find({ type: 'Text', text: /Claude re-reads 150k tokens every answer/ })).toBeDefined()
+  // One advice line on the card; the longer why is behind Why ›
+  expect(await view.find({ type: 'Text', text: /Claude re-reads 150k tokens every answer/ })).toBeUndefined()
+  expect(await view.find({ key: 'compact-help' })).toBeDefined()
   await view.unmount()
 })
 
@@ -843,8 +919,8 @@ test('Compact now at a moment the checks call not good asks first; Compact anywa
   const clock = mock.clock(on, { now: NOW })
   const mem = memStore(on)
   for (const [k, v] of Object.entries(world())) mem.set(k, v)
-  // No cache reading: the cache check fails, so the press asks.
-  mem.set('cockpit:session:test-session', seed('test-session', { cwd: '/work/app', branch: 'feat-x', title: 'Fix login', state: 'waiting', stateSince: NOW - 1 * MIN, contextPercent: 62, ctx: { compactAt: 97, tokens: 620000, window: 1000000 } }))
+  // A compaction 15 minutes ago: the 20-minute gap check fails (the advice itself waits only 10), so the press asks.
+  mem.set('cockpit:session:test-session', seed('test-session', { cwd: '/work/app', branch: 'feat-x', title: 'Fix login', state: 'waiting', stateSince: NOW - 1 * MIN, contextPercent: 62, ctx: { compactAt: 97, tokens: 620000, window: 1000000 }, compacts: [{ at: NOW - 15 * MIN, trigger: 'auto' }] }))
   mock.env(on, { HOME: '/home/test' })
   engine(on)
   on('session.cwd', () => ({ value: '/work/app' }) as never)
@@ -863,12 +939,12 @@ test('Compact now at a moment the checks call not good asks first; Compact anywa
   await view.redraw()
   expect(ran).toEqual([])
   expect(await view.find({ type: 'Text', text: 'Not a good moment to compact:' })).toBeDefined()
-  expect(await view.find({ type: 'Text', text: 'The cache is not warm' })).toBeDefined()
+  expect(await view.find({ type: 'Text', text: 'Compacted 15 min ago' })).toBeDefined()
   await view.press({ key: 'compact-anyway' })
   await clock.settle()
   expect(writes.some(p => p.replace(/\\/g, '/').includes('/briefs/'))).toBe(true)
   expect(ran.length).toBe(1)
-  expect(ran[0]).toMatch(/^Keep the goal "Fix login" on branch feat-x, the files changed, decisions made and why, and the next steps\.\nA handoff note of this session is saved as .*brief-/)
+  expect(ran[0]).toMatch(/^Keep the goal "Fix login" on branch feat-x, the files changed, decisions made and why, and the next steps\.\nIn the summary, keep these in short lines: .*\nA handoff note of this session is saved as .*brief-/)
   expect((mem.get('cockpit:ledger:compact') as { what: string }[]).some(e => e.what === 'compact now (button)')).toBe(true)
   await view.unmount()
 })
@@ -902,9 +978,7 @@ test('the ? button opens the How it saves usage page, Done brings the cards back
   expect(await back.find({ key: 'compact-now' })).toBeDefined()
   await back.unmount()
   const text = (await $.command.run({ ...viaParent('vaken-help', ''), origin: { kind: 'composer' } } as never)) as { text: string }
-  expect(text.text).toMatch(/^Commands\n/)
-  expect(text.text).toMatch(/Start here \(first steps\): \/vaken \[inbox \| neighbors\] \/vaken-help/)
-  expect(text.text).toMatch(/- Why it costs usage/)
+  expect(text.text).toMatch(/\nStart here\n- `\/vaken`: what needs you now \(inbox, neighbors, show, run, pic, quick\)\n/)
   expect(text.text).not.toMatch(/Claude re-reads the whole session/)
   const all = (await $.command.run({ ...viaParent('vaken-help', 'all'), origin: { kind: 'composer' } } as never)) as { text: string }
   expect(all.text).toMatch(/Claude re-reads the whole session/)
@@ -919,7 +993,7 @@ test('the Autopilot card says what vaken did today, lists the latest compacts, a
   const mount = () => $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
   const empty = await mount()
   expect(await empty.find({ type: 'Text', text: /^Autopilot$/ })).toBeDefined()
-  expect(await empty.find({ type: 'Text', text: /Nothing yet/ })).toBeDefined()
+  expect(await empty.find({ type: 'Text', text: /^Nothing today$/ })).toBeDefined()
   await empty.unmount()
   mem.set('cockpit:ledger:compact', [
     { at: NOW - 3 * MIN, what: 'compacted (manual)', before: 316_000, after: 11_000, how: 'button' },
@@ -929,7 +1003,7 @@ test('the Autopilot card says what vaken did today, lists the latest compacts, a
   const full = await mount()
   expect(await sectionLabel(full, /^Did for you$/)).toBeUndefined()
   expect(await full.find({ type: 'Text', text: /^Compacted the session$/ })).toBeDefined()
-  expect(await full.find({ type: 'Text', text: /^2 times · about 441k freed$/ })).toBeDefined()
+  expect(await full.find({ type: 'Text', text: /^2 times · about 441k tokens freed$/ })).toBeDefined()
   await full.press({ key: 'press-ol-autopilot:compacts-0' })
   await full.unmount()
   const opened = await mount()
@@ -937,23 +1011,33 @@ test('the Autopilot card says what vaken did today, lists the latest compacts, a
   expect(await opened.find({ type: 'Text', text: /^Compacted the session, 150k to 14k at \d\d:\d\d, by itself\.$/ })).toBeDefined()
   await opened.unmount()
   const text = (await $.command.run({ ...viaParent('vaken', ''), origin: { kind: 'composer' } } as never)) as { text: string }
-  expect(text.text).toMatch(/Autopilot: compacted the session 2 times, about 441k freed\./)
+  // What vaken did is calm: the card has it, the chat answer does not
+  expect(text.text).not.toMatch(/Autopilot/)
 })
 
 test('a new person sees the Welcome card; picking a mode applies it, and the card goes away for good', SLOW, async ($, on) => {
   mock.clock(on, { now: NOW })
   const mem = memStore(on)
-  for (const [k, v] of Object.entries(world())) mem.set(k, v)
+  // A new person: setup not done yet
+  for (const [k, v] of Object.entries(world())) if (k !== 'cockpit:firstrun') mem.set(k, v)
   mock.env(on, { HOME: '/home/test' })
   engine(on)
   const mount = () => $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
   const first = await mount()
   expect(await first.find({ type: 'Text', text: /^Start here$/ })).toBeDefined()
   expect(await first.find({ type: 'Text', text: /warns you before a limit or a risky step/ })).toBeDefined()
-  expect(await first.find({ type: 'Text', text: /^Send your first message\./ })).toBeDefined()
+  expect(await first.find({ type: 'Text', text: /^Step 1 of 5$/ })).toBeDefined()
   for (const m of ['quiet', 'balanced', 'full']) expect(await first.find({ key: `start-mode-${m}` }), m).toBeDefined()
-  expect((await $.command.run({ ...viaParent('vaken', ''), origin: { kind: 'composer' } } as never) as { text: string }).text).toMatch(/New here\?/)
+  expect((await $.command.run({ ...viaParent('vaken', ''), origin: { kind: 'composer' } } as never) as { text: string }).text).not.toMatch(/New here/)
+  // The first answer, the other steps as they are, then Finish on the summary (which holds the first-message line)
   await first.press({ key: 'start-mode-full' })
+  for (let n = 0; n < 5; n += 1) {
+    await first.redraw()
+    await first.press({ key: 'start-next' })
+  }
+  await first.redraw()
+  expect(await first.find({ type: 'Text', text: /^Send your first message\./ })).toBeDefined()
+  await first.press({ key: 'start-finish' })
   await first.unmount()
   expect(mem.get('cockpit:firstrun')).toBe('done')
   expect(mem.get('cockpit:setting:claude.notes')).toBe('all')
@@ -963,10 +1047,11 @@ test('a new person sees the Welcome card; picking a mode applies it, and the car
   await again.unmount()
 })
 
-test('Got it closes the Welcome card and changes no setting', async ($, on) => {
+test('Skip, use recommended closes the Start here card and writes the recommended answers', async ($, on) => {
   mock.clock(on, { now: NOW })
   const mem = memStore(on)
-  for (const [k, v] of Object.entries(world())) mem.set(k, v)
+  // A new person: setup not done yet
+  for (const [k, v] of Object.entries(world())) if (k !== 'cockpit:firstrun') mem.set(k, v)
   mock.env(on, { HOME: '/home/test' })
   engine(on)
   const mount = () => $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
@@ -974,7 +1059,8 @@ test('Got it closes the Welcome card and changes no setting', async ($, on) => {
   await home.press({ key: 'start-skip' })
   await home.unmount()
   expect(mem.get('cockpit:firstrun')).toBe('done')
-  expect(mem.get('cockpit:setting:compact.mode')).toBeUndefined()
+  expect([mem.get('cockpit:setting:compact.mode'), mem.get('cockpit:setting:cost.budget'), mem.get('cockpit:setting:plain.mode'), mem.get('cockpit:setting:claude.notes')]).toEqual(['watch', 'off', 'on', 'safety'])
+  expect(mem.get('cockpit:setup:state')).toBeUndefined()
 })
 
 test('a warning shows once, on the Safety card (not again on Autopilot), and its row opens its reason, the kinds and the last times; a second press closes it', async ($, on) => {
@@ -982,8 +1068,10 @@ test('a warning shows once, on the Safety card (not again on Autopilot), and its
   const mem = memStore(on)
   for (const [k, v] of Object.entries(world())) mem.set(k, v)
   mem.set('cockpit:ledger:compact', [
-    { at: NOW - 2 * MIN, what: 'Claude said done without proof', detail: 'said fixed, no passing check', did: true, how: 'auto' },
-    { at: NOW - 5 * MIN, what: 'Claude said done without proof', detail: 'said done, no check ran', did: true, how: 'auto' },
+    { at: NOW - 2 * MIN, what: 'Warned about a risky command', detail: 'rm -rf build', did: true, how: 'auto' },
+    { at: NOW - 5 * MIN, what: 'Warned about a risky command', detail: 'git reset --hard', did: true, how: 'auto' },
+    // Not a risky step: the Autopilot card's, never counted on Safety
+    { at: NOW - 6 * MIN, what: 'Warned about a session in the same folder', detail: '1 other session works in this folder.', did: true, how: 'auto' },
   ])
   mock.env(on, { HOME: '/home/test' })
   engine(on)
@@ -991,16 +1079,15 @@ test('a warning shows once, on the Safety card (not again on Autopilot), and its
   const mount = () => $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
   const closed = await mount()
   expect(await closed.find({ type: 'Text', text: /^Warned you$/ })).toBeUndefined()
-  expect(await closed.find({ type: 'Text', text: /^Claude said done, but no check backs it$/ })).toBeUndefined()
-  expect(await closed.find({ type: 'Text', text: /^Warned$/ })).toBeDefined()
-  expect(await closed.find({ type: 'Text', text: /^2 steps$/ })).toBeDefined()
+  expect(await closed.find({ type: 'Text', text: /^Risky command$/ })).toBeUndefined()
+  expect(await closed.find({ type: 'Text', text: /^2 warnings today$/ })).toBeDefined()
   expect(await closed.find({ type: 'Text', text: /^What it means:/ })).toBeUndefined()
   await closed.press({ key: 'press-ol-safety:warned-0' })
   await closed.unmount()
   const open = await mount()
   expect(await open.find({ type: 'Text', text: /^What it means:/ })).toBeDefined()
-  expect(await open.find({ type: 'Text', text: /Claude said done, but no check backs it: 2 times\./ })).toBeDefined()
-  expect(await open.find({ type: 'Text', text: /said fixed, no passing check/ })).toBeDefined()
+  expect(await open.find({ type: 'Text', text: /risky command: 2 times\./ })).toBeDefined()
+  expect(await open.find({ type: 'Text', text: /rm -rf build/ })).toBeDefined()
   await open.press({ key: 'press-ol-safety:warned-0' })
   await open.unmount()
   const shut = await mount()
@@ -1022,7 +1109,8 @@ test('a session row opens its "What is this?", and Change in Settings opens only
   await closed.unmount()
   const open = await mount()
   expect(await open.find({ type: 'Text', text: /^What it means: Claude finished/ })).toBeDefined()
-  expect(await open.find({ type: 'Text', text: /^Why now: The last event was/ })).toBeDefined()
+  // The row says its one age; the opened row adds only a reason, never a second, other age (cards/others.tsx)
+  expect(await open.find({ type: 'Text', text: /^Why now: The last event was/ })).toBeUndefined()
   await open.press({ key: 'w-other:s2-set' })
   await open.unmount()
   const focused = await mount()
@@ -1054,14 +1142,15 @@ test('the Agents card draws session rows, running first, and a row opens what it
   await closed.press({ key: 'press-a-tu1-0' })
   await closed.unmount()
   const open = await mount()
-  expect(await open.find({ type: 'Text', text: 'Asked: Search part 1' })).toBeDefined()
-  expect(await open.find({ type: 'Text', text: 'Time: took 6 min' })).toBeDefined()
-  expect(await open.find({ type: 'Text', text: 'Result: done' })).toBeDefined()
-  expect(await open.find({ type: 'Text', text: 'Cost: about $0.042 (estimate)' })).toBeDefined()
+  // Opened, the row adds only what it does not already say: not its name, its state word, or the time and cost its second line holds
+  expect(await open.find({ type: 'Text', text: 'Asked: Search part 1' })).toBeUndefined()
+  expect(await open.find({ type: 'Text', text: 'Result: done' })).toBeUndefined()
+  expect(await open.find({ type: 'Text', text: 'What it means: The agents Claude started, and whether they still run.' })).toBeUndefined()
+  expect(await open.find({ type: 'Text', text: 'Its steps show only in the session that started it.' })).toBeDefined()
   await open.unmount()
 })
 
-test('/vaken text: the Agents line comes before Run one task, with a line for a running helper from another session, each ending with its explain command', async ($, on) => {
+test('/vaken text: a running agent is one Agents line with its count, ending with its explain command', async ($, on) => {
   mock.clock(on, { now: NOW })
   const mem = memStore(on)
   for (const [k, v] of Object.entries(world())) mem.set(k, v)
@@ -1072,13 +1161,10 @@ test('/vaken text: the Agents line comes before Run one task, with a line for a 
   engine(on)
   const text = ((await $.command.run({ ...viaParent('vaken', ''), origin: { kind: 'composer' } } as never)) as { text: string }).text
   const lines = text.split('\n')
-  const head = lines.findIndex(l => l.startsWith('Agents: 1 running, 1 finished in the last hour.'))
+  // What runs is hot: one line with the count; the rows are the pane's
+  const head = lines.findIndex(l => /^(- )?Agents: 1 running · \/vaken-explain agents$/.test(l))
   expect(head).toBeGreaterThanOrEqual(0)
-  expect(lines[head]).toMatch(/ · \/vaken-explain agents$/)
-  expect(lines[head + 1]).toMatch(/^● Explore \(haiku\): Search part 2, running, 2 min · .* · \/vaken-explain agents$/)
-  expect(lines[head + 2]).toMatch(/^✓ Explore \(haiku\): Search part 1, done, took 6 min/)
-  expect(text).not.toContain('Search part 3')
-  expect(lines.findIndex(l => l.startsWith('Run one task:'))).toBeGreaterThan(head + 2)
+  expect(text).not.toContain('Search part')
 })
 
 test('a task run shows in the Agents card: a summary, the controls, one row per task, its helper not twice; an open task offers what fits', async ($, on) => {
@@ -1102,7 +1188,8 @@ test('a task run shows in the Agents card: a summary, the controls, one row per 
   const mount = () => $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
   const pane = await mount()
   expect(await pane.find({ type: 'Text', text: 'Task run' })).toBeDefined()
-  expect(await pane.find({ type: 'Text', text: '0 of 3 done, 1 running, 1 need you, 1 waiting' })).toBeDefined()
+  expect(await pane.find({ type: 'Text', text: '0 of 3 done' })).toBeDefined()
+  expect(await pane.find({ type: 'Text', text: '1 running, 1 waiting' })).toBeDefined()
   expect(await pane.find({ key: 'run-pause' })).toBeDefined()
   expect(await pane.find({ key: 'run-stop' })).toBeDefined()
   expect(await pane.find({ type: 'Text', text: '1. Fix the header' })).toBeDefined()
@@ -1189,7 +1276,7 @@ test('Quiet it? asks about a warning that fired often and was never acted on; Qu
   await after.unmount()
 })
 
-test('the band\'s one button (See all 3) opens the pane on every band line, each line opens, and Done closes the list', async ($, on) => {
+test('the band\'s one button (See all, beside the Needs you chip) opens the pane on every band line, each line opens, and Done closes the list', async ($, on) => {
   mock.clock(on, { now: NOW })
   const mem = memStore(on)
   for (const [k, v] of Object.entries(world())) mem.set(k, v)
@@ -1202,7 +1289,7 @@ test('the band\'s one button (See all 3) opens the pane on every band line, each
   engine(on)
   on('ui.render', () => ({ type: 'Text', props: {}, children: [''] }) as never)
   const band = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'AbovePrompt', props: bandProps })
-  expect(((await band.find({ key: 'band-details' })) as { props?: { label?: string } } | undefined)?.props?.label).toMatch(/^\s*See all 3\s*$/)
+  expect(((await band.find({ key: 'band-details' })) as { props?: { label?: string } } | undefined)?.props?.label).toMatch(/^\s*See all\s*$/)
   expect(await band.find({ key: 'band-more' })).toBeUndefined()
   await band.press({ key: 'band-details' })
   await band.unmount()
@@ -1221,7 +1308,7 @@ test('the band\'s one button (See all 3) opens the pane on every band line, each
   await shut.unmount()
 })
 
-test('B9: with the Agents view open, /vaken-help shows the help page, and Done on it brings the cards back, not the Agents view', async ($, on) => {
+test('with the Agents view open, /vaken-help shows the help page, and Done on it brings the cards back, not the Agents view', async ($, on) => {
   mock.clock(on, { now: NOW })
   const mem = memStore(on)
   for (const [k, v] of Object.entries(world())) mem.set(k, v)
@@ -1247,7 +1334,7 @@ test('B9: with the Agents view open, /vaken-help shows the help page, and Done o
   await back.unmount()
 })
 
-test('B1: Say the last answer simpler draws the made answer and Close, not the button again', async ($, on) => {
+test('Say the last answer simpler draws the made answer and Close, not the button again', async ($, on) => {
   mock.clock(on, { now: NOW })
   const mem = memStore(on)
   for (const [k, v] of Object.entries(world())) mem.set(k, v)
@@ -1274,7 +1361,7 @@ test('B1: Say the last answer simpler draws the made answer and Close, not the b
   await closed.unmount()
 })
 
-test('the Agents view right after Start run says it is starting and that the page updates by itself; a task that works in a copy says so in plain words (U39)', async ($, on) => {
+test('the Agents view right after Start run says it is starting and that the page updates by itself; a task that works in a copy says so in plain words', async ($, on) => {
   mock.clock(on, { now: NOW })
   const mem = memStore(on)
   for (const [k, v] of Object.entries(world())) mem.set(k, v)

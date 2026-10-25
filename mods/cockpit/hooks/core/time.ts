@@ -1,6 +1,9 @@
 // Local time of the machine, written once: the clock and the "YYYY-MM-DD" day key all blocks share. Never UTC.
 import { pad2 } from './words'
 
+// How long a calm "it happened" line stays on a card (a merged pull request, a picture taken), then it goes: calm is quiet.
+export const RECENT_SHOW_MS = 24 * 3_600_000
+
 export const hhmm = (at: number): string => {
   const d = new Date(at)
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`

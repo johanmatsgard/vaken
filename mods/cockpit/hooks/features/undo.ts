@@ -1,5 +1,7 @@
 // Undo and named checkpoints (Settings > Safety > Undo).
 import { tr } from '../core/lang'
+import { fillIn } from '../core/fillin'
+import { sayIn } from './saylang'
 import type { EngineInterface, On } from 'claude-code'
 
 import { noteFailure, noteSlow } from '../core/health'
@@ -9,7 +11,7 @@ import { bindSafeFs } from '../core/safewrite'
 import { homeFrom } from '../core/platform'
 import type { Io } from '../core/io'
 import { readSetting } from '../core/settings'
-import { LAST_NONE, LAST_TITLE, NAMED_WHAT, RESTORED_WHAT, UNDO_SETTING, buildPlan, deleteNotes, fileToolTargets, filesWord, findNamed, gitChanged, hashText, lastChanged, listText, loadIndex, madeText, makeCheckpoint, markKey, namedKey, namedListText, parseCheckpointAsk, parseNamed, parsePending, parseUndoAsk, pendingKey, previewText, restorable, restore, restoredText, saveBefore, shellPlan, shown, sinceWants, wantsSig } from '../core/undo'
+import { LAST_TITLE, lastNone, noteSkipped, skipKey, skippedOf, skippedSince, NAMED_WHAT, RESTORED_WHAT, UNDO_SETTING, buildPlan, deleteNotes, fileToolTargets, filesWord, findNamed, gitChanged, hashText, lastChanged, listText, loadIndex, madeText, makeCheckpoint, markKey, namedKey, namedListText, parseCheckpointAsk, parseNamed, parsePending, parseUndoAsk, pendingKey, previewText, restorable, restore, restoredText, saveBefore, shellPlan, shown, sinceWants, wantsSig } from '../core/undo'
 import type { Pending, PlanFile, Probe, Target, Want } from '../core/undo'
 import { LEDGER_KEY, pushLog } from './compaction'
 import { isEditTool, isShellTool, shellFlavorOfTool } from '../core/tools'
@@ -57,14 +59,14 @@ export async function previewLast(i: Io, base: string): Promise<string> {
   const idx = await loadIndex(i, sid)
   const mark = (await readNote(i, markKey(sid))) as unknown
   const wants = sinceWants(idx, typeof mark === 'number' ? mark : 0)
-  if (wants.length === 0) return LAST_NONE
+  if (wants.length === 0) return lastNone(skippedSince(await i.get(skipKey(sid)), typeof mark === 'number' ? mark : 0))
   const plan = await buildPlan(i, await i.home(), sid, idx, wants)
   const pending: Pending = { kind: 'last', sig: hashText(wantsSig(wants)), at: now }
   await i.set(pendingKey(sid), pending)
-  return previewText(LAST_TITLE, plan, now, base, '/vaken-undo last yes')
+  return previewText(tr(LAST_TITLE), plan, now, base, '/vaken-undo last yes')
 }
 
-const noCheckpoint = (name: string, named: { name: string }[]): string => `No checkpoint named "${name}". ${named.length === 0 ? 'None is named yet: /vaken-undo checkpoint <name>.' : `Named: ${named.map(n => n.name).join(', ')}.`}`
+const noCheckpoint = (name: string, named: { name: string }[]): string => `${fillIn(tr('No checkpoint named "{name}".'), { name })} ${named.length === 0 ? tr('None is named yet: /vaken-undo checkpoint <name>.') : fillIn(tr('Named: {names}.'), { names: named.map(n => n.name).join(', ') })}`
 
 export async function previewNamed(i: Io, base: string, name: string): Promise<string> {
   const sid = await i.sessionId()
@@ -75,7 +77,7 @@ export async function previewNamed(i: Io, base: string, name: string): Promise<s
   const plan = await buildPlan(i, await i.home(), sid, await loadIndex(i, sid), cp.items)
   const pending: Pending = { kind: 'named', name: cp.name, at: now }
   await i.set(pendingKey(sid), pending)
-  return previewText(`Preview of going back to checkpoint "${cp.name}".`, plan, now, base, `/vaken-undo name ${cp.name} yes`)
+  return previewText(fillIn(tr('Preview of going back to checkpoint "{name}".'), { name: cp.name }), plan, now, base, `/vaken-undo name ${cp.name} yes`)
 }
 
 const isOn = async (i: Io): Promise<boolean> => (await readSetting(i, UNDO_SETTING)) !== 'off'
@@ -132,7 +134,10 @@ export function registerUndo(on: On): void {
           const plan = typeof args.command === 'string' ? shellPlan(args.command, env, shellFlavorOfTool(e.tool)) : { targets: [] as Target[], gitDir: undefined }
           targets = plan.gitDir === undefined ? plan.targets : [...plan.targets, ...(await gitChanged(i, plan.gitDir))]
         } else targets = fileToolTargets(e.tool, args, env)
-        if (targets.length > 0) await saveBefore(i, probeOf($), await i.sessionId(), targets, e.tool)
+        if (targets.length > 0) {
+          const sid = await i.sessionId()
+          await noteSkipped(i, sid, t0, skippedOf(await saveBefore(i, probeOf($), sid, targets, e.tool)))
+        }
         await noteSlow(i, 'undo', (await i.now()) - t0)
       }
     } catch {
@@ -147,6 +152,7 @@ export function registerUndo(on: On): void {
     const rest0 = subArgs(e.args, 'checkpoint')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i)
     const sid = await i.sessionId()
     const ask = parseCheckpointAsk(rest0)
     if (ask.kind === 'bad') return { text: ask.why }
@@ -161,6 +167,7 @@ export function registerUndo(on: On): void {
   on('command.run', { command: 'vaken-undo' }, async ($, e, next) => {
     if (isFolded(e.command, e.args)) return next(e)
     const i = io($)
+    await sayIn(i)
     const sid = await i.sessionId()
     const now = await i.now()
     const base = await $.session.cwd()
@@ -180,22 +187,22 @@ export function registerUndo(on: On): void {
     if (ask.kind === 'last') {
       const mark = (await readNote(i, markKey(sid))) as unknown
       wants = sinceWants(idx, typeof mark === 'number' ? mark : 0)
-      if (wants.length === 0) return { text: LAST_NONE }
-      title = LAST_TITLE
+      if (wants.length === 0) return { text: lastNone(skippedSince(await i.get(skipKey(sid)), typeof mark === 'number' ? mark : 0)) }
+      title = tr(LAST_TITLE)
       confirm = '/vaken-undo last yes'
       pending = { kind: 'last', sig: hashText(wantsSig(wants)), at: now }
     } else if (ask.kind === 'file') {
       const item = lastChanged(idx).find(x => x.n === ask.n)
-      if (item === undefined) return { text: `There is no number ${ask.n} in the list. Run /vaken-undo to see it.` }
+      if (item === undefined) return { text: fillIn(tr('There is no number {n} in the list. Run /vaken-undo to see it.'), { n: ask.n }) }
       wants = [{ path: item.snap.path, snap: item.snap.id }]
-      title = `Undo preview for ${shown(item.snap.path, base)}.`
+      title = fillIn(tr('Undo preview for {path}.'), { path: shown(item.snap.path, base) })
       confirm = `/vaken-undo ${ask.n} yes`
       pending = { kind: 'file', n: ask.n, path: item.snap.path, snap: item.snap.id, at: now }
     } else {
       const cp = findNamed(named, ask.name)
       if (cp === undefined) return { text: noCheckpoint(ask.name, named) }
       wants = cp.items
-      title = `Preview of going back to checkpoint "${cp.name}".`
+      title = fillIn(tr('Preview of going back to checkpoint "{name}".'), { name: cp.name })
       confirm = `/vaken-undo name ${cp.name} yes`
       pending = { kind: 'named', name: cp.name, at: now }
     }
@@ -209,7 +216,7 @@ export function registerUndo(on: On): void {
     if (!byPerson(e.origin)) return { text: BY_PERSON_ONLY }
     const held = await pendingOf(i, sid)
     const same = held !== undefined && (held.kind === 'file' ? pending.kind === 'file' && held.n === pending.n && held.snap === pending.snap && held.path === pending.path : held.kind === 'named' ? pending.kind === 'named' && held.name === pending.name : pending.kind === 'last' && held.sig === pending.sig)
-    if (!same) return { text: `Run the preview first: ${confirm.replace(/ yes$/, '')}. The list may have changed since you last looked, and a restore only happens after you have seen what it does.` }
+    if (!same) return { text: fillIn(tr('Run the preview first: {command}. The list may have changed since you last looked, and a restore only happens after you have seen what it does.'), { command: confirm.replace(/ yes$/, '') }) }
     if (restorable(plan) === 0) {
       await i.del(pendingKey(sid))
       return { text: previewText(title, plan, now, base, confirm) }
@@ -224,6 +231,6 @@ export function registerUndo(on: On): void {
       i.invalidate()
     }
     const left = deleteNotes(plan, now, base)
-    return { text: [restoredText(r, base), ...(left.length > 0 ? ['', 'Left for you, because vaken never deletes a file:', ...left] : [])].join('\n') } // en-only: plain answer of a slash command (text twin)
+    return { text: [restoredText(r, base), ...(left.length > 0 ? ['', tr('Left for you, because vaken never deletes a file:'), ...left] : [])].join('\n') }
   })
 }

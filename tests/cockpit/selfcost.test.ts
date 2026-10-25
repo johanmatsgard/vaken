@@ -110,7 +110,7 @@ test('the Computer card shows the line once the gauge saw two readings a minute 
   expect([...mem.keys()].some(k => k.includes('selfcost') || k.includes('cost:self'))).toBe(false)
 })
 
-test('J2: the line says 1,3 in Swedish and 1.3 in English', () => {
+test('the line says 1,3 in Swedish and 1.3 in English', () => {
   const c = { writes: 44, runs: 0, calls: 1.3 }
   try {
     setLang('sv')

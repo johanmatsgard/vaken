@@ -5,6 +5,7 @@ import { test } from './slow'
 import { dayShare, dayShareDue, dayShareWords, weekWindow } from '../hooks/core/dayshare'
 import type { Sample } from '../hooks/core/pace'
 import { ymd } from '../hooks/core/time'
+import { setLang, tr } from '../hooks/core/lang'
 
 const HOUR = 3_600_000
 const DAY = 24 * HOUR
@@ -73,11 +74,23 @@ test('the fixed words translate through the given function', () => {
   expect(dayShareWords(dayShare(week(62), NOW)!, t)).toBe('38% LEFT. To make it last until it resets, use about 11% a day.')
 })
 
-test('the share does not jump when the reset moves two hours (T16): 11:00 against 13:00 on the same Thursday', () => {
+test('the share does not jump when the reset moves two hours: 11:00 against 13:00 on the same Thursday', () => {
   const at = (h: number) => dayShare(week(80, new Date(DAY0 + 3 * DAY + h * HOUR).toISOString()), NOW)!
   const a = at(11)
   const b = at(13)
   expect(Math.round((b.days - a.days) * 100) / 100).toBe(0.08)
   expect(Math.abs(a.perDay - b.perDay) / a.perDay).toBeLessThan(0.05)
   expect(dayShareWords(a)).toContain('until it resets')
+})
+
+test('Swedish: the day share says its numbers as the rest of the card, "16%" and a decimal comma, and the reset with kl.', () => {
+  setLang('sv')
+  try {
+    const d = dayShare(week(84), NOW)!
+    expect(dayShareWords(d, tr)).toBe('16\u00a0% av din veckogräns är kvar. För att den ska räcka tills den återställs, använd ungefär 4,7\u00a0% om dagen.')
+    expect(dayShareWords(dayShare(week(100), NOW)!, tr)).toMatch(/^Din veckogräns är förbrukad\. Den återställs tors kl\. 09:00\.$/)
+  } finally {
+    setLang('en')
+  }
+  expect(dayShareWords(dayShare(week(84), NOW)!)).toBe('16% of your weekly limit is left. To make it last until it resets, use about 4.7% a day.')
 })

@@ -1,6 +1,8 @@
 // Parking lot: side ideas kept per project for later, added without starting a turn and sent to Claude later as a prompt.
 import type { HelpEntry } from './registry'
 import { fmt } from './fmt'
+import { fillIn } from './fillin'
+import { langNow, tr } from './lang'
 
 const PARK_MAX = 30
 const PARK_TEXT_MAX = 300
@@ -21,15 +23,15 @@ export function parseAsk(args: string): ParkAsk {
   if (t === '') return { kind: 'list' }
   const m = /^(send|drop|done)\s+(\d+)$/i.exec(t)
   if (m !== null) return { kind: m[1].toLowerCase() === 'send' ? 'send' : 'drop', n: Number(m[2]) }
-  if (/^(send|drop|done)\b/i.test(t) && !/^(send|drop|done)\s+\S+\s+\S/i.test(t)) return { kind: 'bad', why: 'Say which idea: /vaken-memory park send 2' }
+  if (/^(send|drop|done)\b/i.test(t) && !/^(send|drop|done)\s+\S+\s+\S/i.test(t)) return { kind: 'bad', why: tr('Say which idea: /vaken-memory park send 2') }
   if (/^clear$/i.test(t)) return { kind: 'clear' }
   const text = clean(t)
   return text === '' ? { kind: 'list' } : { kind: 'add', text }
 }
 
-const ago = (ms: number): string => fmt.ago(ms, 'list')
+const ago = (ms: number): string => fmt.ago(ms, 'list', langNow())
 
 export function listText(ideas: Idea[], now: number): string {
-  if (ideas.length === 0) return 'The parking lot is empty. Add an idea: /vaken-memory park <idea>'
-  return [`Parked ideas (${ideas.length}):`, ...ideas.map((x, n) => `  ${n + 1}. ${x.text} (${ago(now - x.at)})`), '', 'Send one to the prompt box: /vaken-memory park send <n>. Remove one: /vaken-memory park drop <n>.'].join('\n')
+  if (ideas.length === 0) return tr('The parking lot is empty. Add an idea: /vaken-memory park <idea>')
+  return [fillIn(tr('Parked ideas ({n}):'), { n: ideas.length }), ...ideas.map((x, n) => `  ${n + 1}. ${x.text} (${ago(now - x.at)})`), '', tr('Send one to the prompt box: /vaken-memory park send <n>. Remove one: /vaken-memory park drop <n>.')].join('\n')
 }

@@ -1,7 +1,7 @@
 // The Run one task row and the cost check before a run (core/runcost.ts): what a draw shows, and what the row's presses do.
 import type { Io } from '../../core/io'
 import { readNote } from '../../core/flush'
-import { tr } from '../../core/lang'
+import { t, tr } from '../../core/lang'
 import { newRun } from '../../core/orchestra'
 import type { Run } from '../../core/orchestra'
 import { HISTORY_KEY, parseHistory } from '../../core/pace'
@@ -26,7 +26,7 @@ import type { Prefs } from './prefs'
 export type StartCheck = { check: RunCheck; forGoal: boolean }
 export type StartActs = {
   toggleDone: (kind: DoneKind) => void
-  togglePlan: () => void
+  setPlan: (value: string) => void
   start: () => void
 }
 
@@ -39,6 +39,7 @@ export const forgetStartCheck = (): void => {
 export const doneKindsOf = (proof: ProofState | undefined, values: Values): DoneKind[] =>
   values['proof.done'] === 'off' || proof === undefined ? [] : (proof.done.filter(k => k === 'tests' || k === 'build' || k === 'lint') as DoneKind[])
 export const planFirstOn = (values: Values): boolean => (values['plan.first'] ?? 'off') !== 'off'
+export const planFirstOf = (values: Values): string => values['plan.first'] ?? 'off'
 
 export const goalRun = (proof: ProofState | undefined, values: Values, now: number): Run | undefined =>
   proof?.goal === undefined ? undefined : newRun([taskTextOf(proof.goal.text, doneKindsOf(proof, values), planFirstOn(values))], now)
@@ -67,13 +68,14 @@ export const checkLines = (sc: StartCheck | undefined, t?: (s: string) => string
 
 export const forPane = (text: string): string => text.replace(tr(RC_TYPE_AGAIN), tr(RC_PRESS_AGAIN))
 
+// The /vaken reply's line for a goal the person typed and has not run yet: where to start it (a chat reader cannot press a button), and a cost warning if any
 export function startTaskText(prefs: Prefs): string[] {
   if (prefs.run !== undefined && prefs.run.status !== 'setup') return []
+  const goal = prefs.proof?.goal
+  if (goal === undefined || goal.how === 'first') return []
   const done = doneKindsOf(prefs.proof, prefs.values)
-  const goal = prefs.proof?.goal?.text
-  // The head says what to press (Add a task, in the Agents card), never a command to type
-  const head = `Run one task: ${goal === undefined ? 'no goal yet (press Add a task to start a run)' : goal}${done.length === 0 ? '' : `; done when ${done.join(', ')} pass`}; plan first ${planFirstOn(prefs.values) ? 'on' : 'off'}.`
-  return [head, ...(goal === undefined ? ['To set the goal by typing: /vaken-tasks goal <one sentence>.'] : []), ...checkLines(prefs.startCheck)]
+  const head = done.length === 0 ? t('chat.run_goal', { goal: goal.text }) : t('chat.run_goal_done', { goal: goal.text, checks: done.map(k => tr(k)).join(', ') })
+  return [head, ...(prefs.startCheck === undefined ? [] : reasonLines(prefs.startCheck.check, tr))]
 }
 
 export function startActsOf(eng: HomeEngine): StartActs {
@@ -90,11 +92,11 @@ export function startActsOf(eng: HomeEngine): StartActs {
         i.invalidate()
       })()
     },
-    togglePlan: () => {
+    setPlan: (value: string) => {
       void (async () => {
         const i = eng.io()
         try {
-          await writeSetting(i, 'plan.first', (await readSetting(i, 'plan.first')) === 'off' ? 'suggest' : 'off')
+          await writeSetting(i, 'plan.first', value)
         } catch {
         }
         i.invalidate()

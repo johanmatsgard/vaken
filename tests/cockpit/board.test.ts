@@ -1,28 +1,30 @@
 import { expect } from 'claude-code/testing'
 import { test } from './slow'
 import { CARD_GROUP, GROUPS, groupIndexOf, isGroupOrder } from '../hooks/core/cardhome'
-import { boardLayout, boardRows, cardHeights, heightOf, holdTop, isIdle, IDLE_REPACK_MS, placeColumns } from '../hooks/features/home/board'
+import { boardLists, cardHeights, heightOf, holdTop, isIdle, IDLE_REPACK_MS, listsLayout, listsRows, placeColumns, placeEven, placeEvenSteady, placeLists } from '../hooks/features/home/board'
 import type { CardFacts, Columns } from '../hooks/features/home/board'
 import { paneGrid } from '../hooks/features/home/grid'
-import { ROW_PT } from '../hooks/ui/tokens'
+import { ARRANGE_ROW_GAP, ROW_PT } from '../hooks/ui/tokens'
 
 const heights = { limit: 5, here: 4, others: 12 }
 
-test('the board uses the pane placement: three cards in three columns, two columns with the first two stacked, or one column', () => {
-  const three = boardLayout(['limit', 'here', 'others'], heights, 3, 92, 1)
-  expect(three.map(r => r.x)).toEqual([0, 31, 62])
-  expect(new Set(three.map(r => r.tall))).toEqual(new Set([12]))
-  const two = boardLayout(['limit', 'here', 'others'], heights, 2, 91, 1)
-  expect(two[0]).toEqual({ x: 0, y: 0, w: 45, tall: 5 })
-  expect(two[1]).toEqual({ x: 0, y: 5, w: 45, tall: 7 })
-  expect(two[2]).toEqual({ x: 46, y: 0, w: 45, tall: 12 })
-  const one = boardLayout(['limit', 'here', 'others'], heights, 1, 60, 1)
-  expect(one.map(r => r.y)).toEqual([0, 5, 9])
+test('the board uses the pane placement: three cards in three columns, two columns with the first two stacked, or one column; tiles as tall as their cards, a gap apart', () => {
+  const ids = ['limit', 'here', 'others']
+  const three = listsLayout(boardLists(ids, undefined, 3), heights, 92, 1)
+  expect(ids.map(id => three.tiles.get(id)?.x)).toEqual([0, 31, 62])
+  expect(ids.map(id => three.tiles.get(id)?.tall)).toEqual([5, 4, 12])
+  const two = listsLayout(boardLists(ids, undefined, 2), heights, 91, 1)
+  expect(two.tiles.get('limit')).toEqual({ x: 0, y: 0, w: 45, tall: 5, col: 0 })
+  expect(two.tiles.get('here')).toEqual({ x: 0, y: 5 + ARRANGE_ROW_GAP, w: 45, tall: 4, col: 0 })
+  expect(two.tiles.get('others')).toEqual({ x: 46, y: 0, w: 45, tall: 12, col: 1 })
+  const one = listsLayout(boardLists(ids, undefined, 1), heights, 60, 1)
+  expect(ids.map(id => one.tiles.get(id)?.y)).toEqual([0, 5 + ARRANGE_ROW_GAP, 9 + 2 * ARRANGE_ROW_GAP])
 })
 
-test('the board is as tall as the tallest order, and a card height is at least three rows', () => {
-  expect(boardRows(['limit', 'here', 'others'], heights, 1, 60, 1)).toBe(21)
-  expect(boardRows(['limit', 'here', 'others'], heights, 3, 92, 1)).toBe(12)
+test('the board is as tall as its tallest column plus the tallest tile, and a card height is at least three rows', () => {
+  expect(listsRows([['limit', 'here', 'others']], heights)).toBe(21 + 2 * ARRANGE_ROW_GAP)
+  expect(listsRows([['limit'], ['here'], ['others']], heights)).toBe(21 + 2 * ARRANGE_ROW_GAP)
+  expect(listsRows([['limit'], ['here']], heights)).toBe(9 + ARRANGE_ROW_GAP)
   const h = cardHeights({ isSimple: true, innerPt: 400, hasLimit: true, limitLines: 0, hereLines: 1, hereHasBar: false, others: 0, othersOpen: true, othersAll: false })
   expect(Math.min(h.limit, h.here, h.others)).toBeGreaterThanOrEqual(3)
   const busy = cardHeights({ isSimple: false, innerPt: 400, hasLimit: true, limitLines: 3, hereLines: 3, hereHasBar: true, others: 9, othersOpen: true, othersAll: false })
@@ -69,7 +71,7 @@ test('every card is in a group, the default order follows the groups, and the gr
 // A card keeps its column: placement never reads heights, so opening, closing or growing any card moves no card sideways.
 test('opening or closing a card never moves another card to another column', () => {
   const all = Object.keys(CARD_GROUP)
-  const xs = (ids: string[], hs: Record<string, number>, ncol: Columns): Map<string, number> => new Map(boardLayout(ids, hs, ncol, 221, 1).map((r, i) => [ids[i], r.x]))
+  const xs = (ids: string[], hs: Record<string, number>, ncol: Columns): Map<string, number> => new Map([...listsLayout(boardLists(ids, undefined, ncol), hs, 221, 1).tiles].map(([id, r]) => [id, r.x]))
   for (const ncol of [2, 3, 4, 5, 6] as const) {
     for (const shown of [all, all.filter((_, n) => n % 2 === 0), all.slice(0, 9)]) {
       const calm = Object.fromEntries(shown.map(id => [id, 3]))
@@ -97,42 +99,34 @@ test('a card moves column only when the number of columns changes or the list ge
   for (let n = 1; n <= 17; n += 1) for (const ncol of [2, 3, 4, 5, 6] as const) expect(col(n, ncol)).toEqual([...col(n, ncol)].sort((x, y) => x - y))
 })
 
-test('the board rects follow reading order: rect i is card i, every column ends at the tallest, the last column ends at the edge', () => {
+test('the board tiles follow reading order: each tile as tall as its card (no stretch to the tallest column), the last column ends at the edge', () => {
   const four = { limit: 5, here: 4, others: 12, autopilot: 3 }
   const order = ['limit', 'here', 'others', 'autopilot']
-  const rects = boardLayout(order, four, 3, 92, 1)
+  const board = listsLayout(boardLists(order, undefined, 3), four, 92, 1)
+  const rects = order.map(id => board.tiles.get(id) ?? { x: -1, y: -1, w: 0, tall: 0 })
   expect(rects.map(r => r.x)).toEqual([0, 0, 31, 62])
-  expect(rects[1].y).toBe(5)
-  const bottoms = new Set([rects[1].y + rects[1].tall, rects[2].y + rects[2].tall, rects[3].y + rects[3].tall])
-  expect(bottoms.size).toBe(1)
+  expect(rects[1].y).toBe(5 + ARRANGE_ROW_GAP)
+  expect(rects.map(r => r.tall)).toEqual(order.map(id => four[id as keyof typeof four]))
   expect(rects[3].x + rects[3].w).toBe(92)
 })
 
-test('the board is tall enough for every order, found without trying every order', () => {
-  const orders = (ids: string[]): string[][] => {
-    const out: string[][] = []
-    const permute = (rest: string[], done: string[]): void => {
-      if (rest.length === 0) out.push(done)
-      for (const [i, id] of rest.entries()) permute([...rest.slice(0, i), ...rest.slice(i + 1)], [...done, id])
-    }
-    permute(ids, [])
-    return out
-  }
-  const tallestOrder = (ids: string[], hs: Record<string, number>, ncol: Columns): number => Math.max(...orders(ids).map(o => Math.max(...boardLayout(o, hs, ncol, 92, 1).map(r => r.y + r.tall))))
+test('the board is tall enough for any one move of a tile into any column', () => {
   const ids = ['a', 'b', 'c', 'd', 'e', 'f']
   for (let seed = 1; seed <= 12; seed += 1) {
     const hs: Record<string, number> = Object.fromEntries(ids.map((id, n) => [id, ((seed * 7 + n * 5) % 11) + 3]))
-    const most = Math.max(...Object.values(hs))
-    for (let n = 1; n <= ids.length; n += 1) {
-      for (const ncol of [1, 2, 3, 4] as const) {
-        const real = tallestOrder(ids.slice(0, n), hs, ncol)
-        const rows = boardRows(ids.slice(0, n), hs, ncol, 92, 1)
-        expect(rows).toBeGreaterThanOrEqual(real)
-        expect(rows).toBeLessThanOrEqual(real + most + 1)
+    for (const ncol of [1, 2, 3, 4] as const) {
+      const lists = boardLists(ids, undefined, ncol)
+      const rows = listsRows(lists, hs)
+      for (const id of ids) {
+        for (let c = 0; c < lists.length; c += 1) {
+          const moved = lists.map(l => l.filter(x => x !== id))
+          moved[c].push(id)
+          const board = listsLayout(moved, hs, 92, 1)
+          expect(Math.max(...[...board.tiles.values()].map(r => r.y + r.tall))).toBeLessThanOrEqual(rows)
+        }
       }
     }
   }
-  expect(boardRows(['a', 'zz'], { a: 9 }, 1, 92, 1)).toBe(12)
 })
 
 const calm = (innerPt: number, listShow: number): CardFacts => ({
@@ -206,4 +200,28 @@ test('holdTop: the Needs you card changes only at an idle moment', ($) => {
   expect(isIdle(10000, 9000)).toBe(false)
   expect(isIdle(10000, 10000 - IDLE_REPACK_MS)).toBe(true)
   expect(isIdle(10000, undefined)).toBe(true)
+})
+
+test('even columns: each next card goes under the shortest column, so the columns end at about the same height', () => {
+  const hs: Record<string, number> = { a: 10, b: 3, c: 3, d: 3, e: 3 }
+  // a is tall: the short cards go beside it until the second column is taller
+  expect(placeEven(['a', 'b', 'c', 'd', 'e'], hs, 2, 0)).toEqual([[0], [1, 2, 3, 4]])
+  expect(placeEven(['a', 'b', 'c', 'd', 'e'], { ...hs, a: 8 }, 2, 0)).toEqual([[0, 4], [1, 2, 3]])
+  expect(placeEven(['a', 'b'], hs, 3, 0)).toEqual([[0], [1]])
+  // The same cards and width keep their columns when a card grows; a new card places them again
+  const first = placeEvenSteady(['a', 'b', 'c', 'd'], hs, 2, undefined, 0, 0)
+  const grown = placeEvenSteady(['a', 'b', 'c', 'd'], { ...hs, b: 30 }, 2, first.memory, 0, 0)
+  expect(grown.groups).toEqual(first.groups)
+  const more = placeEvenSteady(['a', 'b', 'c', 'd', 'e'], hs, 2, first.memory, 0, 0)
+  expect(more.memory.key).not.toBe(first.memory.key)
+  // While the person presses, a late card goes under the shortest column and the others stay
+  const late = placeEvenSteady(['a', 'b', 'c', 'd', 'e'], hs, 2, first.memory, 1, 0)
+  expect(first.groups).toEqual([[0], [1, 2, 3]])
+  expect(late.groups).toEqual([[0], [1, 2, 3, 4]])
+  expect(late.memory).toBe(first.memory)
+})
+
+test('arranged columns: a card in no list goes under the shortest column, not the first', () => {
+  const hs: Record<string, number> = { limit: 20, here: 3, agents: 3, guard: 3 }
+  expect(placeLists(['limit', 'agents', 'guard', 'here'], [['limit'], ['agents', 'guard']], 2, 0, hs, 0)).toEqual([[0], [1, 2, 3]])
 })

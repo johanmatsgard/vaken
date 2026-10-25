@@ -31,11 +31,9 @@ const needsYou = (mem: Mem): void => {
   mem.set('cockpit:guard:held:test-session', { at: NOW - 4 * MIN, step: 'call-1', keys: ['destructive'], words: 'rm -rf ../archive' })
 }
 
-// The guide opens from the footer's "See all N cards" when the board has cards waiting; if it has none, from Help.
-let guideFromHelp = false
+// The guide opens from Help > What each card does (the footer has no guide link).
+const guideFromHelp = true
 const openGuide = async (ui: Pane, help: () => Promise<unknown>) => {
-  guideFromHelp = (await ui.find({ key: 'morel-more-cards' })) === undefined
-  if (!guideFromHelp) return ui.press({ key: 'morel-more-cards' })
   await help()
   await ui.redraw()
   await ui.press({ key: 'press-help-guide-0' })
@@ -48,17 +46,18 @@ const leaveGuide = async (ui: Pane) => {
   }
 }
 
-// `has`: lines the screen must hold (the fixes of the first-user test, round 3), checked in the normal gate too.
+// `has`: lines the screen must hold, checked in the normal gate too.
 type Open = { file: string; key: string | RegExp; has?: RegExp[] }
 const CARD_FILES: Record<string, string> = { here: 'this-session', context: 'context-health', agents: 'agents', limit: 'plan-limits', others: 'other-sessions' }
 const glanceOpens = (prefix: string, has: Record<string, RegExp[]> = {}): Open[] => Object.entries(CARD_FILES).map(([id, file]) => ({ file: `${prefix}-${file}-open`, key: `press-glance-${id}-0`, ...(has[id] === undefined ? {} : { has: has[id] }) }))
 type Screen = { has?: RegExp[]; opens?: Open[]; name: string; seed: (mem: Mem) => void; prep?: (ui: Pane, help: () => Promise<unknown>) => Promise<void>; leave?: (ui: Pane) => Promise<void> }
 const SCREENS: Screen[] = [
-  { name: '1-first-open-start-here', seed: mem => mem.clear(), has: [/^Not known yet {2}\(Not read yet\)/m, /risky step\.\nSend your first message\./] },
+  // The first screen: only Start here (and Needs you when something waits) until setup is done
+  { name: '1-first-open-start-here', seed: mem => mem.clear(), has: [/^== Start here ==$/m, /risky step\.\nStep 1 of 5\nHow much should vaken tell you\?/] },
   {
     name: '3-standard-needs-you',
     seed: needsYou,
-    has: [/^1 waiting for you /m, /^12 min ago$/m, /4 min ago/],
+    has: [/^12 min ago$/m, /4 min ago/],
     opens: [{ file: '3c-needs-you-question-open', key: /^press-n-s1-/ }, { file: '3c-needs-you-stopped-step-open', key: /^press-ol-needs:hold-/ }, ...glanceOpens('3b', { here: [/^State {2}Needs you/m, /^A stopped step waits for you in Needs you\.$/m] })],
   },
   { name: '2-standard-busy-day', seed: busyDay, opens: glanceOpens('2b') },

@@ -3,12 +3,11 @@ import { expect, mock } from 'claude-code/testing'
 import type { On } from 'claude-code'
 import { test } from './slow'
 
-import { placeColumns } from '../hooks/features/home/board'
 import { paneGrid } from '../hooks/features/home/grid'
 import { ALL_IDS, STANDARD_IDS, fixedIds, needsShown, viewModeOf } from '../hooks/features/home/viewset'
 import { CARD_IDS } from '../hooks/features/home/logic'
 import { defaults, findSetting } from '../hooks/core/settings'
-import { COL_PT, ROW_PT } from '../hooks/ui/tokens'
+import { columnPt, ROW_PT } from '../hooks/ui/tokens'
 
 const NOW = Date.parse('2026-10-12T12:00:00Z')
 const MIN = 60_000
@@ -45,7 +44,7 @@ const fresh = (extra: Record<string, unknown> = {}): Map<string, unknown> =>
       ...extra,
     }),
   )
-const propsAt = (wPt: number) => ({ title: 'Vaken', isFocused: false, bodyColumns: wPt / COL_PT, placement: 'dock' as const, scroll: { bodyRows: Math.round(1400 / ROW_PT), offset: 0, total: 200 }, view: {} })
+const propsAt = (wPt: number) => ({ title: 'Vaken', isFocused: false, bodyColumns: wPt / columnPt(), placement: 'dock' as const, scroll: { bodyRows: Math.round(1400 / ROW_PT), offset: 0, total: 200 }, view: {} })
 
 type Node = { type?: string; key?: string; props?: Record<string, unknown>; children?: unknown[] }
 type Pane = { drawn: () => Promise<Node>; redraw: (p?: unknown) => Promise<void>; press: (q: unknown) => Promise<void>; find: (q: unknown) => Promise<unknown>; unmount: () => Promise<void> }
@@ -75,10 +74,10 @@ async function draw($: Parameters<Parameters<typeof test>[1]>[0], on: On, mem: M
   return mount($, wPt)
 }
 
-test('the views as data: Standard is Needs you and six cards, All is the seven and ten more, Custom is the person own list', () => {
-  expect(STANDARD_IDS).toEqual(['here', 'context', 'agents', 'computer', 'limit', 'others'])
-  expect(ALL_IDS.slice(0, 6)).toEqual([...STANDARD_IDS])
-  expect(ALL_IDS.slice(6)).toEqual(['ship', 'prs', 'back', 'preview', 'setup', 'skills', 'do', 'guard', 'safety', 'autopilot', 'proof'])
+test('the views as data: Standard is Needs you and seven cards with Safety, All is the eight and ten more, Custom is the person own list', () => {
+  expect(STANDARD_IDS).toEqual(['here', 'context', 'agents', 'computer', 'limit', 'others', 'safety'])
+  expect(ALL_IDS.slice(0, 7)).toEqual([...STANDARD_IDS])
+  expect(ALL_IDS.slice(7)).toEqual(['ship', 'prs', 'back', 'preview', 'setup', 'skills', 'do', 'guard', 'autopilot', 'proof'])
   expect([...ALL_IDS].sort()).toEqual([...CARD_IDS].sort())
   expect(fixedIds('standard')).toBe(STANDARD_IDS)
   expect(fixedIds('all')).toBe(ALL_IDS)
@@ -102,24 +101,24 @@ test('the settings: View starts on Standard, the Needs you card on Always; Hidde
   expect(needsShown({ 'look.needs': 'hidden' }, 5)).toBe(false)
 })
 
-test('Standard on a fresh store: Needs you, This session, Context health, Agents, Computer, Plan limits, Other sessions, in that order, and nothing else', async ($, on) => {
+test('Standard on a fresh store: Needs you, This session, Context health, Agents, Computer, Plan limits, Other sessions, Safety, in that order, and nothing else', async ($, on) => {
   const ui = await draw($, on, fresh(), 400)
-  expect(cardsIn(await ui.drawn())).toEqual(['needs', 'here', 'context', 'agents', 'computer', 'limit', 'others'])
-  expect(await ui.find({ type: 'Text', text: 'Nothing' })).toBeDefined()
+  expect(cardsIn(await ui.drawn())).toEqual(['needs', 'here', 'context', 'agents', 'computer', 'limit', 'others', 'safety'])
+  expect(await ui.find({ type: 'Text', text: 'None' })).toBeDefined()
   expect(await ui.find({ key: 'glance-needs' })).toBeDefined()
   await ui.unmount()
 })
 
-test('All: the seven, then ship, pull requests, where was I, preview, agent setup, skills, do, guard, safety, autopilot, proof', async ($, on) => {
+test('All: the eight, then ship, pull requests, where was I, preview, agent setup, skills, do, guard, autopilot, proof', async ($, on) => {
   const ui = await draw($, on, fresh({ 'cockpit:setting:look.view': 'all' }), 400)
-  expect(cardsIn(await ui.drawn())).toEqual(['needs', 'here', 'context', 'agents', 'computer', 'limit', 'others', 'ship', 'prs', 'back', 'preview', 'setup', 'skills', 'do', 'guard', 'safety', 'autopilot', 'proof'])
+  expect(cardsIn(await ui.drawn())).toEqual(['needs', 'here', 'context', 'agents', 'computer', 'limit', 'others', 'safety', 'ship', 'prs', 'back', 'preview', 'setup', 'skills', 'do', 'guard', 'autopilot', 'proof'])
   await ui.unmount()
 })
 
 test('a fixed view ignores Hide and Auto: nothing pops in or out', async ($, on) => {
   const mem = fresh({ 'cockpit:setting:cards.limit': 'hide', 'cockpit:setting:cards.proof': 'show' })
   const ui = await draw($, on, mem, 400)
-  expect(cardsIn(await ui.drawn())).toEqual(['needs', 'here', 'context', 'agents', 'computer', 'limit', 'others'])
+  expect(cardsIn(await ui.drawn())).toEqual(['needs', 'here', 'context', 'agents', 'computer', 'limit', 'others', 'safety'])
   await ui.unmount()
 })
 
@@ -127,28 +126,31 @@ test('Needs you: Hidden removes it; Only when something waits keeps it out while
   const mem = fresh({ 'cockpit:setting:look.needs': 'hidden' })
   setup(on, mem)
   const hidden = await mount($, 400)
-  expect(cardsIn(await hidden.drawn())).toEqual(['here', 'context', 'agents', 'computer', 'limit', 'others'])
+  expect(cardsIn(await hidden.drawn())).toEqual(['here', 'context', 'agents', 'computer', 'limit', 'others', 'safety'])
   await hidden.unmount()
   mem.set('cockpit:setting:look.needs', 'waits')
   const waits = await mount($, 400)
-  expect(cardsIn(await waits.drawn())).toEqual(['here', 'context', 'agents', 'computer', 'limit', 'others'])
+  expect(cardsIn(await waits.drawn())).toEqual(['here', 'context', 'agents', 'computer', 'limit', 'others', 'safety'])
   await waits.unmount()
   mem.set('cockpit:session:busy', rec('busy', { ask: { kind: 'question', tool: 'AskUserQuestion', since: NOW - 4 * MIN } }))
   const asks = await mount($, 400)
   expect(cardsIn(await asks.drawn())[0]).toBe('needs')
-  expect(await asks.find({ type: 'Text', text: 'Nothing needs you.' })).toBeUndefined()
+  expect(await asks.find({ type: 'Text', text: 'Nothing needs you' })).toBeUndefined()
   await asks.unmount()
 })
 
-test('the fold on the page: the columns hold the seven slots in order, folded column-major', async ($, on) => {
+test('the columns on the page: the eight slots, each column in their order, Needs you first, even columns (each next card under the shortest)', async ($, on) => {
   const seen = new Set<number>()
+  const ORDER = ['needs', 'here', 'context', 'agents', 'computer', 'limit', 'others', 'safety']
   setup(on, fresh())
   for (const wPt of [400, 1000, 1500, 2000, 2800, 3400]) {
-    const ncol = paneGrid(wPt, 'auto', 7).ncol
+    const ncol = paneGrid(wPt, 'auto', 8).ncol
     const ui = await mount($, wPt)
     const cols = columnsOf(await ui.drawn())
-    expect(cols.map(c => c.length), `${wPt} pt, ${ncol} columns`).toEqual(placeColumns(7, ncol).map(c => c.length))
-    expect(cols.flat()).toEqual(['needs', 'here', 'context', 'agents', 'computer', 'limit', 'others'])
+    expect(cols.length, `${wPt} pt, ${ncol} columns`).toBe(ncol)
+    expect([...cols.flat()].sort()).toEqual([...ORDER].sort())
+    for (const c of cols) expect(c.map(id => ORDER.indexOf(id)), `${wPt} pt: a column in order`).toEqual(c.map(id => ORDER.indexOf(id)).sort((a, b) => a - b))
+    expect(cols[0]?.[0]).toBe('needs')
     seen.add(ncol)
     await ui.unmount()
   }
@@ -162,11 +164,11 @@ test('opening or folding a card never moves a card to another column', async ($,
     const ui = await mount($, wPt)
     const before = columnsOf(await ui.drawn())
     const columnOf = (cols: string[][], id: string): number => cols.findIndex(c => c.includes(id))
-    for (const id of ['here', 'context', 'agents', 'computer', 'limit', 'others']) {
+    for (const id of ['here', 'context', 'agents', 'computer', 'limit', 'others', 'safety']) {
       await ui.press({ key: `press-glance-${id}-0` })
       await ui.redraw()
       const open = columnsOf(await ui.drawn())
-      for (const other of ['needs', 'here', 'context', 'agents', 'computer', 'limit', 'others']) expect(columnOf(open, other), `${other} with ${id} open at ${wPt} pt`).toBe(columnOf(before, other))
+      for (const other of ['needs', 'here', 'context', 'agents', 'computer', 'limit', 'others', 'safety']) expect(columnOf(open, other), `${other} with ${id} open at ${wPt} pt`).toBe(columnOf(before, other))
       await ui.press({ key: `press-glance-${id}-0` })
       await ui.redraw()
     }
@@ -187,14 +189,16 @@ test('Custom keeps an order the person arranged before the views existed (no loo
   // A person who chose a view keeps that, whatever order is saved.
   mem.set('cockpit:setting:look.view', 'standard')
   const std = await mount($, 400)
-  expect(cardsIn(await std.drawn())).toEqual(['needs', 'here', 'context', 'agents', 'computer', 'limit', 'others'])
+  expect(cardsIn(await std.drawn())).toEqual(['needs', 'here', 'context', 'agents', 'computer', 'limit', 'others', 'safety'])
   await std.unmount()
 })
 
 test('Custom: the card guide has a switch and a made-up Example for each of the 17 cards, and a switch writes Show or Hide', async ($, on) => {
   const mem = fresh({ 'cockpit:setting:look.view': 'custom' })
   const ui = await draw($, on, mem, 600)
-  await ui.press({ key: 'morel-more-cards' })
+  await ui.press({ key: 'help' })
+  await ui.redraw()
+  await ui.press({ key: 'press-help-guide-0' })
   await ui.redraw()
   const root = await ui.drawn()
   expect(new Set(walk(root).map(x => /guide-ex-(.+)-0$/.exec(keyOf(x) ?? '')?.[1]).filter(id => id !== undefined)).size).toBe(17)
@@ -205,9 +209,11 @@ test('Custom: the card guide has a switch and a made-up Example for each of the 
   await ui.unmount()
 })
 
-test('Start here offers the three views once; a press chooses it and the view changes', async ($, on) => {
+test('Start here offers the three views once, on its summary; a press chooses it and the view changes', async ($, on) => {
   const mem = fresh({ 'cockpit:firstrun': undefined })
   mem.delete('cockpit:firstrun')
+  // The setup's place: the summary, after the five questions
+  mem.set('cockpit:setup:state', { step: 6, answers: { tell: 'balanced', risky: 'tell', spend: 'off', habits: true, plain: true, long: 'auto' } })
   const ui = await draw($, on, mem, 600)
   for (const v of ['standard', 'all', 'custom']) expect(await ui.find({ key: `start-view-${v}` }), v).toBeDefined()
   await ui.press({ key: 'start-view-all' })

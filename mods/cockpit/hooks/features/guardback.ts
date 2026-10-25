@@ -1,7 +1,7 @@
 // The Guard, back-end blocks (Settings > Safety): migration hold (Off, Warn, Hold), env names check, command ledger, untrusted-data fence.
 import type { EngineInterface, On } from 'claude-code'
 
-import { noteHeld, stepOf, takeAllow } from '../core/allowonce'
+import { KEPT_STOPPED_REASON, isKeptStopped, noteHeld, stepOf, takeAllow } from '../core/allowonce'
 import { ALLOW_USED_WHAT, canChange, guardBrokeReason } from '../core/guard'
 import { ENV_WHAT, FENCE_HIT_NOTE, FENCE_NOTE, FENCE_WHAT, GUARDBACK_WHATS, HELD_WHAT, SETTING_KEY, WARNED_WHAT, addHit, detailOf, envDetail, envNote, envNotedKey, envToast, fenceDetail, fenceKey, fenceText, fenceToast, heldToast, holdReason, isOutside, orderKinds, parseFence, warnNote, warnToast } from '../core/guardback'
 import type { Mode } from '../core/guardback'
@@ -23,6 +23,7 @@ import { LEDGER_KEY, logLines, pushLog, readLog } from './compaction'
 import { isEditTool, isShellTool } from '../core/tools'
 import { argsOf, guardMode, takeFresh } from '../core/guardcommon'
 import { subArgs } from '../core/menu'
+import { sayIn } from './saylang'
 
 // IO-BLOCK-START
 function io($: EngineInterface): Io {
@@ -122,6 +123,7 @@ export function registerGuardBack(on: On): void {
         await ledger(i, sid, ALLOW_USED_WHAT, detailOf(found), 'typed')
         i.invalidate()
       } else {
+        if (await isKeptStopped(sid, stepOf(e))) return { deny: KEPT_STOPPED_REASON }
         await noteHeld(i, sid, stepOf(e), heldKeys(found), detailOf(found))
         const offer = await undoOffer(i)
         const fresh = takeFresh(heldSeen, found, f => `${sid}|${f.key}`)
@@ -208,6 +210,7 @@ export function registerGuardBack(on: On): void {
     const rest0 = subArgs(e.args, 'commands')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i).catch(() => undefined)
     return { text: commandsText(parseEntries(await readNote(i, commandsKey(await i.sessionId()))), await isOn(i, SETTING_KEY.commands)) }
   })
 
@@ -215,6 +218,7 @@ export function registerGuardBack(on: On): void {
     const rest0 = subArgs(e.args, 'fence')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i).catch(() => undefined)
     const last = logLines((await readLog(i, LEDGER_KEY)).filter(x => GUARDBACK_WHATS.includes(x.what)), 3)
     const text = fenceText(parseFence(await i.get(fenceKey(await i.sessionId()))), await isOn(i, SETTING_KEY.fence))
     return { text: last.length === 0 ? text : `${text}\n\nLast back-end guard lines:\n${last.join('\n')}` }

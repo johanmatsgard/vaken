@@ -18,7 +18,7 @@ const SKIPS: { label: string; re: RegExp }[] = [
   { label: '.skip', re: /\b(?:it|test|describe|context|suite|specify)\.skip\b/g },
   { label: '.only', re: /\b(?:it|test|describe|context|suite|specify)\.only\b/g },
   { label: 'it.todo', re: /\b(?:it|test|describe)\.(?:todo|fixme)\b/g },
-  { label: 'xit or xdescribe', re: /\b(?:xit|xdescribe|xtest|fit|fdescribe)\s*\(/g },
+  { label: 'xit or xdescribe', re: /(?<![.$\w])(?:xit|xdescribe|xtest|fit|fdescribe)\s*\(/g },
   { label: '@pytest.mark.skip', re: /@pytest\.mark\.(?:skip|skipif|xfail)\b/g },
   { label: 'pytest.skip', re: /\bpytest\.skip\s*\(/g },
   { label: 'unittest skip', re: /@unittest\.skip\w*|@skip\b/g },

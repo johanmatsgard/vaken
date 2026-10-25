@@ -1,9 +1,12 @@
 // The Preview card's eyes: core/eyes.ts (paths, the programs' arguments, readers, words) and core/eyesdev.ts (dev-server truth).
 import { expect } from 'claude-code/testing'
 
-import { CHROME, EYES_SETTINGS, LOOK_CAP, LOOK_WHAT, NEED_CHROME, WRAP_SCRIPT, isOwnProfile, lookText, parseHashes, parseReach, parseSizes, pidsOfProfile, profilePath, shotArgs, stamp, wrapArgv } from '../hooks/core/eyes'
+import { CHROME, EYES_SETTINGS, LOOK_CAP, LOOK_WHAT, NEED_CHROME, WRAP_SCRIPT, isOwnProfile, lookText, parseHashes, parseReach, parseSizes, pidsOfProfile, reachArgv, profilePath, shotArgs, stamp, wrapArgv } from '../hooks/core/eyes'
 import { BODY_HEAD, devLine, errorWords, parseCurl, parseLsof } from '../hooks/core/eyesdev'
 import { didToday } from '../hooks/core/ledger'
+import { bindPlatform } from '../hooks/core/procs'
+import { devFound } from '../hooks/features/eyes'
+import type { Io } from '../hooks/core/io'
 import { test } from './slow'
 
 const NOW = Date.parse('2026-10-10T12:00:00Z')
@@ -86,6 +89,13 @@ test('hashes, sizes and the answer of curl', () => {
   expect(parseReach(23, '200')).toBe(200)
   expect(parseReach(23, '000')).toBeUndefined()
   expect(parseReach(23, 'garbage')).toBeUndefined()
+  // Windows curl.exe cannot write /dev/null (exit 23, and a C:\dev folder would get a file): it writes to NUL there.
+  expect(reachArgv('http://localhost:5173/')).toContain('/dev/null')
+  expect(reachArgv('http://localhost:5173/', 'posix')).toEqual(reachArgv('http://localhost:5173/'))
+  const win = reachArgv('http://localhost:5173/', 'win32')
+  expect(win[win.indexOf('-o') + 1]).toBe('NUL')
+  expect(win).not.toContain('/dev/null')
+  expect(win[win.length - 1]).toBe('http://localhost:5173/')
 })
 
 test('the look text: new pictures, unchanged ones, a failed one, and the cap', () => {
@@ -140,4 +150,35 @@ test('the dev-server lines the brief gives, and the others', () => {
   expect(devLine(3001, who, undefined)).toBe('Port 3001: something listens (node), but it did not answer in 3 s.')
   expect(devLine(8080, who, { status: 404, seconds: 0.01, head: 'Cannot GET /' })).toMatch(/answers 404: the page was not found\. The page text holds: Cannot GET\./)
   expect(devLine(8000, who, { status: 200, seconds: 0.1, head: 'Traceback (most recent call last)' })).toMatch(/answers 200 in 0\.10 s, but the start of the page holds: Traceback\. The page may show an error\./)
+})
+
+// A fake Windows: port 3000 runs in another folder, 5173 in the session's folder (read in other letter case), 8080 has no folder that could be read.
+function winIo(folders: string, asked: string[][]): Io {
+  const io = {
+    run: async (argv: readonly string[]) => {
+      asked.push([...argv])
+      const ok = (stdout: string) => ({ exitCode: 0, stdout, stderr: '' })
+      if (argv[0] === 'netstat') return ok(['  TCP    0.0.0.0:3000   0.0.0.0:0   LISTENING   7002', '  TCP    0.0.0.0:5173   0.0.0.0:0   LISTENING   7001', '  TCP    0.0.0.0:8080   0.0.0.0:0   LISTENING   7003'].join('\r\n'))
+      if (argv[0] === 'tasklist') return ok('"node.exe","7001","Console","1","50,000 K"\r\n"node.exe","7002","Console","1","50,000 K"\r\n"python.exe","7003","Console","1","9,000 K"')
+      if (argv.join(' ').includes('CockpitCwd')) return ok(folders)
+      if (argv[0] === 'curl') return ok('<html>ok</html>\n200 0.01')
+      return { exitCode: 1, stdout: '', stderr: '' }
+    },
+  }
+  return bindPlatform(io, async () => 'Windows_NT') as unknown as Io
+}
+
+test('windows: a dev server counts only when its folder, read from the program, is in the session folder (letter case ignored)', async () => {
+  const asked: string[][] = []
+  const got = await devFound(winIo('{"7001":"C:\\\\Work\\\\App\\\\","7002":"C:\\\\other"}', asked), 'c:\\work\\app')
+  expect(got?.port).toBe(5173)
+  expect(got?.who).toBe('node')
+  expect(asked.some(a => a.join(' ').includes('CockpitCwd'))).toBe(true)
+  const sub = await devFound(winIo('{"7001":"C:\\\\Work\\\\App\\\\src","7002":"C:\\\\Work\\\\Apple"}', []), 'C:\\Work\\App')
+  expect(sub?.port).toBe(5173)
+})
+
+test('windows: no folder read and none in the command means no dev server; no session folder means none either', async () => {
+  expect(await devFound(winIo('{}', []), 'C:\\work\\app')).toBe(undefined)
+  expect(await devFound(winIo('{"7001":"C:\\\\work\\\\app"}', []), undefined)).toBe(undefined)
 })

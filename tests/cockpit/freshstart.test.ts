@@ -128,7 +128,7 @@ test('on a new topic in a big chat: one warn line for 10 minutes, one ledger lin
   await freshCheck(w.io, { text: 'Add a unit test for the login form validation' })
   expect(band(w.mem)).toEqual([])
   await freshCheck(w.io, { text: OTHER })
-  expect(band(w.mem).map(b => [b.level, b.text, b.ttlMs])).toEqual([['warn', 'New topic? A fresh session costs less.', 10 * MIN]])
+  expect(band(w.mem).map(b => [b.level, b.text, b.ttlMs])).toEqual([['info', 'New topic? A fresh session costs less.', 10 * MIN]])
   const ledger = w.mem.get('cockpit:ledger:compact') as Array<{ what: string; did?: boolean }>
   expect(ledger.map(l => [l.what, l.did])).toEqual([['Suggested a fresh session', true]])
   expect(JSON.stringify([...w.mem.entries()])).not.toMatch(/quarterly|spreadsheet|login form/i)

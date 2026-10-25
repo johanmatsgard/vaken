@@ -1,7 +1,9 @@
 import { expect, mock } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { LONG_JOB_MS, QUIET_MS, STUCK_MS, batchText, beatWord, glanceLines, heartbeat, isQuiet, notices, recapWords } from '../hooks/core/attention'
+import { LONG_JOB_MS, QUIET_MS, STUCK_MS, batchText, beatWord, glanceLines, heartbeat, isQuiet, noticePlan, notices, recapWords } from '../hooks/core/attention'
+import { noticeRows } from '../hooks/features/attention'
+import { buildView } from '../hooks/features/home/logic'
 import type { NoticeRow } from '../hooks/core/attention'
 import { SLOW, test } from './slow'
 import { viaParent } from './viaparent'
@@ -52,8 +54,9 @@ test('many notices become one toast', () => {
 })
 
 test('the recap and the glance say it short', () => {
-  expect(recapWords({ gapMs: 25 * MIN, branch: 'feat-x', contextPercent: 62, cache: 'Cache lapsed' })).toBe('Back after 25 min. Branch feat-x. Context 62% full. Cache lapsed.')
-  expect(recapWords({ gapMs: 90 * MIN, unreviewed: 2 })).toBe('Back after 1.5 h. 2 changes wait for your look.')
+  // No context figure: This session and the status line own it
+  expect(recapWords({ gapMs: 25 * MIN, branch: 'feat-x', cache: 'Cache lapsed' })).toBe('Back after 25 min. Branch feat-x. Cache lapsed.')
+  expect(recapWords({ gapMs: 90 * MIN, unreviewed: 2 })).toBe('Back after 2 h. 2 changes wait for your look.')
   expect(glanceLines({ needs: [], hereState: 'Idle, context 4% full', didCount: 0 })).toEqual(['Nothing needs you.', 'Plan limit not reported yet.', 'This session: Idle, context 4% full. Autopilot did nothing today.'])
   const g = glanceLines({ needs: [{ name: 'A', reason: 'asks' }, { name: 'B', reason: '' }], limitPercent: 86.2, limitReset: 'resets Wed 13:00', hereState: 'Working', didCount: 3 })
   expect(g[0]).toBe('2 need you: A (asks), B (waiting).')
@@ -61,9 +64,54 @@ test('the recap and the glance say it short', () => {
   expect(g[2]).toBe('This session: Working. Autopilot did 3 things today.')
   expect(glanceLines({ needs: [], hereState: 'Idle', didCount: 1 })[2]).toBe('This session: Idle. Autopilot did 1 thing today.')
   expect(g[2].split(' ').length).toBeLessThanOrEqual(12)
-  expect(recapWords({ gapMs: 0, branch: 'feat-x', contextPercent: 62 })).toBe('You were away under 5 min. Nothing needs you.')
-  expect(recapWords({ gapMs: 4 * MIN + 59_000 })).toBe('You were away under 5 min. Nothing needs you.')
+  expect(recapWords({ gapMs: 0, branch: 'feat-x', needs: 0 })).toBe('You were away under 5 min. Nothing needs you.')
+  expect(recapWords({ gapMs: 4 * MIN + 59_000, needs: 0 })).toBe('You were away under 5 min. Nothing needs you.')
   expect(recapWords({ gapMs: 5 * MIN, branch: 'feat-x' })).toBe('Back after 5 min. Branch feat-x.')
+})
+
+test('a session that needs you is an urgent toast, so the hourly gate never eats the second question; a finished job alone is not', () => {
+  const asks = notices({}, [row()], {}, 'all', NOW)
+  expect(noticePlan({}, asks, false)).toMatchObject({ urgent: true, tell: asks.notices })
+  const prev = { s1: { kind: 'working', since: NOW - LONG_JOB_MS - MIN } }
+  const done = notices(prev, [row({ kind: 'waiting', reason: '', since: NOW })], {}, 'all', NOW)
+  expect(noticePlan(prev, done, false).urgent).toBe(false)
+})
+
+test('quiet hours hold a notice back instead of using it up: it is told when they end', () => {
+  const asks = notices({}, [row()], {}, 'needs', NOW)
+  const held = noticePlan({}, asks, true)
+  expect(held.tell).toEqual([])
+  const after = notices(held.next, [row()], {}, 'needs', NOW + 60 * MIN)
+  expect(noticePlan(held.next, after, false).tell.map(n => n.text)).toEqual(['"Fix login" needs you: asks a question.'])
+
+  const prev = { s1: { kind: 'working', since: NOW - LONG_JOB_MS - MIN } }
+  const finished = row({ kind: 'waiting', reason: '', since: NOW })
+  const night = noticePlan(prev, notices(prev, [finished], {}, 'all', NOW), true)
+  expect(night.tell).toEqual([])
+  const morning = notices(night.next, [finished], {}, 'all', NOW + 60 * MIN)
+  expect(noticePlan(night.next, morning, false).tell.map(n => n.text)).toEqual(['"Fix login" finished.'])
+})
+
+test('a long job silent for over 2 minutes still gives its finished notice', () => {
+  const rec = (state: string, at: number) => ({ sessionId: 's1', cwd: '/w/a', title: 'Fix login', model: 'm', state, startedAt: NOW - 60 * MIN, updatedAt: at, lastEventAt: at - 5 * MIN, stateSince: NOW - 10 * MIN }) as never
+  const silent = buildView([rec('working', NOW)], NOW, 'me', undefined)
+  expect(silent.idle).toHaveLength(1)
+  const seen = notices({}, noticeRows(silent), {}, 'all', NOW)
+  const back = { ...rec('waiting', NOW + MIN), lastEventAt: NOW + MIN, stateSince: NOW + MIN } as never
+  const done = notices(seen.next, noticeRows(buildView([back], NOW + MIN, 'me', undefined)), {}, 'all', NOW + MIN)
+  expect(done.notices.map(n => n.text)).toEqual(['"Fix login" finished.'])
+})
+
+test('the recap names the goal and says Nothing needs you only when it counted none', () => {
+  expect(recapWords({ gapMs: MIN })).toBe('You were away under 5 min.')
+  expect(recapWords({ gapMs: MIN, needs: 2 })).toBe('You were away under 5 min. Needs you: 2.')
+  expect(recapWords({ gapMs: 20 * MIN, goal: 'fix login', needs: 1 })).toBe('Back after 20 min. Goal: fix login Needs you: 1.')
+})
+
+test('the glance names every session that needs you and counts the rest by what they are', () => {
+  const needs = ['A', 'B', 'C', 'D', 'E'].map(name => ({ name, reason: 'asks' }))
+  expect(glanceLines({ needs, needsTotal: 7, hereState: 'Idle', didCount: 0 })[0]).toBe('7 need you: A (asks), B (asks), C (asks), D, E, 2 more in Needs you.')
+  expect(glanceLines({ needs: [], needsTotal: 2, hereState: 'Idle', didCount: 0 })[0]).toBe('2 need you.')
 })
 
 function memStore(on: On): Map<string, unknown> {

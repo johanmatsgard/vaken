@@ -1,5 +1,6 @@
 // The Guard: four checks on risky steps (Off, Warn or Hold each) and the halt switch. These are speed bumps, not a lock: the checks read command text, and a hook that fails lets a step through in Warn. Only names, paths, counts and times are kept.
 import { tr } from './lang'
+import { fillIn } from './fillin'
 import type { HelpEntry } from './registry'
 import type { Setting } from './settings'
 import { HOST_RULE_WORDS } from './guardhost'
@@ -29,17 +30,17 @@ export const GUARD_SETTINGS: Setting[] = [
 export const GUARD_HELP: HelpEntry[] = [
   {
     title: 'Why did it stop me?',
-    text: 'The safety check watches risky steps: deletes and force-pushes, edits outside your folders, odd new packages, and weakened tests. In Warn it tells Claude after the step, and in Stop it stops the step until you allow it. Left on its own setting, a risky command stops only when Claude Code would not ask you first (if vaken cannot tell, it warns).',
+    text: 'The safety check watches risky steps: deletes and force-pushes, edits outside your folders, odd new packages, and weakened tests. In Warn it tells Claude after the step, and in Stop it stops the step until you allow it. Left unchosen, Warn reads "Warn (stops in auto mode)": it stops a risky command where Claude Code would not ask you first, and warns where it asks or vaken cannot tell; a Warn you pick yourself only warns.',
   },
   {
-    title: 'Pause all and allow once',
+    title: 'Pause this session and allow once',
     text: '/vaken-pause pauses shell commands, file edits, tools from other apps, agents, web fetches and skills in this session, until you run /vaken-pause off. /vaken-guard allow once lets the next stopped step through.',
   },
 ]
 
 const RULE: Record<Block, string> = { destructive: 'risky command hold', scope: 'edit fence', packages: 'package check', tests: 'test change alert' }
 const WHAT_DOES: Record<Block, string> = {
-  destructive: 'Deletes, force-pushes, wipes, SQL that drops or empties data, cloud and database deletes, and package publishes', // en-only: text twin (the plain answer of /vaken-guard)
+  destructive: 'Deletes, force-pushes, wipes, SQL that drops or empties data, cloud and database deletes, and package publishes',
   scope: 'Edits outside the folders you set, and edits to protected files',
   packages: 'New packages that look odd (very young, look-alike names, deprecated)',
   tests: 'Edits to test files that skip tests or remove checks',
@@ -80,14 +81,19 @@ export const ALLOW_TTL_MS = 30 * 60_000
 
 export const canChange = (tool: string): boolean => runsCommand(tool) || isEditTool(tool) || tool.startsWith('mcp__')
 
-// Halt also stops tools that start helpers, fetch from the web, run a skill or send to another session, since they can change things or let something out.
-export const HALT_EXTRA_TOOLS: ReadonlySet<string> = new Set(['Task', 'Agent', 'WebFetch', 'Skill', 'SendMessage', 'CronCreate'])
+// Halt also stops tools that start helpers or workflows, fetch from the web, run a skill, send to another session or off this computer, publish, or make or remove a worktree, since they can change things or let something out.
+export const HALT_EXTRA_TOOLS: ReadonlySet<string> = new Set([
+  'Task', 'Agent', 'WebFetch', 'Skill', 'SendMessage', 'CronCreate',
+  'Workflow', 'RemoteTrigger', 'ScheduleWakeup', 'AppifactRepl', // en-only: tool names
+  'Artifact', 'ArtifactComments', 'ArtifactData', 'ClaudeDesign', 'DesignSync', 'Projects', 'PublishPlugin', 'ShareOnboardingGuide', // en-only: tool names
+  'SendFile', 'SendFeedback', 'EnterWorktree', 'ExitWorktree',
+])
 export const haltStops = (tool: string): boolean => canChange(tool) || HALT_EXTRA_TOOLS.has(tool)
 
 export const HALT_SCOPE = 'shell commands, file edits, tools from other apps, agents, web fetches and skills'
 
 // The task runner and the merge step act without a Claude tool call, so they read the halt themselves.
-export const HALT_ON_SAID = 'Pause is on. Nothing ran. Resume with /vaken-pause off first.'
+export const HALT_ON_SAID = 'This session is paused. Nothing ran. Resume with /vaken-pause off first.'
 
 
 // `soft`: a finding that only warns even in Hold, such as a registry that did not answer in time.
@@ -133,19 +139,20 @@ export function scopeFrom(words: string[], home: string, cwd: string): string[] 
 }
 
 
-type GuardAsk = { kind: 'status' } | { kind: 'allow' } | { kind: 'scope-show' } | { kind: 'scope-off' } | { kind: 'scope-set'; words: string[] } | { kind: 'bad'; why: string }
+type GuardAsk = { kind: 'status' } | { kind: 'allow' } | { kind: 'rules' } | { kind: 'scope-show' } | { kind: 'scope-off' } | { kind: 'scope-set'; words: string[] } | { kind: 'bad'; why: string }
 
 export function parseGuardAsk(args: string): GuardAsk {
   const words = args.trim().split(/\s+/).filter(w => w !== '')
   const first = words[0]?.toLowerCase()
   if (first === undefined) return { kind: 'status' }
-  if (first === 'allow') return words.length === 2 && words[1].toLowerCase() === 'once' ? { kind: 'allow' } : { kind: 'bad', why: 'Use: /vaken-guard allow once' }
+  if (first === 'rules' && words.length === 1) return { kind: 'rules' }
+  if (first === 'allow') return words.length === 2 && words[1].toLowerCase() === 'once' ? { kind: 'allow' } : { kind: 'bad', why: tr('Use: /vaken-guard allow once') }
   if (first === 'scope') {
     if (words.length === 1) return { kind: 'scope-show' }
     if (words.length === 2 && words[1].toLowerCase() === 'off') return { kind: 'scope-off' }
     return { kind: 'scope-set', words: words.slice(1) }
   }
-  return { kind: 'bad', why: 'Use: /vaken-guard, /vaken-guard allow once, /vaken-guard scope <folders...> or /vaken-guard scope off' }
+  return { kind: 'bad', why: tr('Use: /vaken-guard, /vaken-guard allow once, /vaken-guard rules, /vaken-guard scope <folders...> or /vaken-guard scope off') }
 }
 
 export const MODE_WORDS: Record<Mode, string> = { off: 'off', warn: 'warn (the step runs and Claude is told)', hold: 'stop (the step is stopped until you allow it)' }
@@ -155,26 +162,26 @@ export const OTHER_RULES: readonly OtherRule[] = ['world', 'secrets', 'migration
 export const OTHER_SETTING_KEY: Record<OtherRule, string> = { world: 'guard.world', secrets: 'guard.secrets', migrations: 'guard.migrations' }
 const OTHER_RULE: Record<OtherRule, string> = { world: 'outside-actions check', secrets: 'secret tripwire', migrations: 'migration hold' }
 const OTHER_DOES: Record<OtherRule, string> = {
-  world: 'Messages, posts, payments, pull requests and cloud changes', // en-only: text twin (the plain answer of /vaken-guard)
-  secrets: 'Secret files read, keys printed, and secrets sent off this computer', // en-only: text twin (the plain answer of /vaken-guard)
-  migrations: 'Database migrations that change the structure', // en-only: text twin (the plain answer of /vaken-guard)
+  world: 'Messages, posts, payments, pull requests and cloud changes',
+  secrets: 'Secret files read, keys printed, and secrets sent off this computer',
+  migrations: 'Database migrations that change the structure',
 }
 
 type StatusFacts = { modes: Record<Block, Mode>; others?: Record<OtherRule, Mode>; halted: boolean; allowPending: boolean; scope: string[]; last: string[] }
 
 export function statusText(f: StatusFacts): string {
   const lines: string[] = []
-  lines.push(f.halted ? `PAUSED: ${HALT_SCOPE} are stopped in this session. Resume with /vaken-pause off.` : `Not paused. /vaken-pause pauses ${HALT_SCOPE}.`)
+  lines.push(f.halted ? fillIn(tr('PAUSED: {scope} are stopped in this session. Resume with /vaken-pause off.'), { scope: tr(HALT_SCOPE) }) : fillIn(tr('Not paused. /vaken-pause pauses {scope}.'), { scope: tr(HALT_SCOPE) }))
   lines.push('')
-  const line = (rule: string, mode: Mode, does: string): string => `${rule.charAt(0).toUpperCase()}${rule.slice(1)}: ${MODE_WORDS[mode]}. ${does}.`
-  for (const b of BLOCKS) lines.push(line(RULE[b], f.modes[b], WHAT_DOES[b]))
+  const line = (rule: string, mode: Mode, does: string): string => `${rule.charAt(0).toUpperCase()}${rule.slice(1)}: ${tr(MODE_WORDS[mode])}. ${tr(does)}.`
+  for (const b of BLOCKS) lines.push(line(tr(RULE[b]), f.modes[b], WHAT_DOES[b]))
   const others = f.others
-  if (others !== undefined) for (const r of OTHER_RULES) lines.push(line(OTHER_RULE[r], others[r], OTHER_DOES[r]))
+  if (others !== undefined) for (const r of OTHER_RULES) lines.push(line(tr(OTHER_RULE[r]), others[r], OTHER_DOES[r]))
   lines.push('')
-  lines.push(f.scope.length > 0 ? `Your folders: ${f.scope.join(', ')}. /vaken-guard scope off clears them.` : 'Your folders: none set, so only protected files count. /vaken-guard scope <folders...> sets them.')
-  lines.push(f.allowPending ? 'Allow once: ready. The next stopped step will go through.' : 'Allow once: not set. After a step is stopped, /vaken-guard allow once lets the next one through.')
-  if (f.last.length > 0) lines.push('', 'Last:', ...f.last)
-  lines.push('', HOST_RULE_WORDS)
-  lines.push('', 'Change a check: Settings > Safety. These checks read the text of a step. They are reminders and speed bumps, not a lock.')
+  lines.push(f.scope.length > 0 ? fillIn(tr('Your folders: {folders}. /vaken-guard scope off clears them.'), { folders: f.scope.join(', ') }) : tr('Your folders: none set, so only protected files count. /vaken-guard scope <folders...> sets them.'))
+  lines.push(f.allowPending ? tr('Allow once: ready. The next stopped step will go through.') : tr('Allow once: not set. After a step is stopped, /vaken-guard allow once lets the next one through.'))
+  if (f.last.length > 0) lines.push('', tr('Last:'), ...f.last)
+  lines.push('', tr(HOST_RULE_WORDS))
+  lines.push('', tr('Change a check: Settings > Safety. These checks read the text of a step. They are reminders and speed bumps, not a lock.'))
   return lines.join('\n')
 }

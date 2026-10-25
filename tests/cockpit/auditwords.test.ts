@@ -43,9 +43,9 @@ test('the text twin says Needs you when this session waits for its stopped step 
 
 test('no session yet: one period, in the text twin and the glance lines', () => {
   const text = homeText({ needs: [], working: [], waiting: [], idle: [], now: noon } as unknown as View)
-  expect(text).toMatch(/This session: Nothing to show yet\. This appears after the first answer\. ·/)
+  expect(text).toMatch(/This session: Nothing to show yet\. This appears after the first answer\. Send a message in the chat\. ·/)
   expect(text).not.toMatch(/answer\.\./)
-  expect(glanceLines({ needs: [], hereState: hereWord(undefined), didCount: 0 })[2]).toBe('This session: Nothing to show yet. This appears after the first answer. Autopilot did nothing today.')
+  expect(glanceLines({ needs: [], hereState: hereWord(undefined), didCount: 0 })[2]).toBe('This session: Nothing to show yet. This appears after the first answer. Send a message in the chat. Autopilot did nothing today.')
 })
 
 test('a reset on another day names the day, one a week or more away says how far, one today only the time', () => {
@@ -90,10 +90,10 @@ test('an old plan figure says its age on the Glance row and in the text twin fro
   expect(limitAgo([{ sinceMs: 25 * MIN }])).toBe('25 min ago')
   const forms = limitForms([{ short: 'Week', percent: 40, reset: 'resets Thu 14:00' }], s => s, '7 min ago')
   expect(forms[0]).toBe('Week: 40% used · resets Thu 14:00 · 7 min ago')
-  expect(forms.at(-1)).toBe('40% used')
-  expect(limitForms([{ short: 'Week', percent: 40 }])).toEqual(['Week: 40% used', '40% used'])
+  expect(forms.at(-1)).toBe('Week 40%')
+  expect(limitForms([{ short: 'Week', percent: 40 }])).toEqual(['Week: 40% used', 'Week: 40%', 'Week 40%'])
   const view = buildView([rec('me', { updatedAt: noon - 7 * MIN, lastEventAt: noon - 7 * MIN, sevenDayPercent: 40, sevenDayResetsAt: new Date(noon + 2 * DAY).toISOString() })], noon, 'me', undefined)
-  expect(homeText(view)).toMatch(/Weekly limit: 40% used, resets \w{3} 12:00, read 7 min ago\./)
+  expect(homeText(view)).toMatch(/Week: 40% used, resets \w{3} 12:00, read 7 min ago\./)
 })
 
 test('one age word: the inbox says "2 h" where the row says "2 h", never "2 h 10 min"', () => {
@@ -105,15 +105,17 @@ test('one age word: the inbox says "2 h" where the row says "2 h", never "2 h 10
   expect(itemShort(it!, noon)).not.toMatch(/2 h 10 min/)
 })
 
-test('the glossary words: stopped, agents, Not read yet, Vaken at the start', () => {
+test('the glossary words: stopped, agents, Not known yet, Vaken at the start', () => {
   expect(HOLD_MEANS.join(' ')).not.toMatch(/blocked/)
   expect(t('cardcompact.not_helpers')).toBe('An agent or a background command is still running')
   expect(t('settings.preset_thrifty_about')).toMatch(/gives agents cheaper models/)
   expect(t('settings.quiet_plus_suggestions_band_lines')).toMatch(/^Only alerts, plus every free feature:/)
   expect(t('settings.balanced_plus_the_checks_and_the')).toMatch(/^Recommended, plus features that send/)
-  expect(t('access.dot_unknown')).toBe('Not read yet')
+  expect(t('access.dot_unknown')).toBe('Not known yet')
   expect(ASK_TITLE.startsWith('Vaken ')).toBe(true)
   const en = Object.keys(byEnglish('sv'))
-  expect(en.filter(s => /\bhelpers?\b/i.test(s))).toEqual([])
-  expect(en.filter(s => /(^|[.?!] )vaken\b/.test(s))).toEqual([])
+  // "helper" is a typed word of /vaken-tasks limit, not prose
+  expect(en.filter(s => /\bhelpers?\b/i.test(s.replace(/limit helper|min\|helper\|/g, '')))).toEqual([])
+  // "vaken did {what}" is the tail of the band brief after a comma, not a sentence start
+  expect(en.filter(s => /(^|[.?!] )vaken\b/.test(s) && s !== 'vaken did {what}')).toEqual([])
 })

@@ -10,7 +10,7 @@ import { test } from './slow'
 
 const OLD = /cockpit/i
 
-const FILE_NAME_ROWS = new Set(['explain.the_cockpit_wrote_a_file_claude', 'common.do_the_steps_in_this_order'])
+const FILE_NAME_ROWS = new Set(['explain.the_cockpit_wrote_a_file_claude', 'common.do_the_steps_in_this_order', 'find.old_name', 'cmdd.too_many_exports_are_in_the_claude', 'cmdd.too_many_exports_are_in_the_claude_2'])
 
 const clean = (text: string): string => text.replace(/(~\/)?\.claude\/cockpit(-[a-z]+\*?(-\d+)?(\.md|\/))?/g, '').replace(/cockpit-[a-z]+(-\d+)?\.md/g, '')
 const bad = (text: string): boolean => OLD.test(clean(text))

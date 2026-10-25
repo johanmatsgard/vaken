@@ -8,8 +8,11 @@ export const COST_UPGRADE_DONE = 'cockpit:upgrade:costmodes'
 export const COST_KEPT_WHAT = 'Your mode follows the new modes after an update'
 
 export const OLD_COST_DEFAULTS: Readonly<Record<string, string>> = Object.fromEntries(
-  ['value.weekly', 'today.brief', 'neighbors.warn', 'heartbeat.mode', 'recap.mode', 'happened.mode', 'proof.claims', 'proof.done', 'proof.drift', 'proof.anomaly', 'coach.mode', 'decisions.mode', 'diet.mode', 'hints.model', 'route.mode', 'preview.auto', 'cost.budget', 'resume.mode', 'fresh.nudge', 'prompt.check', 'plan.first'].map(k => [k, 'off']),
+  ['value.weekly', 'today.brief', 'neighbors.warn', 'heartbeat.mode', 'recap.mode', 'happened.mode', 'proof.claims', 'proof.done', 'proof.drift', 'proof.anomaly', 'coach.mode', 'decisions.mode', 'diet.mode', 'hints.model', 'route.mode', 'preview.auto', 'cost.budget', 'resume.mode', 'fresh.nudge', 'prompt.check', 'plan.first', 'next.mode', 'lean.mode', 'allow.rules', 'teach.mode'].map(k => [k, 'off']),
 )
+
+// Rows outside the helper class whose default has changed since: they read at the old default while the store never saved them. Only used to tell which old mode a store was on; the upgrade never writes them (Compact by itself is kept at Auto by its own step below, and a stored choice is never changed).
+export const OLD_OTHER_DEFAULTS: Readonly<Record<string, string>> = { 'compact.mode': 'watch', 'notify.mode': 'needs' }
 
 const OLD_ALERTS = { 'guard.destructive': 'warn', 'guard.scope': 'warn', 'guard.packages': 'warn', 'guard.tests': 'warn', 'guard.world': 'warn', 'guard.secrets': 'warn', 'guard.migrations': 'warn', 'limits.warn': 'on', 'notify.mode': 'needs' }
 const OLD_NUDGES = { 'value.weekly': 'on', 'today.brief': 'on', 'neighbors.warn': 'on', 'heartbeat.mode': 'on', 'recap.mode': 'on', 'happened.mode': 'on', 'proof.claims': 'warn', 'proof.done': 'on', 'proof.drift': 'warn', 'proof.anomaly': 'warn', 'coach.mode': 'on', 'diet.mode': 'on', 'hints.model': 'on', 'route.mode': 'suggest' }
@@ -25,7 +28,7 @@ export const OLD_MODES: Readonly<Record<'quiet' | 'balanced' | 'full', Record<st
 const PICKED_QUIET_MIN = Math.ceil(Object.keys(OLD_COST_DEFAULTS).length / 2)
 
 export function oldModeOf(values: Record<string, string>, stored: ReadonlySet<string>): 'quiet' | 'balanced' | 'full' | 'custom' {
-  const was = { ...values, ...Object.fromEntries(Object.entries(OLD_COST_DEFAULTS).filter(([k]) => !stored.has(k))) }
+  const was = { ...values, ...Object.fromEntries([...Object.entries(OLD_COST_DEFAULTS), ...Object.entries(OLD_OTHER_DEFAULTS)].filter(([k]) => !stored.has(k))) }
   for (const m of ['full', 'balanced', 'quiet'] as const) if (Object.entries(OLD_MODES[m]).every(([k, v]) => was[k] === v)) return m
   return 'custom'
 }
@@ -65,4 +68,25 @@ export async function upgradeCostModes(i: Io): Promise<string[]> {
   }
   await i.set(COST_UPGRADE_DONE, 'done')
   return wrote
+}
+
+// Compact by itself is Watch only for a new store. A store from before that never chose it compacted by itself at Auto, so it keeps Auto: written once.
+export const COMPACT_UPGRADE_DONE = 'cockpit:upgrade:compactwatch'
+export const COMPACT_KEPT_AUTO = 'auto'
+// What a store from before holds: a saved row, or a mark of the steps every session start writes (read before those steps run in this session)
+const BEFORE_MARKS = ['cockpit:upgrade:tipsdefaults', COST_UPGRADE_DONE, 'cockpit:upgrade:notifymode', 'cockpit:firstrun']
+
+export async function installedBefore(i: Io): Promise<boolean> {
+  for (const k of BEFORE_MARKS) if ((await i.get(k)) === 'done') return true
+  for (const s of SETTINGS) if (saved(await i.get(settingStoreKey(s.key)))) return true
+  return false
+}
+
+// `before`: installedBefore, read at the start of the session start. True when it wrote Auto.
+export async function upgradeCompactAuto(i: Io, before: boolean): Promise<boolean> {
+  if ((await i.get(COMPACT_UPGRADE_DONE)) === 'done') return false
+  const keep = before && !saved(await i.get(settingStoreKey('compact.mode')))
+  if (keep) await writeSetting(i, 'compact.mode', COMPACT_KEPT_AUTO)
+  await i.set(COMPACT_UPGRADE_DONE, 'done')
+  return keep
 }

@@ -1,5 +1,7 @@
 // Starter agents: a cheap lookup helper and a reviewer written to ~/.claude/agents/ when missing.
 import { under } from './platform'
+import { tr } from '../i18n/t'
+import { fillIn } from './fillin'
 import type { HelpEntry } from './registry'
 import type { Setting } from './settings'
 
@@ -12,6 +14,7 @@ export const STARTERS_WHAT = 'Wrote starter agents'
 
 export type Starter = { name: string; model: string; blurb: string; text: string }
 
+// en-only: an agent file written for Claude
 const LOOKUP = `---
 name: vaken-lookup
 description: Finds files, code and facts in the project and answers in 10 lines or fewer. Cheap and read-only. Use it for a quick "where is X" or "what does Y do" before you read many files yourself.
@@ -28,6 +31,7 @@ You are a quick lookup helper. You only read. You never change a file.
 5. If you did not find it, say so. Do not guess.
 `
 
+// en-only: an agent file written for Claude
 const REVIEWER = `---
 name: vaken-reviewer
 description: Reviews a change (a diff) for bugs and risks and ranks what it finds. Reads only, never edits. Use it before you commit or open a pull request.
@@ -66,19 +70,19 @@ const nameList = (list: Starter[]): string => list.map(s => s.name).join(', ')
 export function startersPreview(home: string, existing: ReadonlySet<string>): string {
   const { write, skip } = planStarters(existing)
   return [
-    `Two starter agents for ${agentsDir(home)}:`,
-    ...STARTERS.map(s => `  ${s.name} (model ${s.model}): ${s.blurb}.${existing.has(s.name) ? ' Already there.' : ''}`),
+    fillIn(tr('Two starter agents for {dir}:'), { dir: agentsDir(home) }),
+    ...STARTERS.map(s => `  ${fillIn(tr('{name} (model {model}): {blurb}.'), { name: s.name, model: s.model, blurb: tr(s.blurb) })}${existing.has(s.name) ? ` ${tr('Already there.')}` : ''}`),
     '',
-    write.length === 0 ? 'Both files are already there. Nothing to write.' : `To write ${nameList(write)}: /vaken-tasks agents make yes`,
-    ...(skip.length === 0 ? [] : [`${nameList(skip)} stays as it is: vaken never overwrites a file.`]),
+    write.length === 0 ? tr('Both files are already there. Nothing to write.') : fillIn(tr('To write {list}: /vaken-tasks agents make yes'), { list: nameList(write) }),
+    ...(skip.length === 0 ? [] : [fillIn(tr('{list} stays as it is: vaken never overwrites a file.'), { list: nameList(skip) })]),
   ].join('\n')
 }
 
 export function startersResult(home: string, wrote: Starter[], skipped: Starter[], failed: { name: string; why: string }[]): string {
   return [
-    wrote.length === 0 ? 'Wrote nothing.' : `Wrote ${nameList(wrote)} in ${agentsDir(home)}.`,
-    ...(skipped.length === 0 ? [] : [`Skipped ${nameList(skipped)}: the file already exists, and vaken never overwrites a file.`]),
-    ...failed.map(f => `Could not write ${f.name}: ${f.why}`),
-    ...(wrote.length === 0 ? [] : ['Claude finds them in a new session.']),
+    wrote.length === 0 ? tr('Wrote nothing.') : fillIn(tr('Wrote {list} in {dir}.'), { list: nameList(wrote), dir: agentsDir(home) }),
+    ...(skipped.length === 0 ? [] : [fillIn(tr('Skipped {list}: the file already exists, and vaken never overwrites a file.'), { list: nameList(skipped) })]),
+    ...failed.map(f => fillIn(tr('Could not write {name}: {why}'), { name: f.name, why: tr(f.why) })),
+    ...(wrote.length === 0 ? [] : [tr('Claude finds them in a new session.')]),
   ].join('\n')
 }

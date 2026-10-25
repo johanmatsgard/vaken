@@ -14,6 +14,9 @@ import { COUNTS_KEY, countsSince } from '../core/counts'
 import { serialUpdate } from '../core/serial'
 import { weeklyBand, weeklyLine as weeklySentence, weeklyValue } from '../core/weekly'
 import { subArgs } from '../core/menu'
+import { tr } from '../core/lang'
+import { sayIn } from './saylang'
+import { learnMem, offersLine } from '../core/offerlearn'
 
 // IO-BLOCK-START
 function io($: EngineInterface): Io {
@@ -50,8 +53,10 @@ export async function valueText(i: Io, args: string): Promise<string> {
   const ledger = await readLog(i, LEDGER_KEY)
   const rows = actionsBetween(audit, ledger, from, now + 1)
   const quiet = quietBlocks(rows, SETTINGS, await readSettings(i))
-  const estimate = days === 7 ? weeklySentence(weeklyValue(countsSince(await i.get(COUNTS_KEY), from), ledger, from, now + 1)) : undefined
-  return [...(estimate === undefined ? [] : [`${estimate} (estimate)`]), ...valueLines({ days, rows, freed: freedBetween(ledger, from, now + 1), quiet, cut: cutIn(audit, from) })].join('\n')
+  const week = days === 7 ? weeklySentence(weeklyValue(countsSince(await i.get(COUNTS_KEY), from), ledger, from, now + 1)) : undefined
+  // Learn from outcomes (core/offerlearn.ts): this project's presses on vaken's offers this week, one line
+  const offers = days === 7 ? offersLine(learnMem.book, weekStamp(now)) : undefined
+  return [...(week === undefined ? [] : [week]), ...(offers === undefined ? [] : [offers]), ...valueLines({ days, rows, freed: freedBetween(ledger, from, now + 1), quiet, cut: cutIn(audit, from) })].join('\n')
 }
 
 // Never throws.
@@ -92,10 +97,11 @@ export function registerValue(on: On): void {
   on('command.run', { command: 'vaken-today' }, async ($, e, next) => {
     const rest0 = subArgs(e.args, 'value')
     if (rest0 === undefined) return next(e)
+    await sayIn(io($))
     try {
       return { text: await valueText(io($), rest0) }
     } catch {
-      return { text: 'The value meter could not read what vaken wrote down. Try again in a moment.' } // en-only: plain answer of a slash command (text twin)
+      return { text: tr('The value meter could not read what vaken wrote down. Try again in a moment.') }
     }
   })
 

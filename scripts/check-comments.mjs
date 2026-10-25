@@ -182,26 +182,44 @@ function commentsHash(text, py) {
 
 const TASK = /(?<![A-Za-z0-9_-])(?:L[VWH]?\d+(?:-\d+)?|G\d|(?!P(?:50|75|90|95|99)\b)[PRMOUTAI]-?\d{2,}|[PU]-\d+|[A-Z]{1,2}\d+-[A-Z]?\d+)(?![A-Za-z0-9_-])/;
 const BWP = /\b[Bb]atch \d+[a-z]?\b|\b[Ww]ave \d+|\b[Pp]hase \d+|\b[Ss]tep \d+\b/;
+// In a test title a numbered step is the setup card's own, so only batch, wave and phase count there.
+const BWP_TITLE = /\b[Bb]atch \d+[a-z]?\b|\b[Ww]ave \d+|\b[Pp]hase \d+/;
 const DATE = /\b20\d\d-[01]\d-[0-3]\d\b|\b\d{1,2} (?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.? 20\d\d\b|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2},? 20\d\d\b/;
 const OWNER = /[Oo]wner/;
 const LIVE = /[Ll]ive round|[Ff]ound live|[Ll]ive finding|[Ll]ive pass|[Ll]ive test round/;
 const DOCS = /\bdocs\/[A-Za-z0-9_./*-]*[A-Za-z0-9_*]/;
 const DOCS_G = new RegExp(DOCS.source, "g");
 const ITEM = /\b[Ii]tems? \d+/;
-const KINDS = ["task-code", "batch-wave-phase", "date", "owner", "live-round", "docs-link", "item-ref", "docs-path"];
+// Review and history words: the name of a review pass, an idea or polish code, a version seen in the app, a numbered round.
+const WORK = /[Dd]eep dive|\b[Ii]dea [A-Z]{1,2}\d+|\b[Pp]olish [A-Z]\d+|[Ff]irst-user|\b[Ll]ive (?:on )?1\.\d|\([Ll]ive(?:,|\)| 1\.)|\b[Rr]ound \d+\b(?! of)/;
+// A test title: a short code before a colon at its start ("K2: ", "F1 and R3: "), or in brackets ("(U1, D5)").
+const TCODE = String.raw`[A-Z]{1,2}\d{1,3}(?:-\d{1,2})?`;
+const TLIST = String.raw`${TCODE}(?:(?:, | and | / |,)${TCODE})*`;
+const TITLE_CODE = new RegExp(String.raw`^${TLIST}\b[^:]{0,24}: |\((?:[^()]* )?${TLIST}\)|; ${TCODE}: `);
+const KINDS = ["task-code", "batch-wave-phase", "date", "owner", "live-round", "docs-link", "item-ref", "docs-path", "work-words"];
 
-function rules(c, rel = "") {
+function rules(c, rel = "", title = false) {
   const r = [];
   const inMod = rel.startsWith("mods/cockpit/");
   if (ITEM.test(c)) r.push("item-ref");
   if (inMod && DOCS.test(c)) r.push("docs-path");
-  if (TASK.test(c)) r.push("task-code");
-  if (BWP.test(c)) r.push("batch-wave-phase");
+  if (TASK.test(c) || (title && TITLE_CODE.test(c))) r.push("task-code");
+  if (WORK.test(c)) r.push("work-words");
+  if ((title ? BWP_TITLE : BWP).test(c)) r.push("batch-wave-phase");
   if (DATE.test(c)) r.push("date");
-  if (OWNER.test(c)) r.push("owner");
+  if (!title && OWNER.test(c)) r.push("owner"); // a title may name whose file or flag it is
   if (LIVE.test(c)) r.push("live-round");
   if (!inMod && (c.match(DOCS_G) || []).some((m) => !docKept(m.replace(/\.+$/, "")))) r.push("docs-link");
   return r;
+}
+
+// The titles of the tests in a test file: the first quoted argument of each test( call, with its line.
+function testTitles(text) {
+  const out = [];
+  const rx = /\btest\(\s*(['"`])((?:\\.|(?!\1).)*)\1/gs;
+  let m;
+  while ((m = rx.exec(text))) out.push([text.slice(0, m.index).split("\n").length, m[2].replace(/\\(.)/g, "$1")]);
+  return out;
 }
 
 function scanText(text, ext, rel = "") {
@@ -214,6 +232,12 @@ function scanText(text, ext, rel = "") {
   for (const [ln, c] of cs) {
     const ks = rules(c, rel);
     if (ks.length) res.push([ln, c.trim(), ks]);
+  }
+  if (rel.startsWith("tests/") && SLASH_LANGS.includes(ext)) {
+    for (const [ln, c] of testTitles(text)) {
+      const ks = rules(c, rel, true);
+      if (ks.length) res.push([ln, "test title: " + c.trim(), ks]);
+    }
   }
   return res;
 }
@@ -279,7 +303,20 @@ if (mode === "selftest") {
   const docsGone = S + " see docs/" + "TASKS.md";
   const docsCut = S + " see docs/" + "CUT-ME.md";
   cases = cases.concat([[".ts", docsCut, ["docs-link"]]]);
-  for (const [rel_, src_, want_] of [["mods/cockpit/hooks/a.ts", S + " see docs/" + "DESIGN-SYSTEM.md", ["docs-path"]]]) {
+  const TT = "tests/cockpit/a.test.ts";
+  const relCases = [
+    ["mods/cockpit/hooks/a.ts", S + " see docs/" + "DESIGN-SYSTEM.md", ["docs-path"]],
+    [TT, "test('K" + "2: holds the Mac awake', () => {})", ["task-code"]],
+    [TT, "test('F1 and R" + "3: the headline', () => {})", ["task-code"]],
+    [TT, "test('a mode row (U" + "1, D5)', () => {})", ["task-code"]],
+    [TT, "test('band deep" + " dive: one line', () => {})", ["work-words"]],
+    [TT, "test('seen in the app (live " + "1.166)', () => {})", ["work-words"]],
+    [TT, "test('Step 1 of 5 keeps the owner file', () => {})", []],
+    [TT, "test('Load 6.0 of 18 cores at W288, Round 1 of 3', () => {})", []],
+    ["mods/cockpit/hooks/a.ts", "test('K" + "2: not a test file', () => {})", []],
+    ["scripts/a.mjs", S + " from the idea " + "Q13 list", ["work-words"]],
+  ];
+  for (const [rel_, src_, want_] of relCases) {
     total++;
     const got_ = kindsOf(scanText(src_, extOf(rel_), rel_));
     if (!sameList(got_, want_)) {

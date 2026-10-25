@@ -26,14 +26,21 @@ export const WIN_SHOWN: Record<string, string> = {
   'Could not run it': 'This needs a shell I could not find.',
   'Block {n} could not be started.': 'Block {n}: This needs a shell I could not find.',
   'Could not run block {n}. Try again in the session: /vaken-help run do {n} yes': 'Block {n}: This needs a shell I could not find.',
-  // Windows has no lsof or ps and tells no working folder, so the folder is read from the program's command.
+  // Windows has no lsof or ps: the folder is read from the program itself, with its command line as the fallback.
   'The ports could not be read: the lsof program did not answer.': 'The ports could not be read: the netstat program did not answer.',
   'Leftover programs: the ps program did not answer, so nothing could be checked.': 'Leftover programs: the process list did not answer, so nothing could be checked.',
-  'It looks for node, python, vite, next, webpack, esbuild and tsc programs, older than a minute, that run in the folder of a session that has ended, or in a worktree where no session works.':
-    'It looks for node, python, vite, next, webpack, esbuild and tsc programs, older than a minute, whose command names the folder of a session that has ended, or a worktree where no session works.',
-  "The lsof program did not answer, so no program's folder could be read.": 'No program names a known session folder in its command, so no program could be matched to a folder.',
+  "The lsof program did not answer, so no program's folder could be read.": "No program's folder could be read, and none names a session folder in its command.",
   'Look at each line before you run it: a program you started by hand in that folder looks the same. Vaken never stops a program.':
-    'Look at each line before you run it: a program you started by hand in that folder looks the same. Windows does not tell the working folder of a program, so the folder is read from the program\'s command; a program started without its folder in the command is not listed. Vaken never stops a program.',
+    "Look at each line before you run it: a program you started by hand in that folder looks the same. The folder is read from the program, or from its command when Windows does not tell it. Vaken never stops a program.",
+  // Plan room, the night run and notices on Windows.
+  'This Mac is short of memory.': 'This PC is short of memory.',
+  'Night run paused: the Mac is on battery': 'Night run paused: the PC is on battery',
+  'Night run goes on: the Mac is on power again': 'Night run goes on: the PC is on power again',
+  'Starts as many as this Mac has room for.': 'Starts as many as this PC has room for.',
+  'Starts {n} at a time until this Mac is read: turn on the computer reading in Settings > Agents': 'Starts {n} at a time until this PC is read: turn on the computer reading in Settings > Agents',
+  'Starts up to {n} at once: room for {n} on this Mac': 'Starts up to {n} at once: room for {n} on this PC',
+  'After 2 minutes with no press or prompt, vaken sends one Mac notification when another session needs you or a plan limit is near; with This session too, also when a step here waits for your yes or a long answer is done. At most one comes every 30 seconds and several become one, while Hours without notices and Quiet hold them. /vaken-settings notify.how sound adds a sound, speak says it.': 'After 2 minutes with no press or prompt, vaken sends one Windows notification when another session needs you or a plan limit is near; with This session too, also when a step here waits for your yes or a long answer is done. At most one comes every 30 seconds and several become one, while Hours without notices and Quiet hold them. /vaken-settings notify.how sound adds a sound, speak says it.',
+  'Turn it on with /vaken-settings night.mode on, then type /vaken-tasks night. The run goes only on mains power, inside the plan limit and its cost limit, with away mode\'s strict checks on and the Mac kept awake if keep-awake is on. In the morning, Where was I shows what is done.': 'Turn it on with /vaken-settings night.mode on, then type /vaken-tasks night. The run goes only on mains power, inside the plan limit and its cost limit, with away mode\'s strict checks on and the PC kept awake if keep-awake is on. In the morning, Where was I shows what is done.',
 }
 
 export const WIN_ENGLISH: Record<string, string> = {
@@ -56,6 +63,12 @@ export const WIN_ENGLISH: Record<string, string> = {
   '(An estimate from vm_stat: the system level could not be read.)': '(An estimate from the share of memory that is free: Windows has no pressure level.)',
   'the Mac reports memory pressure': 'the PC reports memory pressure',
   'macOS itself reports memory pressure ({p}), even if the share used looks fine, so no new agent should start.': 'Windows itself reports memory pressure ({p}), even if the share used looks fine, so no new agent should start.',
+  // Plain slash answers about plan room.
+  'As many at a time as this Mac has room for.': 'As many at a time as this PC has room for.',
+  'as many at a time as this Mac has room for': 'as many at a time as this PC has room for',
+  // The /vaken-tasks slash menu hint (English only).
+  'Run a task list with agents, as many at a time as this Mac has room for (or your own limit), and steer it. A word after it runs a part: agents, agents-board, route, goal.':
+    'Run a task list with agents, as many at a time as this PC has room for (or your own limit), and steer it. A word after it runs a part: agents, agents-board, route, goal.',
 }
 
 export const sysWord = (s: string, sys: WordSystem = shown): string => (sys !== 'win32' ? s : Object.hasOwn(WIN_SHOWN, s) ? WIN_SHOWN[s] : Object.hasOwn(WIN_ENGLISH, s) ? WIN_ENGLISH[s] : s)

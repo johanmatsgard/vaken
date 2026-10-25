@@ -83,14 +83,15 @@ test('your turn rows come first, the longest waiting first, then working; the co
   await ui.unmount()
 })
 
+// Ages say "ago" (fmt.ago) and each value keeps its spaces whole (no-break spaces, cards/others.tsx), so the words are matched with \s
 test('each row shows its one fact: context over 80%, same folder as you, cost over $2; a quiet session says what it got done', SLOW, async ($, on) => {
   setup(on, { 'cockpit:pref:lists': { others: 'all' } })
   const ui = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
-  expect(await ui.find({ type: 'Text', text: /^context 92%, / })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /^same folder as you, / })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /^\$4\.10, / })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: '12 files changed · tests passed · PR opened, 10 min' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: '2 min' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^context\s92%,\s/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^same\sfolder\sas\syou,\s/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^\$4\.10,\s/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^12\sfiles\schanged\s·\stests\spassed\s·\sPR\sopened,\s10\smin\sago$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^2\smin\sago$/ })).toBeDefined()
   await ui.unmount()
 })
 
@@ -98,11 +99,11 @@ test('a quiet session with nothing done keeps its usual line', SLOW, async ($, o
   setup(on, { 'cockpit:session:q1': seed('q1', { state: 'idle', stateSince: NOW - 10 * MIN, lastEventAt: NOW - 10 * MIN }), 'cockpit:pref:lists': { others: 'all' } })
   const ui = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
   expect(await ui.find({ type: 'Text', text: /files changed/ })).toBeUndefined()
-  expect(await ui.find({ type: 'Text', text: '10 min' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^10\smin\sago$/ })).toBeDefined()
   await ui.unmount()
 })
 
-test('more than five rows from two places are grouped by repository, each row\'s dim line naming its group (no group title, item 139)', SLOW, async ($, on) => {
+test('more than five rows from two places are grouped by repository: the group names its project once, a row says its state and age, Your turn first', SLOW, async ($, on) => {
   const at = (repo: string, n: number) => `/code/${repo}/.claude/worktrees/agent-${n}`
   setup(on, {
     'cockpit:pref:lists': { others: 'all' },
@@ -114,9 +115,9 @@ test('more than five rows from two places are grouped by repository, each row\'s
     'cockpit:session:q1': seed('q1', { state: 'idle', stateSince: NOW - 10 * MIN, lastEventAt: NOW - 10 * MIN, cwd: at('blog', 6) }),
   })
   const ui = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
-  const lines = (await texts(ui, /^(blog|shop) · /)).map(a => a.split(' · ')[0])
-  expect([...new Set(lines)]).toEqual(['blog', 'shop'])
-  expect(((await ui.findAll({ type: 'Svg' })) as { props: { alt?: string } }[]).some(x => /^(blog|shop)$/.test(x.props.alt ?? ''))).toBe(false)
+  // Both groups hold a Your-turn row: blog's waited longest, so blog is first; each project is named once, as a plain row
+  expect(await texts(ui, /^(blog|shop)$/)).toEqual(['blog', 'shop'])
+  expect(await texts(ui, /^(blog|shop) · /)).toEqual([])
   await ui.unmount()
 })
 
@@ -167,7 +168,7 @@ test('a watched session that ends its turn gives one toast and one band line, th
   forgetWatches()
 })
 
-test('Tell me when done is offered only on a working session: a session that waits for you has no turn to wait for (U20)', SLOW, async ($, on) => {
+test('Tell me when done is offered only on a working session: a session that waits for you has no turn to wait for', SLOW, async ($, on) => {
   setup(on)
   const ui = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
   const offered = async (id: string): Promise<boolean> => (await ui.find({ key: `watch-${id}` })) !== undefined
@@ -178,5 +179,15 @@ test('Tell me when done is offered only on a working session: a session that wai
     await ui.press({ key: `press-o-${id}-0` })
     await ui.redraw()
   }
+  await ui.unmount()
+})
+
+test('an open Your-turn row says what it means once: no Why now that repeats "finished, waits for you"', SLOW, async ($, on) => {
+  setup(on)
+  const ui = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
+  await ui.press({ key: 'press-o-t1-0' })
+  await ui.redraw()
+  expect(await ui.find({ type: 'Text', text: /waits for your next message/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /finished, waits for you/ })).toBeUndefined()
   await ui.unmount()
 })

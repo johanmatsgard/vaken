@@ -3,7 +3,7 @@ import type { Io } from '../../core/io'
 import { t } from '../../core/lang'
 import { SETTINGS, findSetting, validValue, writeSetting } from '../../core/settings'
 import type { Values } from '../../core/settings'
-import { CARD_IDS, parseOrder } from './logic'
+import { CARD_IDS, isCardId, parseOrder } from './logic'
 import type { CardId } from './logic'
 
 export type Bucket = 1 | 2 | 3 | 4 | 5 | 6
@@ -17,15 +17,57 @@ const OLD_ORDER_KEYS = ['cockpit:pref:order', ...[1, 2, 3, 4, 5, 6].map(b => `co
 export const orderKey = (bucket: Bucket): string => `cockpit:pref:gorder:${bucket}`
 
 export type Orders = Record<Bucket, CardId[]>
+// Each column's own top-to-bottom list (Arrange with column placement), per width; a width with none cuts its one order by count
+export type ColumnLists = Partial<Record<Bucket, CardId[][]>>
+const COLUMN_BREAK = '|'
 
-export async function readOrders(i: Io): Promise<Orders> {
-  const out = {} as Orders
-  for (const b of BUCKETS) {
-    const raw = await i.get(orderKey(b))
-    out[b] = typeof raw === 'string' ? parseOrder(raw) : inherits(b) ? [...out[(b - 1) as Bucket]] : defaultOrder()
-  }
+// A stored order holds its columns split by "|"; one with no break (kept before columns) gives none. A card in no list goes under the last column.
+export function parseLists(v: unknown): CardId[][] | undefined {
+  if (typeof v !== 'string' || !v.includes(COLUMN_BREAK)) return undefined
+  const seen = new Set<CardId>()
+  const lists = v.split(COLUMN_BREAK).map(part => {
+    const ids = part.split(',').filter(isCardId).filter(id => !seen.has(id))
+    for (const id of ids) seen.add(id)
+    return [...new Set(ids)]
+  })
+  lists[lists.length - 1].push(...CARD_IDS.filter(id => !seen.has(id)))
+  return lists
+}
+export const flatOrder = (v: string): CardId[] => parseOrder(v.split(COLUMN_BREAK).join(','))
+export const listsText = (lists: readonly (readonly string[])[]): string => lists.map(l => l.join(',')).join(COLUMN_BREAK)
+
+// More lists than columns fold together in order: neighbours share a column, no card is lost
+export function foldLists<T>(lists: readonly (readonly T[])[], n: number): T[][] {
+  if (lists.length <= n) return lists.map(l => [...l])
+  const out = Array.from({ length: Math.max(1, n) }, (): T[] => [])
+  for (const [c, l] of lists.entries()) out[Math.floor((c * out.length) / lists.length)].push(...l)
   return out
 }
+
+export async function readOrderSet(i: Io): Promise<{ orders: Orders; lists: ColumnLists }> {
+  const raw = {} as Record<Bucket, unknown>
+  for (const b of BUCKETS) raw[b] = await i.get(orderKey(b))
+  const orders = {} as Orders
+  const lists: ColumnLists = {}
+  for (const b of BUCKETS) {
+    const v = raw[b]
+    const own = parseLists(v)
+    if (own !== undefined) lists[b] = own
+    orders[b] = typeof v === 'string' ? flatOrder(v) : inherits(b) ? [...orders[(b - 1) as Bucket]] : defaultOrder()
+  }
+  // A width with no order of its own starts from the nearest wider one that has columns, folded to its own
+  for (const b of BUCKETS) {
+    if (typeof raw[b] === 'string') continue
+    const from = BUCKETS.find(w => w > b && lists[w] !== undefined && typeof raw[w] === 'string')
+    if (from === undefined) continue
+    const folded = foldLists(lists[from] ?? [], b)
+    lists[b] = folded
+    orders[b] = folded.flat()
+  }
+  return { orders, lists }
+}
+
+export const readOrders = async (i: Io): Promise<Orders> => (await readOrderSet(i)).orders
 
 export async function hasSavedOrder(i: Io): Promise<boolean> {
   for (const b of BUCKETS) if (typeof (await i.get(orderKey(b))) === 'string') return true
@@ -34,6 +76,11 @@ export async function hasSavedOrder(i: Io): Promise<boolean> {
 
 export async function writeOrder(i: Io, bucket: Bucket, order: CardId[]): Promise<void> {
   await i.set(orderKey(bucket), order.join(','))
+}
+
+// One column is a plain order; more are kept as lists
+export async function writeLists(i: Io, bucket: Bucket, lists: readonly (readonly CardId[])[]): Promise<void> {
+  await i.set(orderKey(bucket), lists.length > 1 ? listsText(lists) : lists.flat().join(','))
 }
 
 export async function resetOrders(i: Io): Promise<void> {
@@ -49,14 +96,14 @@ const LAYOUTS_KEY = 'cockpit:layouts'
 export const MAX_LAYOUTS = 12
 export const MAX_NAME = 24
 
-export type Layout = { values: Values; orders: Orders }
+export type Layout = { values: Values; orders: Orders; lists?: ColumnLists }
 export type Layouts = Record<string, Layout>
 
 export const LAYOUT_KEYS: string[] = SETTINGS.filter(s => s.key === 'detail' || s.key.startsWith('detail.') || s.key.startsWith('cards.')).map(s => s.key)
 
 export const cleanName = (raw: string): string => raw.replace(/\s+/g, ' ').trim().slice(0, MAX_NAME)
 
-export function snapshot(values: Values, orders: Orders): Layout {
+export function snapshot(values: Values, orders: Orders, lists: ColumnLists = {}): Layout {
   const v: Values = {}
   for (const k of LAYOUT_KEYS) {
     const s = findSetting(k)
@@ -65,10 +112,14 @@ export function snapshot(values: Values, orders: Orders): Layout {
   // Orders that hold only the first widths (an older caller) give a wider width the nearest smaller one's.
   const o = {} as Orders
   for (const b of BUCKETS) o[b] = [...((orders as Partial<Orders>)[b] ?? o[(b - 1) as Bucket])]
-  return { values: v, orders: o }
+  const l: ColumnLists = {}
+  for (const b of BUCKETS) if (lists[b] !== undefined) l[b] = (lists[b] ?? []).map(c => [...c])
+  return { values: v, orders: o, lists: l }
 }
 
-export const sameLayout = (a: Layout, b: Layout): boolean => LAYOUT_KEYS.every(k => a.values[k] === b.values[k]) && BUCKETS.every(x => a.orders[x].join(',') === b.orders[x].join(','))
+// The stored text of one width: its lists when it has columns, else its one order
+const orderText = (l: Layout, b: Bucket): string => (l.lists?.[b] === undefined ? l.orders[b].join(',') : listsText(l.lists[b] ?? []))
+export const sameLayout = (a: Layout, b: Layout): boolean => LAYOUT_KEYS.every(k => a.values[k] === b.values[k]) && BUCKETS.every(x => orderText(a, x) === orderText(b, x))
 
 export function parseLayouts(raw: unknown): Layouts {
   const out: Layouts = {}
@@ -84,8 +135,14 @@ export function parseLayouts(raw: unknown): Layouts {
         if (s !== undefined) values[k] = validValue(s, l.v?.[k])
       }
       const orders = {} as Orders
-      for (const b of BUCKETS) orders[b] = inherits(b) && typeof l.o?.[String(b)] !== 'string' ? [...orders[(b - 1) as Bucket]] : parseOrder(l.o?.[String(b)])
-      out[name] = { values, orders }
+      const lists: ColumnLists = {}
+      for (const b of BUCKETS) {
+        const o = l.o?.[String(b)]
+        orders[b] = inherits(b) && typeof o !== 'string' ? [...orders[(b - 1) as Bucket]] : typeof o === 'string' ? flatOrder(o) : parseOrder(o)
+        const own = parseLists(o)
+        if (own !== undefined) lists[b] = own
+      }
+      out[name] = { values, orders, lists }
     }
   } catch {
     return {}
@@ -94,7 +151,7 @@ export function parseLayouts(raw: unknown): Layouts {
 }
 
 const serialize = (layouts: Layouts): string =>
-  JSON.stringify(Object.fromEntries(Object.entries(layouts).map(([name, l]) => [name, { v: l.values, o: Object.fromEntries(BUCKETS.map(b => [b, l.orders[b].join(',')])) }])))
+  JSON.stringify(Object.fromEntries(Object.entries(layouts).map(([name, l]) => [name, { v: l.values, o: Object.fromEntries(BUCKETS.map(b => [b, orderText(l, b)])) }])))
 
 export const readLayouts = async (i: Io): Promise<Layouts> => parseLayouts(await i.get(LAYOUTS_KEY))
 
@@ -136,7 +193,7 @@ export async function applyLayout(i: Io, name: string): Promise<boolean> {
   const layout = (await readLayouts(i))[name]
   if (layout === undefined) return false
   for (const k of LAYOUT_KEYS) await writeSetting(i, k, layout.values[k])
-  for (const b of BUCKETS) await writeOrder(i, b, layout.orders[b])
+  for (const b of BUCKETS) await i.set(orderKey(b), orderText(layout, b))
   return true
 }
 

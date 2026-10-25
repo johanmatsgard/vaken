@@ -1,5 +1,6 @@
 // A small price table for turning tokens into dollars. Every figure is an estimate: list price, no plan, real cache lifetime, long-prompt rates or discount. An unknown model gets no price, never a guess.
 import { fmt } from './fmt'
+import { langNow, tIn } from '../i18n/t'
 
 export const PRICES_DATE = '9 Oct 2026'
 
@@ -40,4 +41,12 @@ export function estimateUsd(model: string | undefined, c: Counts): number | unde
 export const money = (usd: number): string => fmt.money(usd)
 // For sentences built and kept in English.
 export const moneyEn = (usd: number): string => fmt.money(usd, 'en')
-export const aboutMoney = (usd: number, t: (s: string) => string = s => s): string => t('about {usd}').replace('{usd}', money(usd))
+// An estimate, two places always ("about $0.05", "about $1.80", Swedish "ungefär 1,80 USD"), "under $0.01" below a cent; English when `t` is the plain one (the text twin), else the language of this draw.
+// Which language `t` speaks: a row's English that it leaves as it is is the plain one
+const langOf = (t: (s: string) => string): string => (t('{usd} (estimate)') === '{usd} (estimate)' ? 'en' : langNow())
+export const aboutMoney = (usd: number, t: (s: string) => string = s => s): string => {
+  const l = langOf(t)
+  return usd < 0.01 ? fmt.moneyAbout(usd, l) : tIn(l, 'fmt.about_usd', { usd: fmt.moneyPlain(usd, l) })
+}
+// The same estimate, saying it is one where it stands alone on a row ("about $0.12 (estimate)")
+export const aboutEstimate = (usd: number, t: (s: string) => string = s => s): string => tIn(langOf(t), 'fmt.usd_estimate', { usd: aboutMoney(usd, t) })

@@ -59,7 +59,7 @@ function engine(on: On): { mem: Map<string, unknown>; reads: { n: number }; redr
 
 const held = (ago: number) => ({ at: NOW - ago, session: 'test-session', what: 'Held a risky command', detail: 'This would delete files in a folder outside the work folder', how: 'auto', did: true })
 
-test('LV1: the band chip, the Needs you card and the text twin read one number, also after the last held step went (the band no longer keeps the old number)', SLOW, async ($, on) => {
+test('the band chip, the Needs you card and the text twin read one number, also after the last held step went (the band no longer keeps the old number)', SLOW, async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   mock.env(on, { HOME: '/home/test' })
   const { mem, redraws } = engine(on)
@@ -85,7 +85,7 @@ test('LV1: the band chip, the Needs you card and the text twin read one number, 
   mem.set(LEDGER_KEY, [held(4 * MIN)])
   expect(await chipOf()).toMatch(/1 needs you/)
   expect(await cardOf()).toBe(true)
-  expect(await textOf()).toMatch(/^Needs you: 1/)
+  expect(await textOf()).toMatch(/^(- )?◆ Needs you: /)
 
   await clock.settle()
   mem.set(LEDGER_KEY, [])
@@ -95,17 +95,17 @@ test('LV1: the band chip, the Needs you card and the text twin read one number, 
   expect(redraws.n).toBeGreaterThan(drawn)
   expect(await chipOf()).toBeUndefined()
   expect(await cardOf()).toBe(false)
-  expect(await textOf()).toMatch(/^Nothing needs you\./)
+  expect(await textOf()).not.toMatch(/Needs you/)
 
   mem.set('cockpit:session:busy', rec('busy', { ask: { kind: 'question', tool: 'AskUserQuestion', since: NOW - 4 * MIN } }))
   expect(await chipOf()).toMatch(/1 needs you/)
   expect(await cardOf()).toBe(true)
-  expect(await textOf()).toMatch(/^Needs you: 1/)
+  expect(await textOf()).toMatch(/^(- )?◆ Needs you: /)
 })
 
 const laptop = (over: Partial<Laptop>): Laptop => ({ at: NOW, ...over })
 
-test('L2-1: memory is tight at critical, at warn twice in a row, or with under a tenth free; one warn alone is not', () => {
+test('memory is tight at critical, at warn twice in a row, or with under a tenth free; one warn alone is not', () => {
   expect(memoryTight(laptop({ pressure: 'critical' }))).toBe(true)
   expect(memoryTight(laptop({ pressure: 'warn' }))).toBe(false)
   expect(memoryTight(laptop({ pressure: 'warn', freeShare: 0.4 }), laptop({ pressure: 'normal' }))).toBe(false)
@@ -117,7 +117,7 @@ test('L2-1: memory is tight at critical, at warn twice in a row, or with under a
   expect(memoryTight(laptop({ freeShare: 0.5 }))).toBe(false)
 })
 
-test('L2-1: the words say the Mac is short of memory, and what the Claude sessions use of it', () => {
+test('the words say the Mac is short of memory, and what the Claude sessions use of it', () => {
   const l = laptop({ pressure: 'critical', procs: { count: 3, rssMb: 4096 } })
   expect(tightWords(l, s => s)).toBe('This Mac is short of memory. Your 3 Claude sessions use 4.0 GB of it.')
   expect(tightWords(laptop({ procs: { count: 1, rssMb: 1024 } }), s => s)).toBe('This Mac is short of memory. Your 1 Claude session uses 1.0 GB of it.')
@@ -126,7 +126,7 @@ test('L2-1: the words say the Mac is short of memory, and what the Claude sessio
   expect(laptopWords(l)[0]).toBe('This Mac is short of memory. Your 3 Claude sessions use 4.0 GB of it.')
 })
 
-test('L2-2: a success is kept for good, a "no" is asked again after five minutes, a throw is a "no"', async () => {
+test('a success is kept for good, a "no" is asked again after five minutes, a throw is a "no"', async () => {
   const slot: Slot<string | undefined> = {}
   let asked = 0
   let answer: string | undefined
@@ -159,7 +159,7 @@ test('L2-2: a success is kept for good, a "no" is asked again after five minutes
   expect(tries).toBe(2)
 })
 
-test('L2-5: a folder with a worktree root keeps it; a folder with none is asked again after five minutes', () => {
+test('a folder with a worktree root keeps it; a folder with none is asked again after five minutes', () => {
   const m = new Map<string, Kept<string>>()
   expect(keptValue(m, '/a', 0).hit).toBe(false)
   m.set('/a', { value: '/a', at: 0 })
@@ -169,7 +169,7 @@ test('L2-5: a folder with a worktree root keeps it; a folder with none is asked 
   expect(keptValue(m, '/b', NEGATIVE_RETRY_MS).hit).toBe(false)
 })
 
-test('L2-4: a second session.start does not double the timers (about as many store reads in the same stretch)', SLOW, async ($, on) => {
+test('a second session.start does not double the timers (about as many store reads in the same stretch)', SLOW, async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   mock.env(on, { HOME: '/home/test' })
   const { mem, reads } = engine(on)

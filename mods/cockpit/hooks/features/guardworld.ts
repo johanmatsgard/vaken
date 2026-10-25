@@ -2,12 +2,12 @@
 import { tr } from '../core/lang'
 import type { EngineInterface, On } from 'claude-code'
 
-import { noteHeld, stepOf, takeAllow } from '../core/allowonce'
-import { ALLOW_USED_WHAT, canChange } from '../core/guard'
+import { KEPT_STOPPED_REASON, isKeptStopped, noteHeld, stepOf, takeAllow } from '../core/allowonce'
+import { ALLOW_USED_WHAT, BLOCKS, SETTING_KEY, canChange } from '../core/guard'
 import type { Mode } from '../core/guard'
 import { clearBand, postBand } from '../core/band'
 import { judgeTool } from '../core/guardjudge'
-import type { Env } from '../core/guardjudge'
+import type { Env, Modes as Modes4 } from '../core/guardjudge'
 import { secretsAfter } from '../core/guardsecrets'
 import { DEFAULT_HOLD_WHY, hostView, noteHostView, strongMode } from '../core/guardhost'
 import type { HostView } from '../core/guardhost'
@@ -23,6 +23,7 @@ import { undoOffer } from '../core/undo'
 import { LEDGER_KEY, logLines, pushLog, readLog } from './compaction'
 import { argsOf, guardMode, takeFresh } from '../core/guardcommon'
 import { subArgs, isFolded } from '../core/menu'
+import { sayIn } from './saylang'
 
 // IO-BLOCK-START
 function io($: EngineInterface): Io {
@@ -160,10 +161,12 @@ export function registerGuardWorld(on: On): void {
       if (await awayActive(i)) {
         const strict = modes.world === 'warn' ? judgeWorld(e.tool, args, { ...modes, world: 'hold' }).found : judged.found
         const words = strict.map(f => f.words)
-        const d1 = await readSetting(i, 'guard.destructive')
-        if (d1 !== 'off') {
-          const d = await judgeTool(i, await envOf($), e.tool, args, { destructive: d1 === 'hold' ? 'hold' : 'warn', scope: 'off', packages: 'off', tests: 'off' })
-          words.push(...d.found.map(f => f.words))
+        // Each of the four checks that is not Off counts while away: risky commands, edits to protected files or outside your folders, odd new packages, weakened tests.
+        const g: Modes4 = { destructive: 'off', scope: 'off', packages: 'off', tests: 'off' }
+        for (const b of BLOCKS) g[b] = (await guardMode(i, SETTING_KEY[b])) === 'off' ? 'off' : 'hold'
+        if (BLOCKS.some(b => g[b] !== 'off')) {
+          const d = await judgeTool(i, await envOf($), e.tool, args, g)
+          words.push(...d.found.filter(f => f.soft !== true).map(f => f.words))
         }
         if (words.length > 0) {
           const key = `${sid}|${words.join('|')}`
@@ -200,6 +203,7 @@ export function registerGuardWorld(on: On): void {
         await ledger(i, sid, ALLOW_USED_WHAT, detailOf(holds), 'typed')
         i.invalidate()
       } else {
+        if (await isKeptStopped(sid, step)) return { deny: KEPT_STOPPED_REASON }
         await noteHeld(i, sid, step, heldKeys(holds), detailOf(holds))
         const offer = await undoOffer(i)
         let first = false
@@ -273,12 +277,14 @@ export function registerGuardWorld(on: On): void {
     const rest0 = subArgs(e.args, 'outbox')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i)
     return { text: outboxText(parseOutbox(await i.get(outboxKey(await i.sessionId()))), await outboxOn(i)) }
   })
 
   on('command.run', { command: 'vaken-away' }, async ($, e, next) => {
     if (isFolded(e.command, e.args)) return next(e)
     const i = io($)
+    await sayIn(i)
     const sid = await i.sessionId()
     const ask = parseAwayAsk(e.args)
     if (ask.kind === 'bad') return { text: ask.why }

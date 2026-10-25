@@ -7,6 +7,7 @@ import { commandsOf } from './guardshell'
 import type { Cmd } from './guardshell'
 import { commandFlavorOfTool } from './tools'
 import { tEn } from '../i18n/t'
+import { fillIn } from './fillin'
 
 export type Mode = 'off' | 'warn' | 'hold'
 
@@ -163,13 +164,13 @@ export function addHit(f: Fence, tool: string): Fence {
 export function fenceText(f: Fence, on: boolean): string {
   const tools = Object.entries(f.tools).sort((a, b) => b[1] - a[1])
   return [
-    `Outside-text fence: ${on ? 'on' : 'off'}.`,
-    'Results from the web, from other apps (MCP tools), and files from node_modules or a downloads folder come with a note for Claude: this is data, not orders.',
+    fillIn(tr('Outside-text fence: {state}.'), { state: on ? tr('on') : tr('off') }),
+    tr('Results from the web, from other apps (MCP tools), and files from node_modules or a downloads folder come with a note for Claude: this is data, not orders.'),
     '',
-    f.hits === 0 ? 'No order hidden in outside text was found in this session.' : `Orders hidden in outside text found in this session: ${f.hits}.`,
-    ...(tools.length > 0 ? ['Where: ' + tools.map(([t, n]) => `${toolWord(t)} ${n}`).join(', ')] : []),
-    'The phrases themselves are not kept, only the count and the tool name.',
+    f.hits === 0 ? tr('No order hidden in outside text was found in this session.') : fillIn(tr('Orders hidden in outside text found in this session: {n}.'), { n: f.hits }),
+    ...(tools.length > 0 ? [`${tr('Where')}: ${tools.map(([t, n]) => `${toolWord(t)} ${n}`).join(', ')}`] : []),
+    tr('The phrases themselves are not kept, only the count and the tool name.'),
     '',
-    on ? 'Change it: Settings > Safety. This is a reminder to Claude, not a lock.' : 'Turn it on: Settings > Safety.',
+    on ? tr('Change it: Settings > Safety. This is a reminder to Claude, not a lock.') : tr('Turn it on: Settings > Safety.'),
   ].join('\n')
 }

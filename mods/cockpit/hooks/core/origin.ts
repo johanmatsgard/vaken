@@ -10,3 +10,10 @@ export function byPerson(origin: unknown): boolean {
   const kind = (origin as { kind?: unknown }).kind
   return typeof kind === 'string' && PERSON_KINDS.includes(kind)
 }
+
+// The origin's kind, or undefined when it has none.
+export function originKind(origin: unknown): string | undefined {
+  if (typeof origin !== 'object' || origin === null) return undefined
+  const kind = (origin as { kind?: unknown }).kind
+  return typeof kind === 'string' ? kind : undefined
+}

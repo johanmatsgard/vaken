@@ -4,9 +4,9 @@ import { test } from './slow'
 import type { On } from 'claude-code'
 import { APPEARS } from '../hooks/core/cardrules'
 import { forgetProjectSet } from '../hooks/core/io'
-import { agentsHead, autopilotHead, backHead, computerHead, contextHead, doHead, glanceDot, glanceIsOpen, glanceToggled, guardHead, hereHead, factOf, keepGlance, limitHead, othersHead, previewHead, proofHead, prsHead, safetyHead, setupHead, shipHead, skillsHead } from '../hooks/core/headline'
+import { agentsHead, agentsShort, autopilotHead, backHead, computerHead, contextHead, doHead, glanceDot, glanceIsOpen, glanceToggled, guardHead, hereHead, factOf, keepGlance, limitHead, othersHead, previewHead, proofHead, prsHead, prsShortHead, safetyHead, setupHead, shipHead, skillsHead } from '../hooks/core/headline'
 import { findSetting } from '../hooks/core/settings'
-import { HEADLINES, glanceDotOf } from '../hooks/features/home/headline'
+import { HEADLINES, glanceDotOf, glanceWordOf } from '../hooks/features/home/headline'
 import type { GlanceFacts } from '../hooks/features/home/headline'
 import { CARD_IDS, LINE_CARD_IDS, parseDetail, parseOpenDetail } from '../hooks/features/home/logic'
 
@@ -22,17 +22,16 @@ test('every card has a headline, in the one table', () => {
 })
 
 test('the headline values are short and say the one thing', () => {
-  expect(limitHead([{ short: 'Week', percent: 58.4 }, { short: 'Session', percent: 12 }])).toBe('Week: 58% used')
+  expect(limitHead([{ short: 'Week', percent: 58.4 }, { short: 'Session', percent: 12 }])).toBe('5-hour limit: 12% used')
+  expect(limitHead([{ short: 'Week', percent: 88.4, hot: true }, { short: 'Session', percent: 12 }])).toBe('Week: 88% used')
   expect(limitHead([])).toBe('Not known yet')
-  expect(hereHead({ state: 'Working', contextPercent: 66.2 })).toBe('Context 66% full')
+  expect(hereHead({ state: 'Working', costUsd: 1.42 })).toBe('Working · $1.42')
   expect(hereHead({ state: 'Quiet' })).toBe('Quiet')
   expect(hereHead(undefined)).toBe('Not started')
   expect(othersHead({ waiting: 1, working: 2, total: 3 })).toBe('1 your turn')
   expect(othersHead({ waiting: 0, working: 2, total: 3 })).toBe('2 working')
   expect(othersHead({ waiting: 0, working: 0, total: 3 })).toBe('3 idle')
   expect(othersHead({ waiting: 0, working: 0, total: 0 })).toBe('None')
-  expect(othersHead({ waiting: 0, working: 0, total: 0, needs: 0 })).toBe('None')
-  expect(othersHead({ waiting: 0, working: 0, total: 0, needs: 2 })).toBe('2 waiting for you')
   expect(autopilotHead(0)).toBe('Nothing today')
   expect(autopilotHead(4)).toBe('4 today')
   expect(agentsHead({ running: 2, stuck: 0, total: 5 })).toBe('2 running')
@@ -40,41 +39,54 @@ test('the headline values are short and say the one thing', () => {
   expect(agentsHead({ running: 0, stuck: 0, total: 5 })).toBe('All done')
   expect(agentsHead({ running: 0, stuck: 0, total: 0 })).toBe('None')
   expect(computerHead({ gaugeOn: false, room: undefined })).toBe('Off')
-  expect(computerHead({ gaugeOn: true, room: undefined })).toBe('Measuring load')
+  expect(computerHead({ gaugeOn: true, room: undefined })).toBe('')
   expect(computerHead({ gaugeOn: true, room: { n: 0 } })).toBe('No room for another agent')
   expect(computerHead({ gaugeOn: true, room: { n: 2 } })).toBe('Room for about 2')
-  expect(proofHead({ none: true, failed: 0, unproven: 0, debt: 0 })).toBe('Nothing yet')
+  expect(proofHead({ none: true, failed: 0, unproven: 0, debt: 0 })).toBe('None')
   expect(proofHead({ none: false, failed: 1, unproven: 2, debt: 3 })).toBe('1 failed')
-  expect(proofHead({ none: false, failed: 0, unproven: 2, debt: 3 })).toBe('2 unproven')
+  expect(proofHead({ none: false, failed: 0, unproven: 2, debt: 3 })).toBe('Not checked')
   expect(proofHead({ none: false, failed: 0, unproven: 0, debt: 3 })).toBe('3 to review')
   expect(proofHead({ none: false, failed: 0, unproven: 0, debt: 0 })).toBe('All clear')
   expect(guardHead(['warn', 'warn', 'warn', 'warn'])).toBe('Warns only')
   expect(guardHead(['warn', 'warn', 'warn', 'warn'], s => s, 'worst')).toBe('Warns, stops the worst')
-  expect(guardHead(['warn', 'warn', 'warn', 'warn'], s => s, 'maybe')).toBe('Watching risky steps')
+  expect(guardHead(['warn', 'warn', 'warn', 'warn'], s => s, 'maybe')).toBe('Warns, worst may stop')
   expect(guardHead(['warn', 'warn', 'warn', 'warn'], s => s, 'maybe', s => s.length < 10)).toBe('Warns')
   expect(guardHead(['hold', 'hold', 'hold', 'hold'])).toBe('All stop')
   expect(guardHead(['warn', 'hold', 'warn', 'warn'])).toBe('Mixed')
   expect(skillsHead(1)).toBe('1 used')
   expect(skillsHead(1, s => (s === '1 used' ? '1 använd' : s))).toBe('1 använd')
   expect(skillsHead(3)).toBe('3 used')
-  expect(skillsHead(0)).toBe('None used')
-  expect(prsHead({ on: false, open: 0, failing: 0 })).toBe('Off')
-  expect(prsHead({ on: true, open: 3, failing: 1 })).toBe('1 failing')
-  expect(prsHead({ on: true, open: 3, failing: 0 })).toBe('3 open')
-  expect(prsHead({ on: true, open: 0, failing: 0 })).toBe('None open')
+  expect(skillsHead(0)).toBe('None')
+  // The summary counts what the rows show: open pull requests (no CI words), then worktrees to remove, then idle ones
+  expect(prsHead({ on: false, open: 0 })).toBe('Off')
+  expect(prsHead({ on: true, open: 3 })).toBe('3 open')
+  expect(prsHead({ on: true, open: 0 })).toBe('None')
+  expect(prsHead({ on: true, open: 0, unknown: 'look' })).toBe('Not checked')
+  expect(prsHead({ on: true, open: 0, copies: { merged: 2, idle: 1 } })).toBe('2 worktrees to remove')
+  expect(prsHead({ on: true, open: 0, copies: { merged: 0, idle: 1 } })).toBe('1 worktree idle')
+  expect(prsHead({ on: true, open: 1, copies: { merged: 1, idle: 0 } })).toBe('1 open')
+  expect(prsShortHead({ on: true, open: 0, copies: { merged: 1, idle: 0 } })).toBe('1 merged')
+  expect(prsShortHead({ on: true, open: 2, copies: { merged: 1, idle: 0 } })).toBeUndefined()
+  // Repeat to skill's offer is the card's lead, never "None"
+  expect(skillsHead(0, s => s, true)).toBe('Repeated routine')
   expect(shipHead('ready', 0)).toBe('Ready')
-  expect(shipHead('none', 0)).toBe('Nothing yet')
-  expect(shipHead('blocked', 4)).toBe('4 to fix')
-  expect(backHead(0)).toBe('Nothing open')
+  expect(shipHead('none', 0)).toBe('None')
+  expect(shipHead('blocked', 4)).toBe('4 things block it')
+  expect(shipHead('blocked', 1)).toBe('1 thing blocks it')
+  expect(backHead(0)).toBe('None')
   expect(backHead(2)).toBe('2 open')
-  expect(safetyHead({ halted: true, held: 3 })).toBe('Paused for safety')
-  expect(safetyHead({ halted: false, held: 3 })).toBe('3 stopped')
+  expect(safetyHead({ halted: true, held: 3 })).toBe('Paused')
+  // The stopped steps wait in Needs you; Safety says today's tally
+  expect(safetyHead({ halted: false, held: 3 })).toBe('3 steps stopped today')
+  expect(safetyHead({ halted: false, held: 1 })).toBe('1 step stopped today')
   expect(safetyHead({ halted: false, held: 0 })).toBe('All clear')
-  expect(contextHead({ loud: 'heavy', goodMoment: true })).toBe('Heavy')
+  expect(contextHead({ loud: 'heavy', goodMoment: true })).toBe('Heavy files')
   expect(contextHead({ loud: 'none', goodMoment: true })).toBe('Compact now')
-  expect(contextHead({ loud: 'none', goodMoment: false })).toBe('All small')
+  expect(contextHead({ loud: 'none', goodMoment: false })).toBe('Small')
+  expect(contextHead({ loud: 'unverified', goodMoment: false })).toBe('Not checked')
+  expect(contextHead({ loud: 'none', goodMoment: false, noFile: true })).toBe('No instruction file')
   expect(previewHead({ state: 'up', changed: true })).toBe('Changed')
-  expect(previewHead({ state: 'none', changed: false })).toBe('No dev server running')
+  expect(previewHead({ state: 'none', changed: false })).toBe('None')
   expect(setupHead('conflict')).toBe('Conflict')
   expect(setupHead('none')).toBe('Up to date')
   expect(doHead({ on: true, blocks: 2 })).toBe('2 to run')
@@ -88,7 +100,7 @@ test('the dot follows the loudness: quiet ring, accent dot, amber for a problem'
   expect(glanceDot('urgent')).toBe('amber')
 })
 
-test('no card opens by itself, whatever it has to say; a press flips it and is remembered (LW7)', () => {
+test('no card opens by itself, whatever it has to say; a press flips it and is remembered', () => {
   expect(glanceIsOpen([], 'proof', 'calm')).toBe(false)
   expect(glanceIsOpen([], 'proof', 'normal')).toBe(false)
   expect(glanceIsOpen([], 'proof', 'warn')).toBe(false)
@@ -155,7 +167,8 @@ const failing = {
 async function mount($: Parameters<Parameters<typeof test>[1]>[0], on: On, store: Record<string, unknown>) {
   forgetProjectSet()
   mock.clock(on, { now: NOW })
-  mock.store(on, store)
+  // Setup done: until then the first screen shows only Start here and Needs you
+  mock.store(on, { 'cockpit:firstrun': 'done', ...store })
   mock.env(on, { HOME: '/home/test' })
   engine(on)
   return $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
@@ -166,14 +179,15 @@ test('by default every card is one Glance row with its headline, and a calm card
   for (const id of ['limit', 'here', 'others', 'autopilot', 'proof', 'guard', 'agents', 'computer', 'skills', 'prs', 'ship', 'back', 'safety', 'context', 'preview', 'setup', 'do']) {
     expect(await ui.find({ key: `glance-${id}` }), `${id} has no Glance row`).toBeDefined()
   }
-  expect(await ui.find({ type: 'Text', text: /^(5-hour: )?62% used( · resets \d\d:\d\d)?$/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: 'Context 38% full' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^(5-hour limit|5 h): 62% used( · resets \d\d:\d\d)?$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^(Working|Your turn|Idle) · \$1\.20$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: '1 your turn' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /5-hour limit: / })).toBeUndefined()
+  // The card is shut: its rows are not drawn (the headline names the limit)
+  expect(await ui.find({ key: 'lt-lead-content' })).toBeUndefined()
   await ui.unmount()
 })
 
-test('the Glance dot has a shape and a word for its state, never a colour name (A8)', async ($, on) => {
+test('the Glance dot has a shape and a word for its state, never a colour name', async ($, on) => {
   const ui = await mount($, on, world())
   const svgs = (await ui.findAll({ type: 'Svg' })) as { props: { alt?: string; source?: string } }[]
   const alts = svgs.map(x => x.props.alt)
@@ -201,7 +215,7 @@ test('a press opens a card under its row and a press again closes it', async ($,
   await ui.unmount()
 })
 
-test('a card with a problem stays shut: its value and dot say so, a press opens it and a press shuts it (LW7)', async ($, on) => {
+test('a card with a problem stays shut: its value and dot say so, a press opens it and a press shuts it', async ($, on) => {
   const ui = await mount($, on, world({ 'cockpit:proof:test-session': failing }))
   expect(await ui.find({ type: 'Text', text: '1 failed' })).toBeDefined()
   expect(await ui.find({ key: 'ol-proof:check-tests' })).toBeUndefined()
@@ -270,10 +284,29 @@ test('Settings offers Glance, Short and Full', async ($, on) => {
   await again.unmount()
 })
 
-test('R1 (round 2): a headline that points at Needs you carries the needs-you dot; only the dot, not the loudness', () => {
+test('Other sessions never points at Needs you (one fact, one place): its dot is its own loudness', () => {
   const facts = (others: number, needs: number) => ({ others: { others: Array.from({ length: others }, () => ({})) }, view: { needs: Array.from({ length: needs }, () => ({})) } }) as unknown as GlanceFacts
-  expect(glanceDotOf('others', facts(0, 1), 'calm')).toBe('amber')
+  expect(glanceDotOf('others', facts(0, 1), 'calm')).toBe('neutral')
   expect(glanceDotOf('others', facts(1, 1), 'normal')).toBe('accent')
   expect(glanceDotOf('others', facts(0, 0), 'calm')).toBe('neutral')
   expect(glanceDotOf('agents', facts(0, 1), 'calm')).toBe('neutral')
+})
+
+test('Agents: a paused or set-up run says so; no progress is the grey dot with its words; a failure is the plain ring with its words in red (never amber, never the blue dot)', () => {
+  expect(agentsHead({ running: 0, stuck: 0, total: 3, run: 'paused' })).toBe('Paused')
+  expect(agentsHead({ running: 0, stuck: 0, total: 2, run: 'setup' })).toBe('Not started')
+  expect(agentsHead({ running: 1, stuck: 0, total: 3, run: 'paused' })).toBe('1 running')
+  expect(agentsHead({ running: 2, stuck: 1, total: 3, stuckMin: 11 })).toBe('No progress for 11 min')
+  expect(agentsHead({ running: 2, stuck: 1, total: 3, stuckMin: 11, failed: 1 })).toBe('1 failed')
+  expect(agentsShort({ running: 2, stuck: 1, total: 3 })).toBe('No progress')
+  expect(agentsShort({ running: 0, stuck: 0, total: 3, run: 'paused' })).toBe('Paused')
+  expect(agentsShort({ running: 0, stuck: 0, total: 3 })).toBeUndefined()
+  // "None here" keeps a word where it does not fit
+  expect(agentsShort({ running: 0, stuck: 0, total: 0, others: 2 })).toBe('None')
+  const facts = (head: Record<string, unknown>) => ({ agents: { head: { running: 1, stuck: 0, total: 1, ...head } }, others: { others: [] }, view: { needs: [] } }) as unknown as GlanceFacts
+  expect(glanceDotOf('agents', facts({ stuck: 1, stuckMin: 11 }), 'warn')).toBe('neutral')
+  expect(glanceWordOf('agents', facts({ stuck: 1, stuckMin: 11 }), 'warn')).toEqual({ word: 'No progress for 11 min', short: 'No progress' })
+  expect(glanceDotOf('agents', facts({ failed: 1 }), 'warn')).toBe('neutral')
+  expect(glanceWordOf('agents', facts({ failed: 1 }), 'warn')).toEqual({ word: '1 failed', short: 'Failed', failed: true })
+  expect(glanceDotOf('agents', facts({}), 'normal')).toBe('accent')
 })

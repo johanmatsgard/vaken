@@ -1,7 +1,7 @@
-// Assumption review runtime: for a long prompt, add a note for Claude (it rides in `context` with the prompt
+// Assumption review runtime: for a long prompt, add a note for Claude (it rides in `context` with the prompt), at most once an hour in a session
 import type { EngineInterface, On } from 'claude-code'
 
-import { ASSUME_BAND_MS, ASSUME_KEY, ASSUME_NOTE, assumptionsText, bandText, findAssumed, parseStored, storeKey, wantsNote } from '../core/assumptions'
+import { ASSUME_BAND_MS, ASSUME_KEY, ASSUME_NOTE, assumptionsText, bandText, findAssumed, parseStored, sentKey, storeKey, wantsNote } from '../core/assumptions'
 import { postBand } from '../core/band'
 import { withToastGate } from '../core/io'
 import { homeFrom } from '../core/platform'
@@ -9,6 +9,7 @@ import type { Io } from '../core/io'
 import { isPersonMessage } from '../core/proof'
 import { readSetting } from '../core/settings'
 import { subArgs } from '../core/menu'
+import { sayIn } from './saylang'
 
 // IO-BLOCK-START
 function io($: EngineInterface): Io {
@@ -44,7 +45,16 @@ export function registerAssumptions(on: On): void {
   on('prompt.submit', { text: /(?<assume>)/ }, async ($, e, next) => {
     let note: string | undefined
     try {
-      if ((await isOn(io($))) && isPersonMessage(e.text, e.origin) && wantsNote(e.text)) note = ASSUME_NOTE
+      const i = io($)
+      if ((await isOn(i)) && isPersonMessage(e.text, e.origin)) {
+        const key = sentKey(await i.sessionId())
+        const last = await i.get(key)
+        const now = await i.now()
+        if (wantsNote(e.text, typeof last === 'number' ? last : undefined, now)) {
+          note = ASSUME_NOTE
+          await i.set(key, now)
+        }
+      }
     } catch {
     }
     return next(note === undefined ? e : { ...e, context: [...(e.context ?? []), note] })
@@ -71,6 +81,7 @@ export function registerAssumptions(on: On): void {
     const rest0 = subArgs(e.args, 'assumptions')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i).catch(() => undefined)
     return { text: assumptionsText(parseStored(await i.get(storeKey(await i.sessionId()))), await isOn(i), await i.now()) }
   })
 }

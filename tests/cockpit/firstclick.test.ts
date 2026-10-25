@@ -134,7 +134,7 @@ test('a terminal draws no first-click Client: the Button alone presses', async (
 })
 
 // : every More, Less or Fold of a Glance row is a framed word: its box draws the rounded frame (a named picture) under its word.
-test('every More, Less or Fold in a Glance row is a rounded framed word (items 135, 136); one with its own press knows the height of its box', async ($, on) => {
+test('every More, Less or Fold in a Glance row is a rounded framed word; one with its own press knows the height of its box', async ($, on) => {
   const mem = world()
   engine(on, mem)
   forgetProjectSet()
@@ -162,12 +162,12 @@ test('every More, Less or Fold in a Glance row is a rounded framed word (items 1
   await ui.unmount()
 })
 
-test('R9: a hover group name is short, kept to the Client key\'s letters, and the same for the same part', () => {
+test('a hover group name is short, kept to the Client key\'s letters, and the same for the same part', () => {
   expect(hoverScope('ol-section:Notices')).toBe('hv-ol-section_3a_Notices')
   expect(hoverScope('x'.repeat(200)).length).toBeLessThanOrEqual(64)
 })
 
-test('P-6: clientKey keeps letters, digits and "-", writes every other character as its code, and never merges two keys', () => {
+test('clientKey keeps letters, digits and "-", writes every other character as its code, and never merges two keys', () => {
   expect(fcKey('ol-section:Notices')).toBe('fc-ol-section_3a_Notices')
   expect(fcKey('sw-undo.mode')).toBe('fc-sw-undo_2e_mode')
   expect(fcKey('ol-section:Plan and cost')).toBe('fc-ol-section_3a_Plan_20_and_20_cost')

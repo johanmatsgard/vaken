@@ -14,7 +14,7 @@ import { previewLoud } from '../../core/previewcard'
 import { doLoud } from '../../core/docard'
 import { setupLoud } from '../../core/setupcard'
 import { isGroupOrder } from '../../core/cardhome'
-import { ACTIVE_FOR_MS, allOthers, cardLoudness, limitBlocks, problemsFirstInGroups } from './logic'
+import { ACTIVE_FOR_MS, allOthers, cardLoudness, limitBlocks, problemsFirst, problemsFirstInGroups } from './logic'
 import type { CardId, Loud, LoudFacts, View } from './logic'
 import type { Bucket } from './layouts'
 import type { Prefs } from './prefs'
@@ -23,8 +23,8 @@ import type { LinesModel } from './cards/lines'
 
 export const proofFact =(p: ProofState | undefined): LoudFacts['proof'] => {
   if (p === undefined || (p.turns === 0 && p.receipts.length === 0 && p.goal === undefined)) return 'none'
-  const failed = relevantKinds(p).some(k => statusOf(p, k) === 'failed')
-  return failed || (p.last?.unproven.length ?? 0) > 0 ? 'problem' : 'ok'
+  // Amber only for a real wait: a failed check. Claims with no check are the normal dot with the words "Not checked"
+  return relevantKinds(p).some(k => statusOf(p, k) === 'failed') ? 'problem' : 'ok'
 }
 
 export function cardLouds(view: View, prefs: Prefs, lines: LinesModel = linesModel(view, prefs)): Record<CardId, Loud> {
@@ -42,7 +42,7 @@ export function cardLouds(view: View, prefs: Prefs, lines: LinesModel = linesMod
       proof: proofFact(prefs.proof),
       agents: { any: agents.length > 0 || prefs.run !== undefined, stuck: agents.some(r => r.state === 'running' && r.quietAt !== undefined), failed: failedTasks(prefs.run) },
       computer: { gaugeOn: prefs.values['laptop.mode'] === 'on', full: room !== undefined && room.n === 0 && room.by !== 'limit' },
-      skillsUsed: prefs.skills !== undefined && lines.views.skills.groups !== undefined,
+      skillsUsed: prefs.skills !== undefined && lines.card('skills').groups !== undefined,
       prs: prsLoud(prefs.prs),
       back: backLoud(lines.ctx.back),
       context: contextLoud(lines.ctx.context),
@@ -58,8 +58,11 @@ export function cardLouds(view: View, prefs: Prefs, lines: LinesModel = linesMod
 
 export const problemsOn = (prefs: Prefs): boolean => prefs.values['view.problems'] !== 'off' && !prefs.arrange
 
-// An order the person arranged (cards not group by group) is kept exactly as arranged: a problem never moves a card there
+// An order the person arranged (cards not group by group) is kept exactly as arranged: a problem never moves a card there.
+// A width with column lists: column by column, and problems first moves a card only inside its own column.
 export function cardOrder(prefs: Prefs, louds: Record<CardId, Loud>, bucket: Bucket = 1): CardId[] {
+  const lists = prefs.columnLists?.[bucket]
+  if (lists !== undefined) return lists.flatMap(l => (problemsOn(prefs) ? problemsFirst(l, louds) : [...l]))
   const own = prefs.orders[bucket]
   return problemsOn(prefs) && isGroupOrder(own) ? problemsFirstInGroups(own, louds) : [...own]
 }

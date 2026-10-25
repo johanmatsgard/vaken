@@ -22,7 +22,7 @@ Do the steps in this order.
    rm -r ~/.claude/cockpit
    ```
 
-   On Windows 11 (beta), "Delete everything" does not remove the folder. Look at it in PowerShell, then remove it in File Explorer:
+   On Windows 11, "Delete everything" does not remove the folder. Look at it in PowerShell, then remove it in File Explorer:
 
    ```
    Get-ChildItem $env:USERPROFILE\.claude\cockpit

@@ -9,6 +9,8 @@ import { serialUpdate } from '../core/serial'
 import { LISTING_TRIES, SKILLS_COUNTS_KEY, SKILLS_FLUSH_MS, SKILLS_LISTING_KEY, addSkillCounts, holdsCounts, listingFrom, noteSkill, parseListing, pendingSize, skillsText } from '../core/skills'
 import type { SkillCounts } from '../core/skills'
 import { subArgs } from '../core/menu'
+import { tr } from '../core/lang'
+import { sayIn } from './saylang'
 
 // IO-BLOCK-START
 function io($: EngineInterface): Io {
@@ -120,12 +122,13 @@ export function registerSkills(on: On): void {
     if (rest0 === undefined) return next(e)
     try {
       const i = io($)
+      await sayIn(i)
       await flush(i)
       await readListing($)
       const now = await i.now()
-      return { text: skillsText({ counts: await i.get(SKILLS_COUNTS_KEY), listing: parseListing(await i.get(SKILLS_LISTING_KEY)), now }).join('\n') }
+      return { text: skillsText({ counts: await i.get(SKILLS_COUNTS_KEY), listing: parseListing(await i.get(SKILLS_LISTING_KEY)), now }, tr).join('\n') }
     } catch {
-      return { text: 'The skills could not be read. Try again in a moment.' } // en-only: plain answer of a slash command (text twin)
+      return { text: tr('The skills could not be read. Try again in a moment.') }
     }
   })
 }

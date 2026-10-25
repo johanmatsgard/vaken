@@ -1,6 +1,7 @@
 // The Guard on Windows: reads cmd.exe and PowerShell lines and finds risky steps. Pure text in, findings out. Its own tokenizer: a backslash is a path character, the backtick is the PowerShell escape, ^ is the cmd escape. Fails closed: a line it cannot read to the end, or that runs a program named by a variable, is an 'ask'.
 import type { Finding } from './guarddestroy'
 import type { Tok } from './guardshell'
+import { withoutDataHeredocs } from './guardshell'
 import { absolute, expandHome, isInside, isInsideTemp, isRebuildableWin, isWinTempToken, looksWin, winProtectedKind } from './guardpaths'
 import { dotnetOps } from './guardnet'
 import type { NetOp } from './guardnet'
@@ -283,6 +284,7 @@ function collect(command: string, depth: number, st: State, out: WCmd[], shell: 
       i++
     }
     if (ps) {
+      for (const inner of subExpressions(piece.text)) collect(inner, depth + 1, st, out, 'ps', true)
       if (PS_CODE_RUN.test(piece.text) || PS_CODE_REF.test(piece.text)) st.dynamic.push(words[i]?.t ?? piece.text)
       const net = dotnetOps(piece.text)
       if (net.length > 0) (st.net ??= []).push(...net)
@@ -321,6 +323,44 @@ function collect(command: string, depth: number, st: State, out: WCmd[], shell: 
     prev = here
     prevPiped = piece.pipedTo
   }
+}
+
+// `$( ... )` runs its commands first, also inside a double-quoted string; a single-quoted string is only text.
+function subExpressions(text: string): string[] {
+  if (!text.includes('$(')) return []
+  const out: string[] = []
+  let q = ''
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]
+    if (q === "'") {
+      if (c === "'") q = ''
+      continue
+    }
+    if (q === '"' && c === '`') {
+      i++
+      continue
+    }
+    if (c === '"') q = q === '"' ? '' : '"'
+    else if (c === "'" && q === '') q = "'"
+    else if (c === '$' && text[i + 1] === '(') {
+      let depth = 1
+      let inner = ''
+      let iq = ''
+      let j = i + 2
+      for (; j < text.length && depth > 0; j++) {
+        const d = text[j]
+        if (iq !== '') {
+          if (d === iq) iq = ''
+        } else if (d === "'" || (d === '"' && q === '')) iq = d
+        else if (d === '(') depth++
+        else if (d === ')') depth--
+        if (depth > 0) inner += d
+      }
+      if (inner.trim() !== '') out.push(inner)
+      i = j - 1
+    }
+  }
+  return out
 }
 
 function recurse(c: WCmd, depth: number, st: State, out: WCmd[], ps: boolean): void {
@@ -391,7 +431,9 @@ function recurse(c: WCmd, depth: number, st: State, out: WCmd[], ps: boolean): v
 }
 
 
-export function isWindowsShape(command: string): boolean {
+// Read as a bash line, so the body of a heredoc fed to cat or python is data, not a command.
+export function isWindowsShape(line: string): boolean {
+  const command = withoutDataHeredocs(line)
   if (command.length > 20000) return DRIVE_BS.test(command) || VARS.test(command)
   if (DRIVE_BS.test(command) || UNC.test(command) || VARS.test(command) || PS_FLAG.test(command) || CMD_CONTROL.test(command)) return true
   let drive = false
@@ -723,8 +765,9 @@ function ruleNet(ops: readonly NetOp[], env: Env, wholeRecursive: boolean): WinF
   return out
 }
 
-export function netOverwriteTargets(command: string, env: Env, known = false): string[] {
-  if (!known && !isWindowsShape(command)) return []
+export function netOverwriteTargets(line: string, env: Env, known = false): string[] {
+  if (!known && !isWindowsShape(line)) return []
+  const command = known ? line : withoutDataHeredocs(line)
   const st: State = { unparsed: false, dynamic: [], elevated: false, tooDeep: false }
   try {
     collect(command, 0, st, [], 'ps', known)
@@ -740,6 +783,9 @@ export function netOverwriteTargets(command: string, env: Env, known = false): s
   return [...new Set(out)]
 }
 
+const WMI_REMOVERS = new Set(['remove-ciminstance', 'rcim', 'remove-wmiobject', 'rwmi'])
+const WMI_QUERY = /\b(?:get-wmiobject|gwmi|get-ciminstance|gcim)\b/i
+const SHADOW = /\bwin32_shadowcopy\b/i
 const DELETERS = new Set(['del', 'erase', 'rd', 'rmdir', 'remove-item', 'ri', 'rm', 'delete'])
 const COPIERS = new Set(['copy', 'move', 'xcopy', 'robocopy', 'copy-item', 'cpi', 'move-item', 'mi', 'cp', 'mv', 'ren', 'rename', 'rename-item', 'rni'])
 const REG_PS = new Set(['remove-itemproperty', 'set-itemproperty', 'new-itemproperty', 'clear-itemproperty', 'rename-itemproperty', 'copy-itemproperty', 'set-item', 'new-item', 'ni', 'sp'])
@@ -754,8 +800,10 @@ export function winCommandsOf(command: string): WCmd[] {
   return cmds
 }
 
-export function checkWindows(command: string, env: Env, known = false): WinFinding[] {
-  if (!known && !isWindowsShape(command)) return []
+export function checkWindows(line: string, env: Env, known = false): WinFinding[] {
+  if (!known && !isWindowsShape(line)) return []
+  // PowerShell has no heredoc; a bash line drops the bodies that are only data.
+  const command = known ? line : withoutDataHeredocs(line)
   const st: State = { unparsed: false, dynamic: [], elevated: false, tooDeep: false }
   const cmds: WCmd[] = []
   collect(command, 0, st, cmds, 'ps', known)
@@ -768,12 +816,15 @@ export function checkWindows(command: string, env: Env, known = false): WinFindi
     if (c.prog === 'iex' || c.prog === 'invoke-expression' || INTERPRETERS.has(c.prog)) found.push(...ruleIex(c, command))
     found.push(...ruleSystem(c, env))
     found.push(...ruleWrite(c, env))
+    if (WMI_REMOVERS.has(c.prog)) found.push(make(SHADOW.test(command) ? 'win-backup' : 'win-system', 'ask'))
     if (c.prog === 'powershell' || c.prog === 'pwsh') {
       const enc = c.args.find(a => !a.quoted && /^-e(?:n(?:c(?:o(?:d(?:e(?:d(?:c(?:o(?:m(?:m(?:a(?:n(?:d)?)?)?)?)?)?)?)?)?)?)?)?)?$/i.test(a.t.split(':')[0] ?? ''))
       if (enc !== undefined) found.push(make('win-encoded', 'ask'))
     }
   }
   if (st.net !== undefined) found.push(...ruleNet(st.net, env, wholeRecursive))
+  // A WMI or CIM object deleted by its own .Delete() call is a system object, not a file: a shadow copy is a restore point.
+  if (WMI_QUERY.test(command) && /\.\s*delete\s*\(/i.test(command)) found.push(make(SHADOW.test(command) ? 'win-backup' : 'win-system', 'ask'))
   if (st.elevated) found.push(make('win-elevate', 'ask'))
   if (st.kill === true) found.push(make('win-kill', 'ask'))
   if (st.dynamic.length > 0) found.push(make('win-dynamic', 'ask', [...new Set(st.dynamic)].slice(0, 2).join(', ')))

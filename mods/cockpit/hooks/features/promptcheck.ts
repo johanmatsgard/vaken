@@ -11,6 +11,7 @@ import { noteVerdict } from '../core/talk'
 import { readSetting } from '../core/settings'
 import { holdNote, readNote } from '../core/flush'
 import { subArgs } from '../core/menu'
+import { sayIn } from './saylang'
 
 // IO-BLOCK-START
 function io($: EngineInterface): Io {
@@ -69,6 +70,7 @@ export function registerPromptCheck(on: On): void {
     const rest0 = subArgs(e.args, 'promptcheck')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i).catch(() => undefined)
     const mode = checkMode(await readSetting(i, PROMPT_CHECK_KEY))
     return { text: explainLast(parseLast(await readNote(i, lastKey(await i.sessionId()))), mode) }
   })

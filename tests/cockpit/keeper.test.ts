@@ -21,7 +21,8 @@ import { claimsKey } from '../hooks/core/crew'
 import { bandKey } from '../hooks/core/band'
 import { diffKey } from '../hooks/core/compactdiff'
 import { REST_KEY } from '../hooks/core/compactrest'
-import { storeKey as assumeKey } from '../hooks/core/assumptions'
+import { sentKey as assumeSentKey, storeKey as assumeKey } from '../hooks/core/assumptions'
+import { tasksStoreKey } from '../hooks/core/tasklist'
 import { failedKey, lastKey as errorKey } from '../hooks/core/errors'
 import { freshKey } from '../hooks/core/freshstart'
 import { planKey } from '../hooks/core/planfirst'
@@ -41,7 +42,7 @@ const S2 = '66666666-7777-4888-9999-aaaaaaaaaaaa'
 const ME = 'eeeeeeee-ffff-4000-8000-000000000000'
 
 test('every per-session key a block writes belongs to a family the keeper knows', () => {
-  const end = [allowKey, haltKey, pkgKey, scopeKey, heldKey, envNotedKey, fenceKey, commandsKey, outboxKey, steerKey, stampKey, claimsKey, bandKey, diffKey, REST_KEY, assumeKey, errorKey, freshKey, planKey, promptKey, rulesKey, waitKey, PROJECT_OF_KEY, pendingKey, markKey, failedKey]
+  const end = [allowKey, haltKey, pkgKey, scopeKey, heldKey, envNotedKey, fenceKey, commandsKey, outboxKey, steerKey, stampKey, claimsKey, bandKey, diffKey, REST_KEY, assumeKey, assumeSentKey, tasksStoreKey, errorKey, freshKey, planKey, promptKey, rulesKey, waitKey, PROJECT_OF_KEY, pendingKey, markKey, failedKey]
   for (const k of end) expect(familyOf(k(S1)), k(S1)).toEqual({ family: k(S1).slice(0, -S1.length), sid: S1 })
   for (const k of end) expect(END_FAMILIES).toContain(k(S1).slice(0, -S1.length))
   for (const k of [stateKey, state2Key, indexKey, namedKey, ORCH_KEY]) expect(KEPT_FAMILIES[k(S1).slice(0, -S1.length)], k(S1)).toBeGreaterThan(0)

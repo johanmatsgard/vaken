@@ -129,6 +129,20 @@ test('Windows ways to open something are classed as open is, no stronger and no 
   expect((await judged('PowerShell', 'Start-Process cmd -Verb RunAs')).length).toBe(1)
 })
 
+test('Windows command names get their kind in the ledger: a delete is a delete, a look is a read, a copy is an edit', async () => {
+  const DELETES = ['del x.txt', 'erase x.txt', 'rd /s /q build', 'rmdir build', 'Remove-Item -Recurse -Force build', 'ri build', 'REMOVE-ITEM x', 'DEL.EXE x', 'C:/tools/RD.exe build','robocopy a b /MIR', 'robocopy a b /purge', 'Clear-RecycleBin -Force', 'dir && del x.txt']
+  for (const cmd of DELETES) expect([cmd, kindOf(cmd)]).toEqual([cmd, 'delete'])
+  const READS = ['dir', 'dir /s', 'type x.txt', 'Get-ChildItem', 'gci -Recurse', 'ls', 'LS', 'Select-String foo x.txt', 'sls foo', 'where node', 'where.exe node', 'findstr foo x.txt', 'Get-Content x.txt', 'gc x.txt', 'Test-Path x', 'dir > NUL', 'type x 2>$null']
+  for (const cmd of READS) expect([cmd, kindOf(cmd)]).toEqual([cmd, 'read'])
+  const EDITS = ['copy a b', 'move a b', 'ren a b', 'md out', 'mkdir out', 'MKDIR out', 'New-Item -ItemType File x', 'ni x', 'Copy-Item a b', 'Move-Item a b', 'Rename-Item a b', 'xcopy a b /e', 'robocopy a b /e', 'Set-Content x hi', 'type x.txt > y.txt', 'dir > list.txt']
+  for (const cmd of EDITS) expect([cmd, kindOf(cmd)]).toEqual([cmd, 'edit'])
+  // Harmless names stay harmless, and the Mac names read as before.
+  for (const [cmd, kind] of [['echo hi', 'read'], ['cat x > /dev/null', 'read'], ['rm -rf build', 'delete'], ['mv a b', 'edit'], ['hostname', 'read'], ['notepad x.txt', 'other']] as const) expect([cmd, kindOf(cmd)]).toEqual([cmd, kind])
+  // The guard still stops the hard Windows deletes; the new kinds loosen nothing.
+  expect(hardWords(W, 'Remove-Item -Recurse -Force C:\\', 'win32').length).toBe(1)
+  expect((await judged('PowerShell', 'Remove-Item -Recurse -Force C:\\')).length).toBe(1)
+})
+
 test('/vaken-help run do judges a Windows block as PowerShell and a Mac block as before', async () => {
   expect((await guardWords(fake(), W, '& $tool --wipe', 'win32')).length).toBe(1)
   expect(await guardWords(fake(), W, '& $tool --wipe')).toEqual([])
@@ -219,4 +233,33 @@ test('the Bash and Mac readings of outward steps are unchanged', () => {
   expect(brief('Bash', 'curl https://api.example.com/a')).toEqual([{ label: 'web request', to: 'api.example.com', guarded: false, write: false, now: '' }])
   expect(brief('Bash', 'echo iwr -Method Post')).toEqual([])
   for (const cmd of ['curl -X POST https://api.example.com/a -d a=1', 'wget --post-data=a=1 https://api.example.com/a', 'git push origin main', `scp x.txt me${AT}host.example.com:/tmp/`]) expect(brief('PowerShell', cmd)).toEqual(brief('Bash', cmd))
+})
+
+test('splatted, .NET and mail sends are outward steps too', () => {
+  for (const cmd of [
+    "$p = @{ Uri = 'https://api.example.com/a'; Method = 'Post' }; iwr @p",
+    "$p = @{Uri='https://api.example.com/a'; Body='x=1'}; Invoke-RestMethod @p",
+    "(New-Object Net.WebClient).UploadString('https://api.example.com/a', 'data')",
+    "$c = New-Object System.Net.WebClient; $c.UploadFile('https://api.example.com/a', 'a.txt')",
+    "$h = [System.Net.Http.HttpClient]::new(); $h.PostAsync('https://api.example.com/a', $b).Result",
+  ]) expect(brief('PowerShell', cmd), cmd).toEqual(POST_API)
+  expect(brief('PowerShell', 'iwr @p')).toEqual([{ label: 'web change', to: 'a web address', guarded: true, write: true, now: 'send a POST request that changes data at a web address' }])
+  for (const cmd of [`Send-MailMessage -To a${AT}x.example.com -Subject hi -SmtpServer smtp.x.example.com`, '$m = New-Object System.Net.Mail.SmtpClient("smtp.x.example.com"); $m.Send($msg)']) expect(brief('PowerShell', cmd).map(o => o.label), cmd).toEqual(['email'])
+  // Reads stay reads.
+  expect(brief('PowerShell', "$p = @{ Uri = 'https://api.example.com/a' }; iwr @p")).toEqual([{ label: 'web request', to: 'api.example.com', guarded: false, write: false, now: '' }])
+  for (const cmd of ["(New-Object Net.WebClient).DownloadString('https://api.example.com/a')", "$h.GetAsync('https://api.example.com/a').Result", "@('a','b') | ForEach-Object { $_ }"]) expect(brief('PowerShell', cmd).filter(o => o.write), cmd).toEqual([])
+})
+
+test('.NET writes to the profile, WMI deletes, $( ) inside strings and .Delete() on a listing are caught', async () => {
+  const profile = 'scope: This edits your PowerShell profile ($PROFILE), a protected file (it runs at every PowerShell start).'
+  expect(await judged('PowerShell', "[IO.File]::WriteAllText($PROFILE, 'x')")).toEqual([profile])
+  expect((await judged('PowerShell', '[System.IO.File]::AppendAllText("$HOME\\Documents\\WindowsPowerShell\\profile.ps1", \'x\')'))[0]).toMatch(/^scope: This edits C:\\Users\\me\\Documents\\WindowsPowerShell\\profile\.ps1, a protected file/)
+  const backup = 'destructive: Deletes Windows backups or restore points. You can no longer go back to an earlier state of the computer.'
+  for (const cmd of ['Get-WmiObject Win32_ShadowCopy | ForEach-Object { $_.Delete() }', 'Get-CimInstance Win32_ShadowCopy | Remove-CimInstance']) expect(await judged('PowerShell', cmd), cmd).toEqual([backup])
+  expect((await judged('PowerShell', 'Get-CimInstance Win32_Service -Filter "Name=\'x\'" | Remove-CimInstance'))[0]).toMatch(/^destructive: Changes a Windows system setting/)
+  const docs = 'destructive: Permanently deletes C:\\Users\\me\\Documents and everything inside. Deleting from the command line skips the Recycle Bin, so there is no undo.'
+  for (const cmd of ['Write-Output "$(Remove-Item C:\\Users\\me\\Documents -Recurse -Force)"', 'Write-Output $(Remove-Item C:\\Users\\me\\Documents -Recurse -Force)', '(Get-ChildItem C:\\Users\\me\\Documents).Delete()']) expect(await judged('PowerShell', cmd), cmd).toEqual([docs])
+  expect((await judged('PowerShell', '(Get-Thing).Delete()'))[0]).toMatch(/^destructive: Permanently deletes the folder named by/)
+  // Everyday text stays quiet.
+  for (const cmd of ['Write-Output "Total: $($items.Count)"', "Write-Output '$(Remove-Item C:\\x -Recurse)'", 'Get-CimInstance Win32_OperatingSystem', '$list.Delete()', 'Write-Output "Use `$(cmd) here"']) expect([cmd, await judged('PowerShell', cmd)]).toEqual([cmd, []])
 })

@@ -1,16 +1,19 @@
 // Crew programs half: parsers for `lsof` and `ps`, and rules for ports, awake hold and orphans. Pure; nothing here kills a program.
 import { tr } from './lang'
+import { fillIn, same } from './fillin'
+import type { Tr } from './fillin'
 import { baseName, cut, isPath, matchFolder, shortFolder } from './crew3'
 import type { Folder, Live } from './crew3'
 import { LID_NOTE } from './awakeplan'
 import { WIN_DETAIL_WHY, WIN_DETAIL_WORK, WIN_LID_NOTE, WIN_TEXT } from './awakewords'
 import type { AwakeSystem } from './awakewords'
-import { LIVE_MS, STALE_MS } from './record'
+import { STALE_MS, isBusy } from './record'
+import type { SessionRecord } from './record'
 import { lines } from './platform'
 import { stopPidArgv } from './procs'
 import type { ProcPlatform } from './procs'
 import { sysWord } from './syswords'
-import { tEn } from '../i18n/t'
+import { t, tEn } from '../i18n/t'
 
 export const PROC_TIMEOUT_MS = 5_000
 
@@ -77,13 +80,16 @@ const PROGRAMS: [RegExp, string][] = [
   [/^deno$/i, 'a Deno program'],
   [/^mysqld/i, 'a MySQL database'],
   [/^(next-server|vite|webpack|esbuild)/i, 'a web dev server'],
-  [/^(docker|com\.docker|vpnkit)/i, 'Docker'],
+  [/^(docker|com\.docker|vpnkit)/i, 'Docker'], // en-only: a product name
 ]
 // A Claude session names its program by its version (2.1.295), which is not a name.
 const looksLikeName = (name: string): boolean => /[A-Za-z]{2}/.test(name) && !/^v?\d[\d.]*(?:[-+]\S*)?$/.test(name)
-export function programWords(command: string): string {
+// `say` is `same` for the note Claude reads (English) and `tr` for the words the person reads
+export function programWords(command: string, say: Tr = same): string {
   const base = baseName(command)
-  return PROGRAMS.find(([re]) => re.test(base))?.[1] ?? (looksLikeName(base) ? `a program called ${cut(base, 30)}` : 'a program of this session')
+  const known = PROGRAMS.find(([re]) => re.test(base))?.[1]
+  if (known !== undefined) return say(known)
+  return looksLikeName(base) ? fillIn(say('a program called {name}'), { name: cut(base, 30) }) : say('a program of this session')
 }
 
 type HolderKind = 'mine' | 'other' | 'ended' | 'none'
@@ -103,29 +109,29 @@ export function resolveHolders(listeners: Listener[], cwds: Map<number, string>,
 }
 
 export function portSentence(h: PortHolder): string {
-  const what = programWords(h.command)
+  const what = programWords(h.command, tr)
   const name = h.folder?.name ?? ''
-  if (h.kind === 'mine') return `Port ${h.port}: ${what} started in the folder of this session.`
-  if (h.kind === 'other') return `Port ${h.port}: ${what} started in the folder of session '${name}'.`
-  if (h.kind === 'ended') return `Port ${h.port}: ${what} started in the folder of session '${name}' (that session has ended).`
-  if (h.cwd !== undefined) return `Port ${h.port}: ${what} (folder ${shortFolder(h.cwd)}). No session of vaken works in that folder.`
-  return `Port ${h.port}: ${what}. Its folder could not be read.`
+  if (h.kind === 'mine') return fillIn(tr('Port {port}: {what} started in the folder of this session.'), { port: h.port, what })
+  if (h.kind === 'other') return fillIn(tr("Port {port}: {what} started in the folder of session '{name}'."), { port: h.port, what, name })
+  if (h.kind === 'ended') return fillIn(tr("Port {port}: {what} started in the folder of session '{name}' (that session has ended)."), { port: h.port, what, name })
+  if (h.cwd !== undefined) return fillIn(tr('Port {port}: {what} (folder {folder}). No session of vaken works in that folder.'), { port: h.port, what, folder: shortFolder(h.cwd) })
+  return fillIn(tr('Port {port}: {what}. Its folder could not be read.'), { port: h.port, what })
 }
 
-const portKnown = (port: number): string => (DEV_PORTS[port] === undefined ? '' : ` Port ${port} is ${DEV_PORTS[port]}.`)
+const portKnown = (port: number): string => (DEV_PORTS[port] === undefined ? '' : ` ${fillIn(tr('Port {port} is {what}.'), { port, what: tr(DEV_PORTS[port] as string) })}`)
 
 export function portsText(mode: string, holders: PortHolder[] | undefined, listed: boolean, all = false, plat: ProcPlatform = 'posix'): string {
   const out: string[] = []
-  out.push(mode === 'off' ? 'Shared ports: off. Turn it on: Settings > Agents. (This list still works.)' : 'Shared ports: on. Before Claude starts a server on a port another session holds, Claude gets a note.')
+  out.push(tr(mode === 'off' ? 'Shared ports: off. Turn it on: Settings > Agents. (This list still works.)' : 'Shared ports: on. Before Claude starts a server on a port another session holds, Claude gets a note.'))
   if (holders === undefined || !listed) {
-    out.push('', sysWord('The ports could not be read: the lsof program did not answer.', plat))
+    out.push('', tr(sysWord('The ports could not be read: the lsof program did not answer.', plat)))
     return out.join('\n')
   }
   const shown = holders.filter(h => h.kind !== 'none' || DEV_PORTS[h.port] !== undefined)
   const hidden = holders.length - shown.length
-  if (shown.length === 0) out.push('', 'No dev port is held and no session folder holds a port.')
+  if (shown.length === 0) out.push('', tr('No dev port is held and no session folder holds a port.'))
   else out.push('', ...shown.map(h => `${portSentence(h)}${portKnown(h.port)}`))
-  if (all && hidden > 0) out.push('', `${tEn('words.other_listening_port', { n: hidden })} not from a session folder.`)
+  if (all && hidden > 0) out.push('', fillIn(tr('{ports} not from a session folder.'), { ports: t('words.other_listening_port', { n: hidden }) }))
   return out.join('\n')
 }
 
@@ -181,13 +187,14 @@ export function serverStart(command: string): ServerStart | undefined {
   return guess.size > 0 ? { ports: [...guess], exact: false } : undefined
 }
 
+// en-only: the note Claude reads about a port (portNote), and the stored ledger detail (portDetail, said where it is shown)
 export function portNote(h: PortHolder, exact: boolean): string {
   const name = h.folder?.name ?? 'another session'
   const where = h.kind === 'ended' ? `started in the folder of session '${name}' (that session has ended, and the program was left running)` : `started in the folder of session '${name}'`
-  const want = exact ? 'This command asks for the same port.' : 'This command may use the same port, because it is the usual one for this server.'
-  return `Vaken saw that port ${h.port} is held by ${programWords(h.command)} ${where}. ${want} Use another port (for example ${h.port + 1}), or ask the person before you go on. Do not stop the other program yourself.`
+  const want = exact ? 'This command asks for the same port.' : 'This command may use the same port, because it is the usual one for this server.' // en-only: the note Claude reads about a port
+  return `Vaken saw that port ${h.port} is held by ${programWords(h.command)} ${where}. ${want} Use another port (for example ${h.port + 1}). Do not stop the other program yourself.`
 }
-export const portToast = (h: PortHolder): string => tr("Port {port} is held by session '{name}'.").replace('{port}', String(h.port)).replace('{name}', h.folder?.name ?? tr('another session'))
+export const portToast = (h: PortHolder): string => tr('Port {port} is held by session "{name}".').replace('{port}', String(h.port)).replace('{name}', h.folder?.name ?? tr('another session'))
 export const portDetail = (h: PortHolder): string => `Port ${h.port} is held by session '${cut(h.folder?.name ?? 'another session', 40)}'. The command ran.`
 
 
@@ -216,8 +223,8 @@ export function isOwnHold(pid: unknown, at: unknown, now: number, psOut: string 
   return prog === 'caffeinate' ? isCaffeinate(psOut) : isNamedHold(psOut, prog)
 }
 
-export function workingNow(records: { state: string; lastEventAt: number; updatedAt: number }[], now: number): number {
-  return records.filter(r => r.state === 'working' && now - r.lastEventAt <= LIVE_MS && now - r.updatedAt <= STALE_MS).length
+export function workingNow(records: Pick<SessionRecord, 'state' | 'lastEventAt' | 'busySince' | 'ask' | 'updatedAt'>[], now: number): number {
+  return records.filter(r => isBusy(r, now) && now - r.updatedAt <= STALE_MS).length
 }
 
 type AwakeAction = 'start' | 'stop' | 'none'
@@ -228,6 +235,7 @@ export function awakePlan(mode: string, working: number, pid: unknown, at: unkno
   return { action: 'start', fresh: !held }
 }
 
+// en-only: a stored ledger detail (English; said where the ledger is shown)
 export const awakeDetail = (working: number, why?: string, sys: AwakeSystem = 'posix', heldMs?: number): string => {
   const text =
     sys === 'win32'
@@ -235,7 +243,7 @@ export const awakeDetail = (working: number, why?: string, sys: AwakeSystem = 'p
         ? WIN_DETAIL_WORK.replace('{n}', tEn('words.session_works', { n: working }))
         : WIN_DETAIL_WHY.replace('{why}', why)
       : working > 0 || why === undefined ? `Held the Mac awake for 10 minutes, because ${tEn('words.session_works', { n: working })}. It is renewed while they work.` : `Held the Mac awake for 10 minutes: ${why}. It is renewed while that lasts.`
-  return heldMs === undefined ? text : text.replace('10 minutes', heldWord(heldMs))
+  return heldMs === undefined ? text : text.replace('10 minutes', heldWord(heldMs)) // en-only: stored ledger detail
 }
 export function heldWord(ms: number): string {
   const min = Math.max(1, Math.round(ms / 60_000))
@@ -246,21 +254,21 @@ export function heldWord(ms: number): string {
 
 export function awakeText(mode: string, canHold: boolean, working: number, pid: unknown, at: unknown, now: number, note?: string, extra?: { away: string; why?: string }, sys: AwakeSystem = 'posix'): string {
   const win = sys === 'win32'
-  const out = [`${win ? WIN_TEXT.head : 'Keep Mac awake'}: ${mode}.`]
-  if (mode !== 'on' && win) out.push(WIN_TEXT.off)
-  else if (mode !== 'on') out.push('Off: vaken does not touch your Mac\'s sleep. Turn it on: Settings > Agents, or type /vaken-help run awake on. It keeps the Mac awake while a session works, and while you are away (a phone is connected, or a question waits), with the macOS caffeinate program. It uses more battery.')
+  const out = [`${tr(win ? WIN_TEXT.head : 'Keep Mac awake')}: ${tr(mode)}.`]
+  if (mode !== 'on' && win) out.push(tr(WIN_TEXT.off))
+  else if (mode !== 'on') out.push(tr("Off: vaken does not touch your Mac's sleep. Turn it on: Settings > Agents, or type /vaken-help run awake on. It keeps the Mac awake while a session works, and while you are away (a phone is connected, or a question waits), with the macOS caffeinate program. It uses more battery."))
   else {
-    if (win) out.push(WIN_TEXT.on)
-    else out.push('While at least one session works, vaken keeps the Mac awake: it starts the caffeinate program for 10 minutes and renews it every 8. When nothing works, it stops the one it started.')
-    if (extra !== undefined) out.push(`Away: ${extra.away === 'off' ? 'Off' : extra.away === 'waiting' ? 'Waiting 2h' : 'Phone only'}. It also holds while a phone is connected${extra.away === 'waiting' ? ', or a question waits for you (up to 2 hours)' : ''}. It never holds more than 8 hours in a row.`)
+    if (win) out.push(tr(WIN_TEXT.on))
+    else out.push(tr('While at least one session works, vaken keeps the Mac awake: it starts the caffeinate program for 10 minutes and renews it every 8. When nothing works, it stops the one it started.'))
+    if (extra !== undefined) out.push(fillIn(tr(extra.away === 'waiting' ? 'Away: {away}. It also holds while a phone is connected, or a question waits for you (up to 2 hours). It never holds more than 8 hours in a row.' : 'Away: {away}. It also holds while a phone is connected. It never holds more than 8 hours in a row.'), { away: tr(extra.away === 'off' ? 'Off' : extra.away === 'waiting' ? 'Waiting 2h' : 'Phone only') }))
   }
-  if (!canHold) out.push('', win ? WIN_TEXT.missing : 'This does not work here: the caffeinate program was not found (it is part of macOS).')
+  if (!canHold) out.push('', tr(win ? WIN_TEXT.missing : 'This does not work here: the caffeinate program was not found (it is part of macOS).'))
   const held = typeof pid === 'number' && typeof at === 'number' && now - at < AWAKE_HOLD_S * 1000
-  out.push('', `Sessions working now: ${working}.`)
-  out.push(held && typeof at === 'number' ? `${win ? WIN_TEXT.held : 'The Mac is held awake'} (started ${Math.max(0, Math.floor((now - at) / 60_000))} min ago).` : 'No hold is on now.')
-  if (extra?.why !== undefined) out.push(`${extra.why}.`)
-  if (mode === 'on') out.push(win ? WIN_LID_NOTE : LID_NOTE)
-  if (note !== undefined) out.push(note)
+  out.push('', fillIn(tr('Sessions working now: {n}.'), { n: working }))
+  out.push(held && typeof at === 'number' ? fillIn(tr('{held} (started {min} min ago).'), { held: tr(win ? WIN_TEXT.held : 'The Mac is held awake'), min: Math.max(0, Math.floor((now - at) / 60_000)) }) : tr('No hold is on now.'))
+  if (extra?.why !== undefined) out.push(`${tr(extra.why)}.`)
+  if (mode === 'on') out.push(tr(win ? WIN_LID_NOTE : LID_NOTE))
+  if (note !== undefined) out.push(tr(note))
   return out.join('\n')
 }
 
@@ -338,23 +346,23 @@ export function findOrphans(procs: Proc[], cwds: Map<number, string>, ctx: Orpha
   return out.sort((a, b) => b.ageS - a.ageS)
 }
 
-const runFor = (s: number): string => (s < 3600 ? tEn('words.minute', { n: Math.max(1, Math.floor(s / 60)) }) : s < 172800 ? tEn('words.hour', { n: Math.floor(s / 3600) }) : tEn('words.day', { n: Math.floor(s / 86400) }))
+const runFor = (s: number): string => (s < 3600 ? t('words.minute', { n: Math.max(1, Math.floor(s / 60)) }) : s < 172800 ? t('words.hour', { n: Math.floor(s / 3600) }) : t('words.day', { n: Math.floor(s / 86400) }))
 
 export function orphansText(found: Orphan[], readable: { ps: boolean; lsof: boolean }, plat: ProcPlatform = 'posix'): string {
-  if (!readable.ps) return sysWord('Leftover programs: the ps program did not answer, so nothing could be checked.', plat)
+  if (!readable.ps) return tr(sysWord('Leftover programs: the ps program did not answer, so nothing could be checked.', plat))
   const out: string[] = []
   if (found.length === 0) {
-    out.push('Leftover programs: none found.')
-    out.push(sysWord('It looks for node, python, vite, next, webpack, esbuild and tsc programs, older than a minute, that run in the folder of a session that has ended, or in a worktree where no session works.', plat))
-    if (!readable.lsof) out.push(sysWord('The lsof program did not answer, so no program\'s folder could be read.', plat))
+    out.push(tr('Leftover programs: none found.'))
+    out.push(tr(sysWord('It looks for node, python, vite, next, webpack, esbuild and tsc programs, older than a minute, that run in the folder of a session that has ended, or in a worktree where no session works.', plat)))
+    if (!readable.lsof) out.push(tr(sysWord("The lsof program did not answer, so no program's folder could be read.", plat)))
     return out.join('\n')
   }
-  out.push(`Leftover programs: ${found.length} found. Each runs in a folder where no session works now.`)
+  out.push(fillIn(tr('Leftover programs: {n} found. Each runs in a folder where no session works now.'), { n: found.length }))
   found.slice(0, ORPHAN_SHOW).forEach((o, n) => {
-    const who = o.why === 'ended' ? `session '${o.name}' has ended` : `no session works in worktree ${o.name}`
-    out.push('', `${n + 1}. ${baseName(o.command.split(/\s+/)[0] ?? '')}, PID ${o.pid}, running ${runFor(o.ageS)}. Folder ${shortFolder(o.cwd)} (${who}).`, `   Command: ${redact(o.command)}`, `   To stop it, run: ${stopPidArgv(o.pid, plat).join(' ')}`)
+    const who = fillIn(tr(o.why === 'ended' ? "session '{name}' has ended" : 'no session works in worktree {name}'), { name: o.name })
+    out.push('', fillIn(tr('{n}. {program}, PID {pid}, running {time}. Folder {folder} ({who}).'), { n: n + 1, program: baseName(o.command.split(/\s+/)[0] ?? ''), pid: o.pid, time: runFor(o.ageS), folder: shortFolder(o.cwd), who }), `   ${fillIn(tr('Command: {command}'), { command: redact(o.command) })}`, `   ${fillIn(tr('To stop it, run: {command}'), { command: stopPidArgv(o.pid, plat).join(' ') })}`)
   })
-  if (found.length > ORPHAN_SHOW) out.push('', `... and ${found.length - ORPHAN_SHOW} more.`)
-  out.push('', sysWord('Look at each line before you run it: a program you started by hand in that folder looks the same. Vaken never stops a program.', plat))
+  if (found.length > ORPHAN_SHOW) out.push('', fillIn(tr('... and {n} more.'), { n: found.length - ORPHAN_SHOW }))
+  out.push('', tr(sysWord('Look at each line before you run it: a program you started by hand in that folder looks the same. Vaken never stops a program.', plat)))
   return out.join('\n')
 }

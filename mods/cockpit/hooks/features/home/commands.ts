@@ -4,8 +4,10 @@ import type { Diff } from '../../core/compactdiff'
 import { REST_KEY, WOULD_WHAT, parseVerdict, restSection } from '../../core/compactrest'
 import { compactLine } from '../../core/compactmoment'
 import { lastAfterTokens } from '../../core/cachefacts'
-import { FOLDED, HIDDEN } from '../../core/menu'
-import { COMMAND_GROUPS, EVERYDAY_COMMANDS, GROUP_ABOUT } from '../../core/registry'
+import { FOLDED, HIDDEN, HIDDEN_ABOUT } from '../../core/menu'
+import { COMMAND_GROUPS, EVERYDAY_COMMANDS } from '../../core/registry'
+import { code } from '../../core/chatmd'
+import { t, tr } from '../../core/lang'
 import { clearProjectSetting, clearSessionSetting, projectName, projectOf, projectText, readGlobalSettings, readProjectSet, readSessionSet, sessionText, writeProjectSetting, writeSessionSetting } from '../../core/projects'
 import { SESSION_KEYS } from '../../core/models'
 import { CARD_SETTINGS, cardSettingsText } from '../../core/cardsettings'
@@ -22,54 +24,69 @@ import type { HomeEngine } from './engine'
 import { loadView } from './load'
 import { resetEverything } from './prefs'
 import { refreshContext, refreshSessions, refreshUsage } from './refresh'
-import { HELP, helpFill } from './views/help'
+import { HELP, helpFill, helpSteps } from './views/help'
+import { LEAN_CUT_LINE, LEAN_REPEAT_LINE, cutsToday } from '../../core/lean'
+import { fillIn } from '../../core/fillin'
 
 export async function usageText(eng: HomeEngine): Promise<string> {
   const got = [await refreshUsage(eng, true), await refreshSessions(eng, true), await refreshContext(eng, true)]
-  const status = got.every(g => g.startsWith('ok')) ? 'Read just now.' : 'Not everything could be read just now: ' + [...new Set(got.filter(g => !g.startsWith('ok')))].join('; ') + '.' // en-only: plain answer of a slash command (text twin)
+  const status = got.every(g => g.startsWith('ok')) ? tr('Read just now.') : fillIn(tr('Not everything could be read just now: {list}.'), { list: [...new Set(got.filter(g => !g.startsWith('ok')))].join('; ') })
   const { view } = await loadView(eng.io())
   const blocks = limitBlocks(view)
-  const lines = limitLines(blocks, 'explained', view)
+  const lines = limitLines(blocks, 'explained', view, tr)
   const said = lines.groups.map(g => g.join(' '))
   const nLimits = lines.shown?.length ?? said.length
-  return [...said.slice(0, nLimits), lines.folded === undefined ? '' : foldWords(lines.folded), ...said.slice(nLimits), lines.source, status].filter(l => l !== '').join('\n')
+  const lean = cutsToday(await eng.io().now())
+  const leanLine = lean.cuts === 0 ? '' : t(LEAN_CUT_LINE, { n: lean.cuts, m: lean.lines })
+  const repeatLine = lean.repeats === 0 ? '' : t(LEAN_REPEAT_LINE, { n: lean.repeats, m: lean.chars })
+  return [...said.slice(0, nLimits), lines.folded === undefined ? '' : foldWords(lines.folded, tr), ...said.slice(nLimits), leanLine, repeatLine, lines.source, status].filter(l => l !== '').join('\n')
 }
 
+// More matches than this show only their titles
+const HELP_TITLES_ONLY = 5
+
+// In the person's language and as markdown: each command once, in the group of its job, as a list line; a topic's title and text as the Help page says them
 export function helpText(args: string, values?: Record<string, string>): string {
   const word = args.trim().toLowerCase()
-  const all = word === 'all'
-  const everyday = EVERYDAY_COMMANDS.map(e => `/${e.command}  ${e.words}`)
-  const withWords = (c: string): string => `/${c}${(FOLDED[c] ?? []).length === 0 ? '' : ` [${(FOLDED[c] ?? []).join(' | ')}]`}`
-  const groups = COMMAND_GROUPS.map(g => `${g.group} (${GROUP_ABOUT[g.group] ?? ''}): ${g.commands.map(withWords).join(' ')}`)
-  if (word !== '' && !all) {
-    const found = HELP.filter(item => `${item.title} ${item.text}`.toLowerCase().includes(word))
-    return found.length === 0 ? `No help topic holds "${word}". All topics: /vaken-help all` : [`Help topics with "${word}"`, '', ...found.flatMap(item => [item.title, helpFill(item.text, values), ''])].join('\n').trimEnd()
+  if (word === 'run') return [t('chat.help_run_head'), '', ...HIDDEN.map(h => `- ${code(`/vaken-help run ${h}`)}${HIDDEN_ABOUT[h] === undefined ? '' : `: ${tr(HIDDEN_ABOUT[h])}`}`)].join('\n')
+  const read = (item: { title: string; text: string }): string[] => [`**${tr(item.title)}**`, '', helpSteps(helpFill(tr(item.text), values)).join('\n\n'), '']
+  if (word === 'all') return HELP.flatMap(read).join('\n').trimEnd()
+  if (word !== '') {
+    const inTitle = HELP.filter(item => item.title.toLowerCase().includes(word) || tr(item.title).toLowerCase().includes(word))
+    const found = inTitle.length > 0 ? inTitle : HELP.filter(item => item.text.toLowerCase().includes(word) || tr(item.text).toLowerCase().includes(word))
+    if (found.length === 0) return t('chat.help_none', { word, all: code('/vaken-help all') })
+    if (found.length > HELP_TITLES_ONLY) return [t('chat.help_found', { word }), '', ...found.map(item => `- ${tr(item.title)}`), '', t('chat.help_read_one')].join('\n')
+    return [t('chat.help_found', { word }), '', ...found.flatMap(read)].join('\n').trimEnd()
   }
-  const topics = HELP
-  const body = all ? topics.flatMap(item => [item.title, helpFill(item.text, values), '']) : ['Topics: /vaken-help all, or /vaken-help <word> to find a topic', ...topics.map(item => `- ${item.title}`)] // en-only: plain answer of a slash command (text twin)
-  return ['Commands', '', 'Every day:', ...everyday, '', 'By job (a word in brackets goes after the command):', ...groups, '', `Also in the pane, or with /vaken-help run <name>: ${HIDDEN.join(', ')}`, '', ...body].join('\n').trimEnd() // en-only: plain answer of a slash command (text twin)
+  const wordsOf = (c: string): string => ((FOLDED[c] ?? []).length === 0 ? '' : ` (${(FOLDED[c] ?? []).join(', ')})`)
+  const about = (c: string): string => tr(EVERYDAY_COMMANDS.find(e => e.command === c)?.words ?? '')
+  const groups = COMMAND_GROUPS.flatMap(g => [tr(g.group), ...g.commands.map(c => `- ${code(`/${c}`)}: ${about(c)}${wordsOf(c)}`), ''])
+  return [t('chat.help_head', { example: code('/vaken-usage cost') }), '', ...groups, t('chat.help_more')].join('\n')
 }
 
 export async function compactText(eng: HomeEngine, args = ''): Promise<string> {
   await refreshContext(eng, true)
   const { view, prefs } = await loadView(eng.io())
   const here = view.here
-  if (args.trim().toLowerCase() === 'why') return whyNotNow(here, cacheTtlMs(view.usage), view.now, extraOf(prefs)) ?? 'Nothing to show yet. This appears after the first answer.'
-  const advice = hereLines(here === undefined ? undefined : { ...here, kind: 'waiting' }, 'explained', cacheTtlMs(view.usage), view.now, true, false, extraOf(prefs))
-  const said = (advice.advice === undefined ? ['No need to compact the session yet.'] : [...advice.advice, ...(advice.why === undefined ? [] : [advice.why])]).map(l => l.replace('Compact now.', 'Type /vaken-compact now to compact.')) // en-only: plain answer of a slash command (text twin)
+  if (args.trim().toLowerCase() === 'why') return whyNotNow(here, cacheTtlMs(view.usage), view.now, prefs, tr) ?? tr('Nothing to show yet. This appears after the first answer. Send a message in the chat.')
+  const advice = hereLines(here === undefined ? undefined : { ...here, kind: 'waiting' }, 'explained', cacheTtlMs(view.usage), view.now, true, false, extraOf(prefs), tr)
+  // The chat has no Compact now button, so a line that ends by pointing at it points at the command
+  const button = `${tr('Compact now')}.`
+  const toCommand = tr('Type /vaken-compact now to compact.')
+  const said = (advice.advice === undefined ? [tr('No need to compact the session yet.')] : [...advice.advice, ...(advice.why === undefined ? [] : [advice.why])]).map(l => (l.endsWith(button) ? `${l.slice(0, -button.length)}${toCommand}` : l))
   const done = logLines((await readLog(eng.io(), LEDGER_KEY)).filter(x => x.before !== undefined || x.what.startsWith('compaction')), 3)
-  const kept = diffWords((await eng.io().get(diffKey(await eng.io().sessionId()))) as Diff | undefined)
-  const ledger = done.length === 0 ? [] : ['', 'Last times the session was compacted:', ...done, ...(kept === '' ? [] : [kept])] // en-only: plain answer of a slash command (text twin)
+  const kept = diffWords((await eng.io().get(diffKey(await eng.io().sessionId()))) as Diff | undefined, tr)
+  const ledger = done.length === 0 ? [] : ['', tr('Last times the session was compacted:'), ...done, ...(kept === '' ? [] : [kept])]
   let preview: string[] = []
   try {
     const msgs = await eng.messages()
-    preview = ['', previewWords({ messages: msgs.length, files: filesFromMessages(msgs), keepList: (await readSetting(eng.io(), 'compact.card')) === 'on', tokens: here?.rec.ctx?.tokens, after: lastAfterTokens(here?.rec.compacts) })]
+    preview = ['', previewWords({ messages: msgs.length, files: filesFromMessages(msgs), keepList: (await readSetting(eng.io(), 'compact.card')) === 'on', tokens: here?.rec.ctx?.tokens, after: lastAfterTokens(here?.rec.compacts) }, tr)]
   } catch {
     // no preview when the chat cannot be read
   }
   const all = await readLog(eng.io(), LEDGER_KEY)
-  const restPart = restSection(await readSetting(eng.io(), 'compact.mode'), parseVerdict(await eng.io().get(REST_KEY(await eng.io().sessionId()))), all.filter(x => x.what === WOULD_WHAT), view.now ?? 0)
-  return [...(advice.context === undefined ? [] : [advice.context]), ...(advice.used === undefined ? [] : [advice.used]), ...(advice.compact === undefined ? [] : [advice.compact]), ...(advice.cacheHit === undefined ? [] : [advice.cacheHit]), ...(advice.top === undefined ? [] : [advice.top]), ...said, '', 'To compact with a note of what to keep, paste:', compactLine({ title: here?.rec.title, branch: here?.rec.branch }), ...restPart, ...preview, ...ledger].join('\n') // en-only: plain answer of a slash command (text twin)
+  const restPart = restSection(await readSetting(eng.io(), 'compact.mode'), parseVerdict(await eng.io().get(REST_KEY(await eng.io().sessionId()))), all.filter(x => x.what === WOULD_WHAT), view.now ?? 0, tr)
+  return [...(advice.context === undefined ? [] : [advice.context]), ...(advice.used === undefined ? [] : [advice.used]), ...(advice.compact === undefined ? [] : [advice.compact]), ...(advice.cacheHit === undefined ? [] : [advice.cacheHit]), ...(advice.top === undefined ? [] : [advice.top]), ...said, '', tr('To compact with a note of what to keep, paste:'), compactLine({ title: here?.rec.title, branch: here?.rec.branch }), ...restPart, ...preview, ...ledger].join('\n')
 }
 
 function writesSetting(words: string[], ask: Ask): boolean {
@@ -107,7 +124,7 @@ export async function settingsCommand(eng: HomeEngine, args: string, person: boo
     if (words.length === 2 && words[1].toLowerCase() === 'reset') {
       await clearSessionSetting(i, sid)
       i.invalidate()
-      return 'This session follows the project again.' // en-only: plain answer of a slash command (text twin)
+      return 'This session follows the project again.' // en-only: /vaken-settings answer stays English by rule
     }
     if (words.length !== 3) return `Use: /vaken-settings session KEY VALUE, or /vaken-settings session reset. Keys: ${SESSION_KEYS.join(', ')}.`
     if (!(await writeSessionSetting(i, sid, words[1], words[2]))) return `This session can keep only ${SESSION_KEYS.join(', ')}, each with one of its values. /vaken-settings all lists them.`
@@ -144,7 +161,7 @@ export async function settingsCommand(eng: HomeEngine, args: string, person: boo
     let say = ''
     if (ask.action === 'save') {
       const { prefs } = await loadView(i)
-      const r = await saveLayout(i, ask.name, snapshot(prefs.values, prefs.orders))
+      const r = await saveLayout(i, ask.name, snapshot(prefs.values, prefs.orders, prefs.columnLists))
       say = r.why ?? `Saved the layout "${r.name}".`
     } else if (found === undefined) say = `No layout named "${ask.name}".`
     else if (ask.action === 'apply') {

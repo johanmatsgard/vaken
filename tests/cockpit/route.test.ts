@@ -136,7 +136,7 @@ test('the warning needs a warm cache, a window of 100k tokens or more, and a rea
   expect(shouldWarnSwitch({ ...f, contextTokens: 99_999 })).toBe(false)
   expect(shouldWarnSwitch({ ...f, cacheWarm: false })).toBe(false)
   expect(shouldWarnSwitch({ ...f, to: f.from })).toBe(false)
-  expect(switchWarning(150_000, 0.9)).toBe('A model switch writes the saved session again (150k tokens) and costs about $0.90.')
+  expect(switchWarning(150_000, 0.9)).toBe('A model switch writes the saved session again (150k tokens) and costs about\u00a0$0.90.')
 })
 
 test('the stats count finished helpers per job and model, and a quote needs 3 runs', () => {
@@ -323,7 +323,7 @@ test('a model switch with a warm cache and a big window gets a warning once; it 
   expect(JSON.stringify(a)).not.toMatch(/deny/)
   expect(whats(mem)).toEqual(['Warned before a model switch'])
   for (let n = 0; n < 200 && shown.length === 0; n += 1) await Promise.resolve()
-  expect(shown).toEqual(['A model switch writes the saved session again (150k tokens) and costs about $0.90.'])
+  expect(shown).toEqual(['A model switch writes the saved session again (150k tokens) and costs about\u00a0$0.90.'])
   await $.classic.PreModelSwitch({ ...switchEvent, prompt_cache_warm: false, to_model: 'claude-haiku-4-5' })
   await $.classic.PreModelSwitch({ ...switchEvent, context_tokens: 50_000, to_model: 'claude-fable-1' })
   expect(whats(mem)).toEqual(['Warned before a model switch'])

@@ -3,7 +3,7 @@ import { expect, mock } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
 import { APPEARS } from '../hooks/core/cardrules'
-import { ARRANGING_WORD, BACK_LABEL, CARD_SETTINGS, GLOBAL_SETTINGS, cardOfSetting, cardSettingsText, faceOf, faceRows, flipKey, isFlipped } from '../hooks/core/cardsettings'
+import { ARRANGING_WORD, BACK_LABEL, CARD_SETTINGS, FACE_MAIN, FACE_TOGETHER, GLOBAL_SETTINGS, cardOfSetting, cardSettingsText, faceOf, faceRows, flipKey, isFlipped } from '../hooks/core/cardsettings'
 import { forgetProjectSet } from '../hooks/core/io'
 import { keepGlance } from '../hooks/core/headline'
 import { setLang, tr } from '../hooks/core/lang'
@@ -39,7 +39,7 @@ test('every visible setting belongs to exactly one card or is global, and every 
 test('the face leaves out the expert rows and puts the card\'s own settings before its detail and Show', () => {
   for (const id of CARD_IDS) {
     const rows = faceRows(id, true)
-    expect(rows.filter(r => isAdvanced(r)), `${id}: an expert row on the face`).toEqual([])
+    expect(rows.filter(r => isAdvanced(r) && !FACE_MAIN.has(r.key)), `${id}: an expert row on the face (a card's own main switch may show)`).toEqual([])
     expect(rows.slice(-2).map(r => r.key)).toEqual([`detail.${id}`, `cards.${id}`])
   }
   expect(faceRows('guard', true).map(r => r.key)).not.toContain('guard.env')
@@ -54,13 +54,41 @@ test('the face shows what fits, never fewer than FACE_MIN_ROWS, and says how man
   expect(small.rows.length).toBe(4)
   expect(small.more).toBe(all - 4)
   expect(small.group).toBe('card:guard')
+  // Risky steps keeps its Detail and Show rows on a face that cannot hold every row
+  expect(small.rows.slice(-2).map(r => r.key)).toEqual(['detail.guard', 'cards.guard'])
   expect(faceOf('guard', true, all - 1).more).toBe(0)
   expect(faceOf('guard', true, 100).rows.length).toBe(all)
   expect(faceOf('ship', true, 4).group).toBe('card:ship')
 })
 
-test('the face is compact: every row is one list row with no note, and the gear is six teeth and a hole', () => {
-  for (const id of CARD_IDS) expect(faceRows(id, true).filter(r => r.note !== ''), `${id}: a face row with a note`).toEqual([])
+test('the face counts lines, not settings, and keeps the budget pair and the four agent models together', () => {
+  // A row as tall as its options: Plan limits with every row three units high fits fewer rows than one unit each
+  const tall = faceOf('limit', true, 6, { size: r => r.options.length, slack: 0 })
+  expect(tall.rows.reduce((n, r) => n + r.options.length, 0)).toBeLessThanOrEqual(6 + (tall.rows[0]?.options.length ?? 0))
+  for (const id of CARD_IDS) {
+    for (let room = 1; room < 12; room += 1) {
+      const keys = faceOf(id, true, room).rows.map(r => r.key)
+      for (const g of FACE_TOGETHER) {
+        const n = g.filter(k => keys.includes(k)).length
+        const own = g.filter(k => faceRows(id, true).some(r => r.key === k)).length
+        expect(n === 0 || n === own, `${id} at ${room}: ${g.join(', ')} split`).toBe(true)
+      }
+    }
+  }
+  // However short the front, a floor of two settings
+  expect(faceOf('limit', true, 0, { size: () => 5, slack: 0, least: 2 }).rows.length).toBe(2)
+  // Skipped rows (the budget amounts while Budget is Off) are neither drawn nor counted behind Settings
+  const off = faceOf('limit', true, 100, { skip: k => k === 'cost.session' || k === 'cost.day' })
+  expect(off.rows.map(r => r.key)).not.toContain('cost.day')
+  expect(off.more).toBe(0)
+})
+
+test('every face row says what it does in its note (the card\'s own Detail and Show need none), and the gear is six teeth and a hole', () => {
+  for (const id of CARD_IDS) {
+    const rows = faceRows(id, true)
+    expect(rows.filter(r => r.note === '' && !r.key.startsWith('cards.') && !r.key.startsWith('detail.') && !r.key.startsWith('runner.')).map(r => r.key), `${id}: a face row with no note`).toEqual([])
+    expect(rows.filter(r => r.key.startsWith('cards.') || r.key.startsWith('detail.')).filter(r => r.note !== '')).toEqual([])
+  }
   const gear = iconSvg('gear').source
   expect(gear.match(/ A/g)?.length).toBe(ICON_GEAR_TEETH)
   expect(gear).toContain('<circle')
@@ -84,7 +112,7 @@ test('the text twin lists a card\'s settings, with the expert ones marked', () =
 })
 
 test('every new word has a Swedish line that differs from the English one', () => {
-  for (const w of [BACK_LABEL, ARRANGING_WORD, 'Show this card', 'Detail of this card', 'All Settings ›', '{n} more in Settings ›']) {
+  for (const w of [BACK_LABEL, ARRANGING_WORD, 'Show this card', 'Detail of this card', 'More in Settings ›', '{n} more in Settings ›']) {
     expect((SV[w] ?? '') !== '' && SV[w] !== w, w).toBe(true)
   }
   setLang('sv')
@@ -161,8 +189,7 @@ test('the gear flips the card: its body gives way to its settings, Back flips it
   expect(await ui.find({ key: 'glance-limit' }), 'glance-limit').toBeDefined()
   expect(await ui.find({ key: 'back-glance-limit' }), 'back-glance-limit').toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^62% (of the 5-hour limit )?used/ })).toBeUndefined()
-  expect(await ui.find({ key: 'row-cost.budget' }), 'row-cost.budget').toBeDefined()
-  // the front is short, so the face shows the first four and says how many wait in Settings
+  // the front is short, so the face shows what fits its height (lines, notes counted) and says how many wait in Settings
   expect(await ui.find({ key: 'row-limits.warn' }), 'row-limits.warn').toBeDefined()
   expect(await ui.find({ key: 'row-cards.limit' })).toBeUndefined()
   expect(await ui.find({ key: 'face-settings-limit' }), 'face-settings-limit').toBeDefined()

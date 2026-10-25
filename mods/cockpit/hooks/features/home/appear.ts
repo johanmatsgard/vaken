@@ -32,7 +32,7 @@ export function appearFacts(view: View, prefs: Prefs): AppearFacts {
   return {
     proof: proofFact(prefs.proof),
     guardToday: prefs.ledger.filter(e => GUARD_WHATS.includes(e.what) && e.at >= startOfDay(now)).length,
-    agents: agents.length > 0 || prefs.run !== undefined,
+    agents: agents.length > 0 || prefs.run !== undefined || (prefs.idle ?? []).length > 0,
     computer: { gaugeOn: prefs.values['laptop.mode'] === 'on', full: room !== undefined && room.n === 0 && room.by !== 'limit' },
     skillsUsed: prefs.skills !== undefined && lineCard('skills', { now, ledger: [], halted: false, modes: {}, skills: prefs.skills }).groups !== undefined,
     prs: prsLoud(prefs.prs),

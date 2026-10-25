@@ -2,6 +2,7 @@ import { expect } from 'claude-code/testing'
 import { test } from './slow'
 
 import { extraLines, parseStoredUsage, parseUsage } from '../hooks/core/appusage'
+import { setLang } from '../hooks/core/lang'
 
 const answer = JSON.stringify({
   plan: {
@@ -52,4 +53,15 @@ test('the figures the app gives for extra usage are kept by name, and only plain
   const u = parseUsage(answer, 1)
   expect(u?.extra).toEqual({ enabled: true, currency: 'USD', details: { monthlyLimit: 50, usedCredits: 12.4 } })
   expect(parseStoredUsage(JSON.parse(JSON.stringify(u)))?.extra).toEqual(u?.extra)
+})
+
+test('extra usage amounts go through fmt: Swedish says a decimal comma and the code after the figure', () => {
+  setLang('sv')
+  try {
+    expect(extraLines({ enabled: true, currency: 'USD', details: { monthlyLimit: 50, usedCredits: 12.4 } }).slice(1)).toEqual(['Credit limit: 50,00\u00a0USD', 'Used: 12,40\u00a0USD'])
+    expect(extraLines({ enabled: true, currency: 'EUR', details: { limitCents: 5000 } }).slice(1)).toEqual(['Credit limit: 50,00\u00a0EUR'])
+  } finally {
+    setLang('en')
+  }
+  expect(extraLines({ enabled: true, details: { monthlyLimit: 50, percentUsed: 99.6 } }).slice(1)).toEqual(['Credit limit: 50.00', '99% of the credit limit used'])
 })

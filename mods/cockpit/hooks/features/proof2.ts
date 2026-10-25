@@ -1,5 +1,6 @@
 // Proof (Settings > Safety): drift watch, diff of intent, confidence score, anomaly sentinel, risk-ordered review queue and reviewer heat.
 import { tr } from '../core/lang'
+import { sayIn } from './saylang'
 import type { EngineInterface, On } from 'claude-code'
 import { fieldsOf } from '../core/eventfields'
 
@@ -153,11 +154,12 @@ export function registerProof2(on: On): void {
     const rest0 = subArgs(e.args, 'run', 'intent')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i)
     try {
       const p = await loadProof(i)
       return { text: intentText(p, await load2(i), { doneOn: await doneIsOn(i), goal: p.goal?.text }) }
     } catch {
-      return { text: '/vaken-help run intent could not run just now.' }
+      return { text: tr('/vaken-help run intent could not run just now.') }
     }
   })
 
@@ -165,12 +167,13 @@ export function registerProof2(on: On): void {
     const rest0 = subArgs(e.args, 'run', 'confidence')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i)
     try {
-      if ((await readSetting(i, 'proof.confidence')) === 'off') return { text: 'The confidence score is off. Turn it on: Settings > Safety.' } // en-only: plain answer of a slash command (text twin)
+      if ((await readSetting(i, 'proof.confidence')) === 'off') return { text: tr('The confidence score is off. Turn it on: Settings > Safety.') }
       const p = await loadProof(i)
       return { text: confidenceLines(confidence(p, await load2(i), { doneOn: await doneIsOn(i), goal: p.goal?.text })).join('\n') }
     } catch {
-      return { text: '/vaken-help run confidence could not run just now.' }
+      return { text: tr('/vaken-help run confidence could not run just now.') }
     }
   })
 
@@ -178,11 +181,12 @@ export function registerProof2(on: On): void {
     const rest0 = subArgs(e.args, 'queue')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i)
     try {
       const p = await loadProof(i)
       return { text: queueLines((await load2(i)).changes, p.debt).join('\n') }
     } catch {
-      return { text: '/vaken-ship queue could not run just now.' }
+      return { text: tr('/vaken-ship queue could not run just now.') }
     }
   })
 
@@ -190,11 +194,12 @@ export function registerProof2(on: On): void {
     const rest0 = subArgs(e.args, 'heat')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i)
     try {
       const s = await load2(i)
       return { text: heatLines(s.files, s.testTurns).join('\n') }
     } catch {
-      return { text: '/vaken-ship heat could not run just now.' }
+      return { text: tr('/vaken-ship heat could not run just now.') }
     }
   })
 }

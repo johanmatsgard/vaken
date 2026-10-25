@@ -5,7 +5,7 @@ import { test } from './slow'
 import { BUNDLE_TTL_MS } from '../hooks/core/io'
 import { setSetupExists } from '../hooks/features/setupfiles'
 import Press from '../hooks/press'
-import { COL_PT, columnsFor } from '../hooks/ui/tokens'
+import { columnPt, columnsFor } from '../hooks/ui/tokens'
 import { BASE_SEEDS, STATES, engine, getNow, kids, MIN, nameOf, propsAt, setNow, walk } from './statefixtures'
 import type { Node, Pane, World } from './statefixtures'
 import { viaParent } from './viaparent'
@@ -132,7 +132,7 @@ async function resizeRounds(ui: Pane, name: string, rounds: number, sizes: numbe
           instances.set(key, f)
         }
         const before = f.setState
-        f.s.columns = Math.max(1, Math.round(w / COL_PT / 4))
+        f.s.columns = Math.max(1, Math.round(w / columnPt() / 4))
         f.draw(p)
         f.draw(p)
         if (f.setState !== before) bad(`at ${w} pt the press ${key} sent a setState on a draw`)

@@ -1,3 +1,8 @@
 # Files are stored with LF line endings and checked out exactly as stored, on every system, so shell scripts run on Windows too.
 # No conversion at checkout: the plugin directory refuses attributes that rewrite files.
 * -text
+# Branches that add rows merge with no hand work (run scripts/setup-merge.sh once per clone).
+# The i18n rows files merge row by row and stay sorted (scripts/merge-rows.mjs).
+mods/cockpit/hooks/i18n/rows/*.ts merge=rows
+# docs/TEXTS.md is generated (sh scripts/strings-md.sh): keep our side, and regenerate it after a merge.
+docs/TEXTS.md merge=ours

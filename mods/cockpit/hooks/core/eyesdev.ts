@@ -1,5 +1,7 @@
 // Dev-server truth: is something listening, does it answer, is the answer an error page. Only the first 300 characters of a page are read, never printed or kept.
 import { lines } from './platform'
+import { langNow, tr } from '../i18n/t'
+import { fillIn } from './fillin'
 
 export const DEV_PORTS: readonly number[] = [3000, 3001, 4173, 5173, 8000, 8080]
 export const DEV_TIMEOUT_S = 3
@@ -61,11 +63,11 @@ export function parseCurl(exitCode: number, stdout: string): Reply | undefined {
 }
 
 const ERROR_WORDS: ReadonlyArray<[RegExp, string]> = [
-  [/Unhandled Runtime Error/i, 'Unhandled Runtime Error'],
-  [/Cannot GET/i, 'Cannot GET'],
-  [/Internal Server Error/i, 'Internal Server Error'],
-  [/Application error/i, 'Application error'],
-  [/Traceback \(most recent call last\)/i, 'Traceback'],
+  [/Unhandled Runtime Error/i, 'Unhandled Runtime Error'], // en-only: words searched for in the page, quoted as the page writes them
+  [/Cannot GET/i, 'Cannot GET'], // en-only: words searched for in the page, quoted as the page writes them
+  [/Internal Server Error/i, 'Internal Server Error'], // en-only: words searched for in the page, quoted as the page writes them
+  [/Application error/i, 'Application error'], // en-only: words searched for in the page, quoted as the page writes them
+  [/Traceback \(most recent call last\)/i, 'Traceback'], // en-only: words searched for in the page, quoted as the page writes them
   [/\bECONNREFUSED\b/, 'ECONNREFUSED'],
   [/\bError\b/, 'Error'],
 ]
@@ -75,17 +77,30 @@ export function errorWords(head: string): string[] {
   return hits.length > 1 ? hits.filter(w => w !== 'Error') : hits
 }
 
-const secs = (s: number): string => (s < 10 ? s.toFixed(2) : s.toFixed(1))
-
-export function devLine(port: number, who: Listener | undefined, reply: Reply | undefined): string {
-  if (who === undefined) return `Port ${port}: nothing listens.`
-  const name = `something listens (${who.command})`
-  if (reply === undefined) return `Port ${port}: ${name}, but it did not answer in ${DEV_TIMEOUT_S} s.`
-  const words = errorWords(reply.head)
-  const answers = `answers ${reply.status}`
-  if (reply.status >= 500) return `Port ${port}: something listens, but it ${answers}: the page shows an error.${words.length > 0 ? ` The page text holds: ${words.join(', ')}.` : ''}`
-  if (reply.status >= 400) return `Port ${port}: something listens, but it ${answers}: ${reply.status === 404 ? 'the page was not found' : 'the page was refused'}.${words.length > 0 ? ` The page text holds: ${words.join(', ')}.` : ''}`
-  if (words.length > 0) return `Port ${port}: something listens and ${answers} in ${secs(reply.seconds)} s, but the start of the page holds: ${words.join(', ')}. The page may show an error.`
-  return `Port ${port}: up, ${answers} in ${secs(reply.seconds)} s.`
+// The error the page names, short and in whole words ("TypeError: Cannot read properties of undefined"), else the first error word found; '' when none.
+export const SNIPPET_MAX = 60
+export function errorSnippet(head: string): string {
+  const text = head.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+  const named = /\b([A-Z][A-Za-z]*(?:Error|Exception)):\s*([^.<]*)/.exec(text)
+  const found = named === null ? (errorWords(head).find(w => w !== 'Error') ?? '') : `${named[1]}: ${(named[2] ?? '').trim()}`.replace(/:\s*$/, '')
+  if (found.length <= SNIPPET_MAX) return found
+  const words = found.slice(0, SNIPPET_MAX).split(' ')
+  return `${words.slice(0, -1).join(' ')}…`
 }
 
+const secs = (s: number): string => {
+  const text = s < 10 ? s.toFixed(2) : s.toFixed(1)
+  return langNow() === 'sv' ? text.replace('.', ',') : text
+}
+
+export function devLine(port: number, who: Listener | undefined, reply: Reply | undefined): string {
+  if (who === undefined) return fillIn(tr('Port {port}: nothing listens.'), { port })
+  if (reply === undefined) return fillIn(tr('Port {port}: something listens ({command}), but it did not answer in {s} s.'), { port, command: who.command, s: DEV_TIMEOUT_S })
+  const words = errorWords(reply.head)
+  const status = reply.status
+  const holds = words.length > 0 ? ` ${fillIn(tr('The page text holds: {words}.'), { words: words.join(', ') })}` : ''
+  if (status >= 500) return `${fillIn(tr('Port {port}: something listens, but it answers {status}: the page shows an error.'), { port, status })}${holds}`
+  if (status >= 400) return `${fillIn(tr(status === 404 ? 'Port {port}: something listens, but it answers {status}: the page was not found.' : 'Port {port}: something listens, but it answers {status}: the page was refused.'), { port, status })}${holds}`
+  if (words.length > 0) return fillIn(tr('Port {port}: something listens and answers {status} in {time} s, but the start of the page holds: {words}. The page may show an error.'), { port, status, time: secs(reply.seconds), words: words.join(', ') })
+  return fillIn(tr('Port {port}: up, answers {status} in {time} s.'), { port, status, time: secs(reply.seconds) })
+}

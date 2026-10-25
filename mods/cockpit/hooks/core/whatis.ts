@@ -8,8 +8,11 @@ import { shownTitle } from './ledger'
 import { fillIn, same } from './fillin'
 import type { Tr } from './fillin'
 import { sysWord } from './syswords'
+import { STATUS_BAND_ID, STATUS_MEANS, STATUS_PAGE, STATUS_PAGE_LABEL, STATUS_WHY, statusMem } from './claudestatus'
 
-export type WhatIs = { means: string; facts?: string[]; why?: string; from?: string; next?: string; last?: string[]; setting?: string }
+// `lead`: the words before `means` when they are not "What it means:" (a run's output leads with "Result:")
+// `link`: a web page the opened line links to (the Claude status page), drawn by the host's own Link; the text twin says its address
+export type WhatIs = { means: string; lead?: string; facts?: string[]; why?: string; from?: string; next?: string; last?: string[]; setting?: string; link?: { label: string; href: string } }
 
 export type Topic = 'needs' | 'limits' | 'session' | 'others' | 'working' | 'yourturn' | 'quiet' | 'autopilot' | 'proof' | 'guard' | 'agents' | 'tasks' | 'band' | 'computer'
 export const SESSIONS_SETTING = 'sessions'
@@ -19,9 +22,9 @@ export const TOPICS: Record<Topic, { title: string; means: string; setting?: str
   limits: { title: 'Plan limits', means: 'How much of your plan you used in each time window, and when it starts again. The figures come from the app.', setting: 'resume.mode' },
   session: { title: 'This session', means: 'This session: what Claude does now, what it cost so far, and how full its memory of the session (the context) is.', setting: 'compact.mode' },
   others: { title: 'Other sessions', means: 'Your other open sessions and what each one does now. You can pin or hide a session. Working means Claude did something in the last 2 minutes.', setting: SESSIONS_SETTING },
-  working: { title: 'Working', means: 'Claude did something in this session in the last 2 minutes.', setting: SESSIONS_SETTING },
+  working: { title: 'Working', means: 'Claude did something in the session in the last 2 minutes.', setting: SESSIONS_SETTING },
   yourturn: { title: 'Your turn', means: 'Claude finished. The session waits for your next message.', setting: SESSIONS_SETTING },
-  quiet: { title: 'Idle', means: 'Nothing happened in this session for 2 minutes or more.', setting: SESSIONS_SETTING },
+  quiet: { title: 'Idle', means: 'Nothing happened in the session for 2 minutes or more.', setting: SESSIONS_SETTING },
   autopilot: { title: 'Autopilot', means: 'What vaken did for you today, such as compacting a long session.', setting: 'compact.mode' },
   proof: { title: 'Checks', means: 'Whether the tests, the build and the other checks really ran and passed after the last change.', setting: 'proof.claims' },
   guard: { title: 'Risky steps', means: 'Risky steps today: what vaken warned you about or stopped, and how strict each rule is.', setting: 'guard.destructive' },
@@ -58,12 +61,15 @@ export function didWhatIs(what: string, rows: { at: number; detail?: string }[],
 const LAST_SHOWN = 3
 const LAST_DETAIL_MAX = 80
 // The detail is counts and short words, never conversation text.
-export function lastTimes(rows: { at: number; detail?: string }[], now: number): string[] {
-  const cut = (t: string): string => (t.length > LAST_DETAIL_MAX ? `${t.slice(0, LAST_DETAIL_MAX - 1)}…` : t)
+// `whole`: the detail is a sentence that tells something, so it wraps and is never cut (the Safety card's stopped steps)
+// `who`: the session a line came from when it is not this one ("Web fixes"), said before the detail
+export function lastTimes(rows: { at: number; detail?: string; who?: string }[], now: number, whole = false): string[] {
+  const cut = (t: string): string => (!whole && t.length > LAST_DETAIL_MAX ? `${t.slice(0, LAST_DETAIL_MAX - 1)}…` : t)
+  const said = (r: { detail?: string; who?: string }): string[] => [...(r.who === undefined ? [] : [r.who]), ...(r.detail === undefined || r.detail.trim() === '' ? [] : [cut(r.detail.replace(/\s+/g, ' ').trim())])]
   return [...rows]
     .sort((a, b) => b.at - a.at)
     .slice(0, LAST_SHOWN)
-    .map(r => `${agoWord(now - r.at)}${r.detail === undefined || r.detail.trim() === '' ? '' : `: ${cut(r.detail.replace(/\s+/g, ' ').trim())}`}`)
+    .map(r => [agoWord(now - r.at), ...said(r)].join(': '))
 }
 
 const BAND_SETTING: [RegExp, string][] = [
@@ -71,6 +77,7 @@ const BAND_SETTING: [RegExp, string][] = [
   [/^assume$/, 'assume.check'],
   [/^diet$/, 'diet.mode'],
   [/^fresh$/, 'fresh.nudge'],
+  [/^costhint$/, 'lean.mode'],
   [/^value$/, 'value.weekly'],
   [/^inbox$/, 'inbox.mode'],
   [/^promptcheck$/, 'prompt.check'],
@@ -100,7 +107,11 @@ const BAND_OWN: [RegExp, string][] = [
 ]
 
 export function bandWhatIs(item: { id: string; text: string; at: number }, now: number, rows: { at: number; detail?: string }[] = []): WhatIs {
-  const why = `Shown ${agoWord(now - item.at)}: ${item.text}`
+  // The opened line sits right under the line itself, so it says when it was shown, not the line's words again
+  const why = `Shown ${agoWord(now - item.at)}`
+  // Is Claude down?: the line itself says the incident's title, so the opened line says what it means, its age and the status page
+  const inc = statusMem.incident
+  if (item.id === STATUS_BAND_ID && inc !== undefined) return { means: STATUS_MEANS, why: STATUS_WHY.replace('{ago}', agoWord(now - inc.startedAt)), setting: 'modhealth.mode', link: { label: STATUS_PAGE_LABEL, href: STATUS_PAGE } }
   if (item.id.startsWith('did:')) {
     const w = didWhatIs(item.id.slice(4), rows, now)
     if (w !== undefined) return { ...w, why: `${why}. ${w.why ?? ''}`.trim() }
@@ -121,7 +132,7 @@ export function whatIsLines(w: WhatIs, say?: (s: string) => string): string[] {
     return at < 0 ? plain(l) : `${plain(l.slice(0, at))}: ${plain(l.slice(at + 2))}`
   }
   return [
-    `${plain('What it means:')} ${words(w.means)}`,
+    `${plain(w.lead ?? 'What it means:')} ${words(w.means)}`,
     ...(w.facts ?? []).map(plain),
     ...(w.why === undefined || w.why === '' ? [] : [`${plain('Why now:')} ${words(w.why)}`]),
     // Where a figure comes from is a source, not a reason, so it has its own label.
@@ -138,7 +149,8 @@ const ACTED_PREFIX = ACTED_MARK
 export const actedTitle = (what: string): string => `${ACTED_PREFIX}${titleFor(what) ?? what}`
 
 // Only a line that warns and stops nothing can be quieted, so no protection is lost.
-const WARN_ONLY = /nothing was (blocked|stopped)|Only you were told|You were told once|You were warned/
+// Case does not matter: a sentence can start with "Nothing was stopped."
+const WARN_ONLY = /nothing was (blocked|stopped)|only you were told|you were told once|you were warned/i
 
 export type QuietAsk = { what: string; n: number; setting: string; label: string }
 

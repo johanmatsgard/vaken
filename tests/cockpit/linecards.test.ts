@@ -12,7 +12,7 @@ const NOW = new Date(2026, 9, 10, 14, 0).getTime()
 const ctx = (over: Partial<CardCtx> = {}): CardCtx => ({ now: NOW, ledger: [], halted: false, modes: {}, ...over })
 
 test('the Proof card says nothing yet, then the checks and what waits', () => {
-  expect(lineCard('proof', ctx()).short).toBe('Nothing yet')
+  expect(lineCard('proof', ctx()).short).toBe('No checks yet')
   let s = emptyState()
   s = recordEdit(s, '/a.ts')
   s = recordReceipts(s, [{ kind: 'tests', ok: true }], NOW)
@@ -27,12 +27,12 @@ test('the Proof card says nothing yet, then the checks and what waits', () => {
 test('the Guard card keeps how strict each rule is; the counts and the halt are the Safety card\'s', () => {
   const e = (what: string, at = NOW - 60_000) => ({ at, what, did: true })
   const v = lineCard('guard', ctx({ halted: true, ledger: [e('Held a risky command'), e('Warned about a package install')] }))
-  expect(v.short).toBe('All warn')
+  expect(v.short).toBe('Warns only')
   expect(v.groups?.map(g => g.head)).toEqual(['Rules'])
-  expect(v.lines).toEqual(['Rules: warn.'])
+  expect(v.lines).toEqual(['Rules: Warns only.'])
   expect(v.whats.length).toBe(v.lines.length)
   expect(v.whats.at(-1)?.setting).toBe('guard.destructive')
-  expect(lineCard('guard', ctx({ modes: { 'guard.destructive': 'hold' } })).lines.at(-1)).toMatch(/commands stop, edits warn/)
+  expect(lineCard('guard', ctx({ modes: { 'guard.destructive': 'hold' } })).lines.at(-1)).toMatch(/Risky commands: stop, Only your folders: warn/)
   expect(lineCard('guard', ctx({ modes: { 'guard.destructive': 'hold' } })).short).toBe('Mixed')
 })
 
@@ -41,7 +41,7 @@ test('the Safety card counts what was stopped and warned today, and shows a halt
   const v = lineCard('safety', ctx({ ledger: [e('Held a risky command'), e('Warned about a package install'), e('Warned about a weakened test'), e('Held a risky command', NOW - 3 * 24 * 3_600_000), e('Kept the cache warm')] }))
   expect(v.short).toBe('1 step stopped today')
   const today = v.groups?.find(g => g.head === 'Risky steps today')
-  expect(today?.rows).toMatchObject([{ key: 'stopped', right: '1 step' }, { key: 'warned', right: '2 steps' }])
+  expect(today?.rows).toMatchObject([{ key: 'stopped', title: '1 step stopped today' }, { key: 'warned', title: '2 warnings today' }])
   expect(v.whats.length).toBe(v.lines.length)
   expect(lineCard('safety', ctx()).short).toBe('All clear')
   expect(lineCard('safety', ctx({ halted: true })).short).toBe('Paused for safety')
@@ -72,6 +72,8 @@ test('the pane draws the Proof and Guard cards from the stored state', { timeout
   s = { ...s, turns: 1, debt: 1, goal: { text: 'Fix the login', setAt: NOW, how: 'typed' } }
   mock.clock(on, { now: NOW })
   mock.store(on, {
+    // Setup done: until then the first screen shows only Start here and Needs you
+    'cockpit:firstrun': 'done',
     'cockpit:setting:look.view': 'custom',
     'cockpit:setting:detail': 'explained',
     'cockpit:proof:test-session': s,
@@ -90,11 +92,11 @@ test('the pane draws the Proof and Guard cards from the stored state', { timeout
     expect(await ui.find({ type: 'Text', text: /^Fix the login$/ })).toBeDefined()
     expect(await sectionLabel(ui, /^Checks after the last change$/)).toBeUndefined()
     expect(await ui.find({ type: 'Text', text: /^Tests$/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /^passed$/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^passed · just now$/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /^Risky steps$/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /^Safety$/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /^Paused for safety$/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /^1 step$/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /^1 step stopped today$/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /^How strict$/ })).toBeDefined()
     await ui.unmount()
   }
@@ -102,7 +104,7 @@ test('the pane draws the Proof and Guard cards from the stored state', { timeout
   await ui.press({ key: 'press-ol-guard:rules-0' })
   await ui.unmount()
   const open = await $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: { ...paneProps, bodyColumns: 120 } })
-  expect(await open.find({ type: 'Text', text: /^Commands: warn\.$/ })).toBeDefined()
+  expect(await open.find({ type: 'Text', text: /^Risky commands: warn\.$/ })).toBeDefined()
   await open.unmount()
   setLang('en')
 })

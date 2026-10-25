@@ -2,29 +2,12 @@
 // use of the name `$` must be either a plain call `$.noun.method(...)` (exactly two property levels) or a whole argument `f($)` to a function declared with `function`
 // at the top level of the same file (that helper call may stand anywhere), and a `$.noun.method(...)` call must stand as a statement, a variable initializer, a return value, an arrow's concise body, or be awaited in one of those.
 // Nothing may be wrapped around it: no parentheses, casts, "!", "?.", brackets, further property access, template, operator, literal or other call argument.
-// Finds the typescript JS API (TS 7 and newer ship none) through TYPESCRIPT_JS (path of typescript.js), TSC (a tsc path), the tsc on PATH, or a node_modules/typescript under the home folder. Run: node scripts/check-plain-capability.mjs [--selftest]
+// Finds the typescript JS API through scripts/find-typescript.mjs (TS 7 and newer ship none). Run: node scripts/check-plain-capability.mjs [--selftest]
 import fs from 'fs'
-import os from 'os'
 import path from 'path'
-import { createRequire } from 'module'
-import { execFileSync } from 'child_process'
+import { findTypescript } from './find-typescript.mjs'
+import { fileURLToPath } from 'url'
 
-function findTypescript() {
-  const cands = []
-  const add = p => { if (p) try { cands.push(path.resolve(path.dirname(fs.realpathSync(p)), '..', 'lib', 'typescript.js')) } catch {} }
-  if (process.env.TYPESCRIPT_JS) cands.push(process.env.TYPESCRIPT_JS)
-  add(process.env.TSC)
-  try { add(execFileSync(process.platform === 'win32' ? 'where' : 'which', ['tsc'], { encoding: 'utf8' }).split('\n')[0].trim()) } catch {}
-  const home = os.homedir()
-  try {
-    for (const a of fs.readdirSync(home)) {
-      cands.push(path.join(home, a, 'node_modules', 'typescript', 'lib', 'typescript.js'))
-      try { for (const b of fs.readdirSync(path.join(home, a))) cands.push(path.join(home, a, b, 'node_modules', 'typescript', 'lib', 'typescript.js')) } catch {}
-    }
-  } catch {}
-  for (const c of cands) if (fs.existsSync(c)) return createRequire(import.meta.url)(c)
-  return undefined
-}
 const ts = findTypescript()
 if (ts === undefined) {
   console.error('check-plain-capability: no typescript found (set TSC to a tsc path)'); process.exit(2)
@@ -129,7 +112,7 @@ if (process.argv.includes('--selftest')) {
 }
 
 const walk = d => fs.readdirSync(d).flatMap(f => { const p = path.join(d, f); return fs.statSync(p).isDirectory() ? walk(p) : /\.tsx?$/.test(f) ? [p] : [] })
-process.chdir(path.resolve(path.dirname(new URL(import.meta.url).pathname), '..'))
+process.chdir(path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'))
 const found = walk('mods/cockpit/hooks').flatMap(f => { const text = fs.readFileSync(f, 'utf8'); return [...scan(f, text), ...scanJsxNames(f, text)] })
 if (found.length > 0) {
   console.log(found.join('\n'))

@@ -5,7 +5,8 @@ import { fieldsOf } from '../core/eventfields'
 import { parseStoredUsage, APP_USAGE_KEY } from '../core/appusage'
 import { parseState as parseCost, spendOf } from '../core/cost'
 import { freePath } from '../core/fileops'
-import { tr } from '../core/lang'
+import { t, tr } from '../core/lang'
+import { sayIn } from './saylang'
 import { refusedWords, safeWrite, takenProbe } from '../core/safewrite'
 import type { SafeFs } from '../core/safewrite'
 import { readNote } from '../core/flush'
@@ -140,16 +141,17 @@ export function registerInsight(on: On): void {
     const rest0 = subArgs(e.args, 'run', 'audit')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i).catch(() => undefined)
     const rows = parseAudit(await i.get(AUDIT_KEY))
     if (rest0.trim().toLowerCase() === 'export') {
-      if (rows.length === 0) return { text: 'Nothing to export yet.' } // en-only: plain answer of a slash command (text twin)
+      if (rows.length === 0) return { text: tr('Nothing to export yet.') }
       // An export never overwrites a file that is there: it takes the next free name (cockpit-audit-2.md).
       const root = await $.session.root()
       const fs = safeFs($)
       const path = await freePath(takenProbe(fs), `${root}/.claude/cockpit-audit.md`)
-      if (path === undefined) return { text: 'Too many exports are in the .claude folder already. Remove an old .claude/cockpit-audit*.md file and try again.' } // en-only: plain answer of a slash command (text twin)
+      if (path === undefined) return { text: tr('Too many exports are in the .claude folder already. Remove an old .claude/cockpit-audit*.md file and try again.') }
       if (!(await safeWrite(fs, (p, x) => i.write(p, x), root, path, auditFile(rows))).ok) return { text: refusedWords(path, tr) }
-      return { text: `Wrote ${path} (${rows.length} actions).` }
+      return { text: t('cmdd.wrote_path_n_actions', { path, n: rows.length }) }
     }
     return { text: auditText(rows) }
   })
@@ -158,6 +160,7 @@ export function registerInsight(on: On): void {
     const rest0 = subArgs(e.args, 'waits')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i).catch(() => undefined)
     return { text: waitsText(parseWaits(await i.get(waitsKey()), await i.now())) }
   })
 
@@ -165,6 +168,7 @@ export function registerInsight(on: On): void {
     const rest0 = subArgs(e.args, 'fit')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i).catch(() => undefined)
     return { text: fitText(parseStoredUsage(await i.get(APP_USAGE_KEY)), Number(rest0.trim().replace('%', '')), await i.now()) }
   })
 
@@ -172,13 +176,14 @@ export function registerInsight(on: On): void {
     const rest0 = subArgs(e.args, 'review-story')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i).catch(() => undefined)
     try {
       const cwd = await $.session.cwd()
       const r = await i.run(['git', 'diff', '--numstat', 'HEAD'], { cwd, timeoutMs: 5_000 })
       const goal = readState(await readNote(i, stateKey(await i.sessionId()))).goal?.text
       return { text: storyText(goal, r.exitCode === 0 ? parseNumstat(r.stdout) : []) }
     } catch {
-      return { text: 'Vaken could not read the change with git.' } // en-only: plain answer of a slash command (text twin)
+      return { text: tr('Vaken could not read the change with git.') }
     }
   })
 
@@ -186,6 +191,7 @@ export function registerInsight(on: On): void {
     const rest0 = subArgs(e.args, 'run', 'outcomes')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i).catch(() => undefined)
     return { text: outcomesText(parseOutcomes(await i.get(OUTCOMES_KEY)), await i.now()) }
   })
 
@@ -193,6 +199,7 @@ export function registerInsight(on: On): void {
     const rest0 = subArgs(e.args, 'run', 'tidy')
     if (rest0 === undefined) return next(e)
     const i = io($)
+    await sayIn(i).catch(() => undefined)
     const live = [...(await listRecords(i)).map(r => r.sessionId), await i.sessionId()]
     const keys = tidyKeys(await i.keys(), live)
     if (rest0.trim().toLowerCase() !== 'yes') return { text: tidyText(keys, false) }

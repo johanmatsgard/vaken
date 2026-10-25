@@ -1,7 +1,8 @@
 // Prompt review: a cheap local test finds a vague prompt. No model call, nothing rewritten, and the prompt text is never stored, only the word count and verdict.
 import type { HelpEntry } from './registry'
 import type { Setting } from './settings'
-import { tEn } from '../i18n/t'
+import { t, tr } from '../i18n/t'
+import { fillIn } from './fillin'
 
 export const PROMPT_CHECK_KEY = 'prompt.check'
 type CheckMode = 'off' | 'tip' | 'ask'
@@ -12,6 +13,7 @@ const VAGUE_WORDS = 6
 const COMMAND_MAX_WORDS = 8
 export const PROMPT_CHECK_BAND = 'Vague prompt. Add the file or the goal.'
 export const PROMPT_CHECK_BAND_MS = 5 * 60_000
+// en-only: a note to Claude
 export const PROMPT_CHECK_NOTE = 'Vaken note: the request is short. If the goal is unclear, ask one short question before you start.'
 
 export const PROMPT_CHECK_SETTINGS: Setting[] = [
@@ -75,14 +77,14 @@ const MODE_WORDS: Record<CheckMode, string> = { off: 'Off', tip: 'Tip', ask: 'As
 
 export function explainLast(last: LastCheck | undefined, mode: CheckMode): string {
   if (last === undefined) {
-    return mode === 'off' ? 'Prompt review is off. Turn it on: Settings > Prompts and memory.' : `Prompt review is ${MODE_WORDS[mode]}. No prompt reviewed yet in this session.`
+    return mode === 'off' ? tr('Prompt review is off. Turn it on: Settings > Prompts and memory.') : fillIn(tr('Prompt review is {mode}. No prompt reviewed yet in this session.'), { mode: tr(MODE_WORDS[mode]) })
   }
-  const off = mode === 'off' ? ' Prompt review is off now.' : ''
+  const off = mode === 'off' ? ` ${tr('Prompt review is off now.')}` : ''
   if (!last.vague) {
-    const why = last.why === 'reply' ? 'a short reply, which is fine' : 'clear enough'
-    return `Last prompt: ${tEn('words.word', { n: last.words })}. Judged ${why}. Nothing was done.${off}`
+    const why = last.why === 'reply' ? tr('a short reply, which is fine') : tr('clear enough')
+    return `${fillIn(tr('Last prompt: {words}. Judged {why}. Nothing was done.'), { words: t('words.word', { n: last.words }), why })}${off}`
   }
-  const reason = last.why === 'command' ? 'a short command with no file name, path, number or quoted text' : `fewer than ${VAGUE_WORDS} words and no file name, path, number or quoted text`
-  const did = last.mode === 'ask' ? 'A tip showed above the chat box, and Claude was told to ask one short question if the goal is unclear.' : 'A tip showed above the chat box. Claude was told nothing.'
-  return `Last prompt: ${tEn('words.word', { n: last.words })}, ${reason}. Judged vague. ${did}${off}`
+  const reason = last.why === 'command' ? tr('a short command with no file name, path, number or quoted text') : fillIn(tr('fewer than {n} words and no file name, path, number or quoted text'), { n: VAGUE_WORDS })
+  const did = last.mode === 'ask' ? tr('A tip showed above the chat box, and Claude was told to ask one short question if the goal is unclear.') : tr('A tip showed above the chat box. Claude was told nothing.')
+  return `${fillIn(tr('Last prompt: {words}, {reason}. Judged vague. {did}'), { words: t('words.word', { n: last.words }), reason, did })}${off}`
 }

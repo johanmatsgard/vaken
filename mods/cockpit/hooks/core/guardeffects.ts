@@ -2,7 +2,7 @@
 import { isWindowsShape, splitArgs, winCommandsOf } from './guardwin'
 import { commandFlavorOfTool } from './tools'
 import type { ShellFlavor } from './tools'
-import { commandsOf, flagsOf } from './guardshell'
+import { commandsOf, flagsOf, withoutDataHeredocs } from './guardshell'
 import type { Cmd, Tok } from './guardshell'
 
 type Cls = 'send' | 'change' | 'delete' | 'invite' | 'merge' | 'pay'
@@ -382,14 +382,68 @@ function bitsEffect(c: { args: Tok[] }): Outward | undefined {
   return source !== undefined && looksLikeUrl(source) ? webRequest('GET', hostOf(source)) : undefined
 }
 
+// `$p = @{ Uri = '...'; Method = 'Post' }` then `iwr @p`: the table's keys are read as the parameters they stand for.
+const SPLAT_TABLE = /\$([A-Za-z_]\w*)\s*=\s*@\{([^}]*)\}/g
+const SPLAT_PAIR = /([A-Za-z]+)\s*=\s*('(?:[^']|'')*'|"[^"]*"|[^;\s]+)/g
+
+function splatsOf(command: string): Map<string, Tok[]> {
+  const out = new Map<string, Tok[]>()
+  for (const m of command.matchAll(SPLAT_TABLE)) {
+    const toks: Tok[] = []
+    for (const p of (m[2] ?? '').matchAll(SPLAT_PAIR)) toks.push({ t: `-${p[1] ?? ''}`, quoted: false }, { t: (p[2] ?? '').replace(/^(['"])(.*)\1$/s, '$2'), quoted: true })
+    out.set((m[1] ?? '').toLowerCase(), toks)
+  }
+  return out
+}
+
+// A splat whose table is not in the line could carry any method, so it is read as a write to an address not known.
+function withSplats(c: { args: Tok[] }, splats: Map<string, Tok[]>): { args: Tok[]; unknown: boolean } {
+  let unknown = false
+  const args = c.args.flatMap(t => {
+    const m = t.quoted ? null : /^@([A-Za-z_]\w*)$/.exec(t.t)
+    if (m === null) return [t]
+    const found = splats.get((m[1] ?? '').toLowerCase())
+    if (found === undefined) unknown = true
+    return found ?? []
+  })
+  return { args, unknown }
+}
+
+// .NET web and mail calls in PowerShell text: WebClient uploads, HttpClient writes, SmtpClient and Outlook sends. Downloads are reads and pass.
+const NET_UPLOAD = /\.\s*upload(?:string|file|data|values)(?:async|taskasync)?\s*\(\s*(?:'([^']*)'|"([^"]*)")?/gi
+const NET_HTTP_WRITE = /\.\s*(post|put|patch|delete|send)async\s*\(\s*(?:'([^']*)'|"([^"]*)")?/gi
+const NET_MAIL = /system\.net\.mail\.smtpclient|net\.mail\.smtpclient|outlook\.application/i
+
+function dotnetWebEffects(command: string): Outward[] {
+  const out: Outward[] = []
+  for (const m of command.matchAll(NET_UPLOAD)) out.push(webRequest('POST', hostOf(m[1] ?? m[2] ?? '')) ?? readOut(['web request', 'web requests'], ''))
+  for (const m of command.matchAll(NET_HTTP_WRITE)) {
+    const o = webRequest((m[1] ?? '').toUpperCase() === 'SEND' ? 'POST' : (m[1] ?? '').toUpperCase(), hostOf(m[2] ?? m[3] ?? ''))
+    if (o !== undefined) out.push(o)
+  }
+  if (NET_MAIL.test(command) && /\.\s*send(?:async|mailasync)?\s*\(/i.test(command)) out.push(EMAIL)
+  return out.filter(o => o.write)
+}
+
+const EMAIL = make({ cls: 'send', kind: 'message', to: '', noun: 'an email', label: ['email', 'emails'] })
+const PS_MAIL = new Set(['send-mailmessage', 'send-mgusermail', 'send-mgusermessage'])
+
 function winEffects(command: string): Outward[] {
   const out: Outward[] = []
-  for (const c of winCommandsOf(command)) {
+  const splats = command.includes('@') ? splatsOf(command) : new Map<string, Tok[]>()
+  for (const raw of winCommandsOf(command)) {
     const list: Outward[] = []
     const take = (o: Outward | undefined): void => {
       if (o !== undefined) list.push(o)
     }
-    if (c.prog === 'curl') {
+    const { args, unknown } = withSplats(raw, splats)
+    const c = { ...raw, args }
+    if (PS_MAIL.has(c.prog)) take(EMAIL)
+    else if (unknown && IWR_PROGS.has(c.prog)) {
+      const seen = iwrEffect(c)
+      take(seen?.write === true ? seen : webRequest('POST', seen === undefined ? undefined : seen.to))
+    }
+    else if (c.prog === 'curl') {
       take(curlEffect(c))
       take(iwrEffect(c))
     } else if (c.prog === 'wget') {
@@ -400,7 +454,7 @@ function winEffects(command: string): Outward[] {
     const best = list.find(o => o.write) ?? list[0]
     if (best !== undefined) out.push(best)
   }
-  return out
+  return [...out, ...dotnetWebEffects(command)]
 }
 
 export function bashEffects(command: string, flavor: ShellFlavor = 'posix'): Outward[] {
@@ -425,7 +479,7 @@ export function bashEffects(command: string, flavor: ShellFlavor = 'posix'): Out
   }
   if (flavor === 'powershell' || isWindowsShape(command)) {
     // The POSIX reading of an aliased `curl -Method Post` sees a plain read, so it is dropped when the Windows reading finds a write.
-    const wins = winEffects(command)
+    const wins = winEffects(flavor === 'powershell' ? command : withoutDataHeredocs(command))
     for (let i = out.length - 1; i >= 0; i -= 1) if (out[i]?.write === false && wins.some(w => w.write && w.to === out[i]?.to)) out.splice(i, 1)
     for (const o of wins) add(o)
   }

@@ -15,6 +15,8 @@ import { actionsBetween } from '../core/value'
 import { LEDGER_KEY, readLog } from './compaction'
 import { classify } from './home/logic'
 import { HINTS, isFolded, unknownWord } from '../core/menu'
+import { tr } from '../core/lang'
+import { sayIn } from './saylang'
 
 // IO-BLOCK-START
 function io($: EngineInterface): Io {
@@ -39,6 +41,8 @@ function io($: EngineInterface): Io {
 
 // One stamp, so the brief comes at most once a day, whatever it said.
 export const DAY_KEY = 'cockpit:today:day'
+export const TRIED_KEY = 'cockpit:today:tried'
+export const TRIED_MS = 10 * 60_000
 
 const briefOn = async (i: Io): Promise<boolean> => (await readSetting(i, 'today.brief')) === 'on'
 
@@ -69,11 +73,18 @@ export async function todayText(i: Io): Promise<string> {
 export async function dailyCheck(i: Io): Promise<boolean> {
   try {
     if (!(await briefOn(i))) return false
-    const day = ymd(await i.now())
+    const now = await i.now()
+    const day = ymd(now)
     if ((await i.get(DAY_KEY)) === day) return false
-    await i.set(DAY_KEY, day)
+    // Nothing to say does not use up the day: a later prompt looks again, at most once in TRIED_MS.
+    const tried = await i.get(TRIED_KEY)
+    if (typeof tried === 'number' && now - tried >= 0 && now - tried < TRIED_MS) return false
     const line = bandBrief(await todayFacts(i))
-    if (line === undefined) return false
+    if (line === undefined) {
+      await i.set(TRIED_KEY, now)
+      return false
+    }
+    await i.set(DAY_KEY, day)
     await postBand(i, 'info', 'today', line, TODAY_BAND_MS)
     return true
   } catch {
@@ -93,12 +104,13 @@ export function registerToday(on: On): void {
 
   on('command.run', { command: 'vaken-today' }, async ($, e, next) => {
     if (isFolded(e.command, e.args)) return next(e)
+    await sayIn(io($))
     const unknown = unknownWord(e.command, e.args)
     if (unknown !== undefined) return { text: unknown }
     try {
       return { text: await todayText(io($)) }
     } catch {
-      return { text: 'The brief could not read your sessions. Try again in a moment.' } // en-only: plain answer of a slash command (text twin)
+      return { text: tr('The brief could not read your sessions. Try again in a moment.') }
     }
   })
 

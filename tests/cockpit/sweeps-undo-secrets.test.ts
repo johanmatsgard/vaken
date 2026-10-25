@@ -254,7 +254,7 @@ test('delete everything does not claim success when the folder list cannot be re
   expect((await erasePreview(io)).keys, 'a Halt is not counted').toBe(0)
 })
 
-test('R2: a safety copy that the size limit trims away is not held, so that file is refused; a file that appeared since the preview is refused', async () => {
+test('a safety copy that the size limit trims away is not held, so that file is refused; a file that appeared since the preview is refused', async () => {
   const sid = 'session-restore4'
   const w = world(() => ({ exitCode: 0, stdout: '', stderr: '' }), sid)
   const paths = Array.from({ length: 21 }, (_, n) => `/w/f${n}.ts`)

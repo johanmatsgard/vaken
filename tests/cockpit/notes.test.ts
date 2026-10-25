@@ -110,6 +110,8 @@ test('decisions: newest first, dated, and the log says when it is off', () => {
 function memStore(on: On): void {
   const mem = new Map<string, unknown>()
   on('store.get', (_$, e) => ({ value: mem.get(e.key) }) as never)
+  // The command says its answer in the language of Settings, which reads the store's keys
+  on('store.keys', () => ({ value: [...mem.keys()] }) as never)
   on('store.set', (_$, e) => {
     mem.set(e.key, e.value)
     return { value: undefined } as never

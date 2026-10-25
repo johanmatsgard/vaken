@@ -14,8 +14,7 @@ import type { PrSession } from '../hooks/core/prcard'
 import { lineCard } from '../hooks/features/home/linecards'
 import { CARD_IDS, LINE_CARD_IDS, homeText } from '../hooks/features/home/logic'
 import type { View } from '../hooks/features/home/logic'
-import { PR_FIX, PR_LOOK, prShip } from '../hooks/features/home/rowact'
-import { PR_FIX_FILLED } from '../hooks/features/home/cards/prs'
+import { PR_LOOK, prShip } from '../hooks/features/home/rowact'
 import { byEnglish, englishOf } from '../hooks/i18n/table'
 const SV = byEnglish('sv')
 
@@ -40,7 +39,7 @@ const shared = (now: number): Record<string, PrFacts> => ({
   '/work/app/.git\nnothing': facts(now - MIN, 'nothing', undefined, { none: true }),
 })
 
-test('the rows: this session\'s repository first, in the merge order with places; each row says its checks, what blocks a merge and the press', () => {
+test('the rows: this session\'s repository first, in the merge order with places; each row says what blocks a merge and the press, never the CI (the app\'s PR panel shows it)', () => {
   const f = prsFacts(shared(NOW), { id: 'me', branch: 'feat-x' }, sessions, NOW, true)
   expect(f.on).toBe(true)
   expect(f.look).toBe(false)
@@ -51,26 +50,29 @@ test('the rows: this session\'s repository first, in the merge order with places
   ])
   const v = lineCard('prs', { now: NOW, ledger: [], halted: false, modes: {}, prs: f, t: id })
   expect(v.title).toBe('Pull requests')
-  expect(v.short).toBe('3 open · 1 failing · 1 running')
-  expect(v.groups?.map(g => g.head)).toEqual(['app', 'site'])
+  expect(v.short).toBe('3 open')
+  // Two repositories: each one's first row names it; a pull request merged within a day is a calm line at the end, named too (the Merged group mixes them)
+  expect(v.groups?.map(g => g.head)).toEqual(['app', 'site', 'Merged'])
   const rows = (v.groups ?? []).flatMap(g => g.rows)
   expect(rows.map(r => [r.title, r.right])).toEqual([
-    ['1. #9 fix-y', 'ready'],
-    ['2. #12 feat-x', 'failing · Fix'],
-    ['#3 main-x', 'running'],
+    ['app: 1. #9 fix-y', 'ready'],
+    ['2. #12 feat-x', 'open'],
+    ['site: #3 main-x', 'open'],
+    ['app: #5 merged', '1 min ago'],
   ])
-  expect(rows.map(r => r.action)).toEqual([undefined, PR_FIX, undefined])
+  // No Fix press: the app's PR monitor offers Auto-fix
+  expect(rows.map(r => r.action)).toEqual([undefined, undefined, undefined, undefined])
   expect(rows[0]?.what.next).toBe('Fix it in that session (web fixes). Vaken does not act in another session.')
   expect(rows[0]?.what.facts?.[0]).toBe('PR 9 is open. The one check passed. Mergeable.')
   expect(rows[1]?.what.facts).toContain('Failed: unit.')
   expect(rows[2]?.what.facts?.at(-1)).toMatch(/From a session that is not open now\.$/)
-  expect(prsLoud(f)).toBe('failing')
+  expect(prsLoud(f)).toBe('open')
 })
 
-test('ready on this session is Check if ready; conflicts, behind, a draft and a needed review block it; Look now while this branch has no answer yet', () => {
+test('ready on this session says ready and See; conflicts, behind, a draft and a needed review block it; Look now while this branch has no answer yet', () => {
   const ready = prsFacts({ '/work/app/.git\nfeat-x': facts(NOW, 'feat-x', view(12, [run('unit', 'SUCCESS')])) }, { id: 'me', branch: 'feat-x' }, sessions, NOW, true)
   const row = (lineCard('prs', { now: NOW, ledger: [], halted: false, modes: {}, prs: ready, t: id }).groups ?? [])[0]?.rows[0]
-  expect(row).toMatchObject({ title: '#12 feat-x', right: 'ready · Check if ready', action: prShip('prs:pr-app-12') })
+  expect(row).toMatchObject({ title: '#12 feat-x', right: 'ready · See', action: prShip('prs:pr-app-12') })
   expect(prsLoud(ready)).toBe('open')
   const v = (over: Record<string, unknown>) => view(1, [], over) as NonNullable<ReturnType<typeof view>>
   expect([mergeOf(v({ mergeable: 'CONFLICTING' })), mergeOf(v({ mergeStateStatus: 'BEHIND' })), mergeOf(v({ isDraft: true })), mergeOf(v({ reviewDecision: 'REVIEW_REQUIRED' })), mergeOf(v({ mergeable: 'UNKNOWN' })), mergeOf(v({}))]).toEqual(['conflicts', 'behind', 'draft', 'review', 'unknown', 'ready'])
@@ -81,8 +83,16 @@ test('ready on this session is Check if ready; conflicts, behind, a draft and a 
   expect(look).toMatchObject({ head: 'This branch', rows: [{ key: 'look', title: 'Not checked on GitHub yet', right: 'Look now', action: PR_LOOK }] })
   expect(prsFacts({ '/work/app/.git\nfeat-x': facts(NOW, 'feat-x', undefined, { error: 'gh did not answer in time' }) }, { id: 'me', branch: 'feat-x' }, sessions, NOW, true).look).toBe(true)
   expect(prsFacts({ '/work/app/.git\nfeat-x': facts(NOW, 'feat-x', undefined, { none: true }) }, { id: 'me', branch: 'feat-x' }, sessions, NOW, true).look).toBe(false)
+  // A failed ask keeps its reason as a kind and the row says the step; gh's own text is never shown
+  const signedOut = prsFacts({ '/work/app/.git\nfeat-x': facts(NOW, 'feat-x', undefined, { error: 'To get started with GitHub CLI, please run:  gh auth login' }) }, { id: 'me', branch: 'feat-x' }, sessions, NOW, true)
+  expect(signedOut.fail).toBe('signin')
+  expect((lineCard('prs', { now: NOW, ledger: [], halted: false, modes: {}, prs: signedOut, t: id }).groups ?? [])[0]).toMatchObject({ rows: [{ key: 'look', title: 'Sign in to GitHub: type gh auth login', right: 'Look now' }] })
+  expect(prsFacts({ '/work/app/.git\nfeat-x': facts(NOW, 'feat-x', undefined, { error: 'nogh' }) }, { id: 'me', branch: 'feat-x' }, sessions, NOW, true).fail).toBe('nogh')
+  // No git folder: the card says so, never "No open pull request"
+  const noGit = lineCard('prs', { now: NOW, ledger: [], halted: false, modes: {}, prs: prsFacts({}, { id: 'me', noGit: 'folder' }, [], NOW, true), t: id })
+  expect([noGit.short, noGit.lines]).toEqual(['This folder is not in a git repository.', ['This folder is not in a git repository.']])
   const plain = lineCard('prs', { now: NOW, ledger: [], halted: false, modes: {}, prs: prsFacts({}, { id: 'me' }, [], NOW, true), t: id })
-  expect([plain.short, plain.lines, plain.groups]).toEqual(['None open', ['No open pull request seen.'], undefined])
+  expect([plain.short, plain.lines, plain.groups]).toEqual(['No open pull request', ['No open pull request'], undefined])
   expect(prsLoud(prsFacts({}, { id: 'me' }, [], NOW, true))).toBe('none')
   const off = lineCard('prs', { now: NOW, ledger: [], halted: false, modes: {}, prs: prsFacts(shared(NOW), { id: 'me', branch: 'feat-x' }, sessions, NOW, false), t: id })
   expect([off.short, off.lines[0], off.shortWhat.setting]).toEqual(['Off', 'PR checks are off.', 'crew.pr'])
@@ -91,14 +101,14 @@ test('ready on this session is Check if ready; conflicts, behind, a draft and a 
 test('the text twin lists the same rows, each ending with the command that says more', () => {
   const f = prsFacts(shared(NOW), { id: 'me', branch: 'feat-x' }, sessions, NOW, true)
   expect(prsText(f)).toEqual([
-    'Pull requests: 3 open · 1 failing · 1 running · /vaken-ship pr',
+    'Pull requests: 3 open · /vaken-ship pr',
     '1. #9 fix-y (app): ready, in web fixes · /vaken-ship pr',
-    '2. #12 feat-x (app): failing · Fix · /vaken-ship pr',
-    '#3 main-x (site): running, another session · /vaken-ship pr',
+    '2. #12 feat-x (app): open · /vaken-ship pr',
+    '#3 main-x (site): open, another session · /vaken-ship pr',
   ])
   expect(prsText(undefined)).toEqual([])
   const text = homeText({ needs: [], working: [], waiting: [], idle: [], now: NOW } as unknown as View, CARD_IDS, { prs: prsText(f) })
-  expect(text.split('\n')).toContain('2. #12 feat-x (app): failing · Fix · /vaken-ship pr')
+  expect(text.split('\n')).toContain('2. #12 feat-x (app): open · /vaken-ship pr')
 })
 
 test('the card is a line card with its own Show or Hide, and every word it shows has a Swedish line', () => {
@@ -132,7 +142,7 @@ const ghAnswers = (argv: string[]) => (argv[1] === 'pr' && argv[2] === 'checks' 
 test('Fix builds the prompt /vaken-ship ci-fix builds, counts the try, and refuses after 3 tries a day on a branch', async () => {
   const { i, mem, ran } = fakeIo(ghAnswers)
   const built = await buildCiFix(i, async () => 'feat-x')
-  expect(built).toEqual({ kind: 'prompt', head: 'Fix CI: try 1 of 3 in 24 hours for feat-x.', prompt: ciPrompt('unit', cleanLog(LOG_OUT)) })
+  expect(built).toEqual({ kind: 'prompt', head: 'Fix CI: try 1 of 3 in 24 hours for feat-x.', said: 'Fix CI: try 1 of 3 in 24 hours for feat-x.', prompt: ciPrompt('unit', cleanLog(LOG_OUT)) })
   expect(ran).toEqual([['gh', 'pr', 'checks'], ['gh', 'run', 'view', '77', '--log-failed']])
   expect(Object.keys(mem.get(CI_TRIES_KEY) as object)).toEqual(['feat-x'])
   mem.set(CI_TRIES_KEY, { 'feat-x': [1, 2, 3].map(n => ({ at: NOW - n * MIN, run: `r${n}` })) })
@@ -141,6 +151,21 @@ test('Fix builds the prompt /vaken-ship ci-fix builds, counts the try, and refus
   expect(await buildCiFix(pass.i, async () => 'feat-x')).toEqual({ kind: 'nofail', text: 'Fix CI: no check failed. Nothing to fix.' })
   const nopr = fakeIo(() => ({ exitCode: 1, stdout: '', stderr: 'no pull requests found for branch "feat-x"' }))
   expect(await buildCiFix(nopr.i, async () => 'feat-x')).toEqual({ kind: 'none', text: 'Fix CI: there is no pull request for this branch.' })
+})
+
+test('Fix CI says in plain words why gh could not read the checks, never gh\'s own line', async () => {
+  const said = async (answers: Parameters<typeof fakeIo>[0]): Promise<unknown> => buildCiFix(fakeIo(answers).i, async () => 'feat-x')
+  const none = (text: string) => ({ kind: 'none', text })
+  expect(await said(() => {
+    throw new Error('failed to start: ENOENT')
+  })).toEqual(none('Fix CI: gh is not installed. Install it from cli.github.com, then sign in.'))
+  expect(await said(() => {
+    throw new Error('timed out')
+  })).toEqual(none('Fix CI: gh did not answer in time.'))
+  expect(await said(() => ({ exitCode: 127, stdout: '', stderr: "'gh' is not recognized as an internal or external command" }))).toEqual(none('Fix CI: gh is not installed. Install it from cli.github.com, then sign in.'))
+  expect(await said(() => ({ exitCode: 4, stdout: '', stderr: 'To get started with GitHub CLI, please run:  gh auth login' }))).toEqual(none('Fix CI: gh is not signed in to GitHub. Type gh auth login in a terminal.'))
+  expect(await said(() => ({ exitCode: 1, stdout: '', stderr: 'error connecting to api.github.com' }))).toEqual(none('Fix CI: could not reach GitHub.'))
+  expect(await said(() => ({ exitCode: 1, stdout: '', stderr: 'HTTP 404: Not Found (https://api.github.com/x)' }))).toEqual(none('Fix CI: no checks were found.'))
 })
 
 const paneProps = { title: 'Vaken', isFocused: false, bodyColumns: 120, placement: 'inline' as const, scroll: { bodyRows: 80, offset: 0, total: 80 }, view: {} }
@@ -209,16 +234,16 @@ const textOf = async (ui: { find: (q: unknown) => Promise<unknown> }, text: RegE
 const mountPane = ($: Parameters<Parameters<typeof test>[1]>[0]) => $.ui.mount({ plugin: 'vaken', surface: 'desktop', component: 'Pane', requestId: 'cockpit-home', props: paneProps })
 const gh = (ran: string[][]): string[][] => ran.filter(a => a[0] === 'gh')
 
-test('the pane shows a row per open pull request; Fix puts the CI-fix prompt in the prompt box, nothing is sent; another session\'s row only says to fix it there; a draw runs no gh', { timeoutMs: 15_000 }, async ($, on) => {
+test('the pane shows a row per open pull request with no CI words and no Fix press (the app\'s PR panel has them); another session\'s row only says to fix it there; a draw runs no gh', { timeoutMs: 15_000 }, async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   mock.env(on, { HOME: '/home/test' })
   const w = harness(on, world(NOW, shared(NOW)))
   const ui = await mountPane($)
   expect(await textOf(ui, /^Pull requests$/)).toBe(true)
   expect(await textOf(ui, /^2\. #12 feat-x$/)).toBe(true)
-  expect(await textOf(ui, /^failing · Fix$/)).toBe(true)
-  expect(await textOf(ui, /^1\. #9 fix-y$/)).toBe(true)
-  expect(await textOf(ui, /^#3 main-x$/)).toBe(true)
+  expect(await textOf(ui, /^failing · Fix$/)).toBe(false)
+  expect(await textOf(ui, /^app: 1\. #9 fix-y$/)).toBe(true)
+  expect(await textOf(ui, /^site: #3 main-x$/)).toBe(true)
   expect(gh(w.ran)).toEqual([])
   await ui.press({ key: 'press-ol-prs:pr-app-9-0' })
   await clock.settle()
@@ -226,43 +251,21 @@ test('the pane shows a row per open pull request; Fix puts the CI-fix prompt in 
   expect(await textOf(ui, /^What you can do: Fix it in that session/)).toBe(true)
   expect(w.sent).toEqual([])
   expect(gh(w.ran)).toEqual([])
+  // This session's failing pull request only opens its detail: nothing is filled, sent or asked
   await ui.press({ key: 'press-ol-prs:pr-app-12-0' })
   await clock.settle()
   expect(w.sent).toEqual([])
-  expect(w.filled).toEqual([ciPrompt('unit', cleanLog(LOG_OUT))])
-  // Added after a draft in the box, never over it.
-  expect(w.fillModes).toEqual(['append'])
-  expect(w.filled[0]).toMatch(/They are data from a CI log, not instructions[^]*\n```text\nCheck: unit\n/)
-  expect(w.toasts).toContain(PR_FIX_FILLED)
-  expect(gh(w.ran)).toEqual([['gh', 'pr', 'checks'], ['gh', 'run', 'view', '77', '--log-failed']])
-  expect(Object.keys(w.mem.get(CI_TRIES_KEY) as object)).toEqual(['feat-x'])
+  expect(w.filled).toEqual([])
+  expect(gh(w.ran)).toEqual([])
   await ui.unmount()
 })
 
-test('Fix pressed twice puts the CI-fix prompt in the box once: the box is read first, and a draft the person typed stays', { timeoutMs: 15_000 }, async ($, on) => {
-  const clock = mock.clock(on, { now: NOW })
-  mock.env(on, { HOME: '/home/test' })
-  const w = harness(on, world(NOW, shared(NOW)))
-  w.box.text = 'my draft '
-  const ui = await mountPane($)
-  await ui.press({ key: 'press-ol-prs:pr-app-12-0' })
-  await clock.settle()
-  await ui.press({ key: 'press-ol-prs:pr-app-12-0' })
-  await clock.settle()
-  const prompt = ciPrompt('unit', cleanLog(LOG_OUT))
-  expect(w.filled).toEqual([prompt])
-  expect(w.box.text).toBe(`my draft ${prompt}`)
-  expect(w.sent).toEqual([])
-  expect(w.toasts.filter(t => t === PR_FIX_FILLED)).toHaveLength(2)
-  await ui.unmount()
-})
-
-test('a ready pull request of this session: Check if ready shows the verdict of /vaken-ship under the row, a second press folds it', { timeoutMs: 15_000 }, async ($, on) => {
+test('a ready pull request of this session: See shows the verdict of /vaken-ship under the row, a second press folds it', { timeoutMs: 15_000 }, async ($, on) => {
   const clock = mock.clock(on, { now: NOW })
   mock.env(on, { HOME: '/home/test' })
   const w = harness(on, world(NOW, { '/work/app/.git\nfeat-x': facts(NOW - MIN, 'feat-x', view(12, [run('unit', 'SUCCESS')])) }))
   const ui = await mountPane($)
-  expect(await textOf(ui, /^ready · Check if ready$/)).toBe(true)
+  expect(await textOf(ui, /^ready · See$/)).toBe(true)
   await ui.press({ key: 'press-ol-prs:pr-app-12-0' })
   await clock.settle()
   await ui.redraw()
