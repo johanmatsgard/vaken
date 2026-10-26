@@ -5,7 +5,7 @@ import { BASE_SEEDS, HOME, ROOT, engine } from './statefixtures'
 import type { World } from './statefixtures'
 import { bandKey, parseItems } from '../hooks/core/band'
 
-import { RUNAWAY_BAND_ID, RUNAWAY_LINE, RUNAWAY_LINE_ESC, RUNAWAY_MS, RUNAWAY_NO_STOP, RUNAWAY_STOP, RUNAWAY_STOPPED, RUNAWAY_WAIT, RUNAWAY_WAITING, runawayLine, runawayMem, runawayNow, silenceRunaway, stepChecked, stepEnd, stepStart, stepsReset } from '../hooks/core/attention'
+import { RUNAWAY_BAND_ID, RUNAWAY_LINE, RUNAWAY_LINE_ESC, RUNAWAY_MS, RUNAWAY_NO_STOP, RUNAWAY_STOP, RUNAWAY_STOPPED, RUNAWAY_WAIT, RUNAWAY_WAITING, runawayLine, runawayMem, runawayNow, silenceRunaway, stepAsked, stepEnd, stepStart, stepsReset } from '../hooks/core/attention'
 import { stepHash } from '../hooks/core/allowrules'
 import type { BandItem } from '../hooks/core/band'
 import { setLang } from '../hooks/core/lang'
@@ -31,39 +31,37 @@ test('the clock: a shell step past 10 minutes is a runaway, in whole minutes; a 
   stepsReset()
 })
 
-test('Claude Code\'s check: an allowed step counts from the allow; a step that asks the person is never timed', () => {
+test('Claude Code\'s permission notice: the step that waits for the person is never timed; other steps still are', () => {
   stepsReset('turn-1')
   stepStart('call-1', HASH, NOW)
-  stepChecked('call-1', 'allow', NOW + 3 * MIN)
-  expect(runawayNow(NOW + 12 * MIN)).toBeUndefined()
-  expect(runawayNow(NOW + 13 * MIN)?.minutes).toBe(10)
-  stepStart('call-2', HASH, NOW)
-  stepChecked('call-2', 'ask', NOW)
+  expect(runawayNow(NOW + 11 * MIN)?.minutes).toBe(11)
+  // The notice marks the newest open step
+  stepStart('call-2', HASH, NOW + MIN)
+  stepAsked(NOW + MIN)
   stepEnd('call-1')
   expect(runawayNow(NOW + 60 * MIN)).toBeUndefined()
   stepsReset()
 })
 
-test('a check that comes before the call is kept by its id: an allowed step counts from the answer, an asked one is never timed', () => {
+test('a notice that comes before the call marks the next step only, and a new answer forgets it', () => {
   stepsReset('turn-1')
-  // The check answered at NOW + 3 min, the call came after
-  stepChecked('early-1', 'allow', NOW + 3 * MIN)
-  stepStart('early-1', HASH, NOW + 4 * MIN)
-  expect(runawayNow(NOW + 12 * MIN)).toBeUndefined()
-  expect(runawayNow(NOW + 13 * MIN)?.minutes).toBe(10)
-  stepEnd('early-1')
-  stepChecked('early-2', 'ask', NOW)
-  stepStart('early-2', HASH, NOW + MIN)
+  stepAsked(NOW)
+  stepStart('early-1', HASH, NOW)
   expect(runawayNow(NOW + 60 * MIN)).toBeUndefined()
-  // A kept check is used once and does not leak into a later step with the same id; a new answer forgets it
-  stepEnd('early-2')
+  stepEnd('early-1')
+  // Used once: the next step is timed again
   stepStart('early-2', HASH, NOW)
   expect(runawayNow(NOW + 11 * MIN)?.minutes).toBe(11)
-  stepChecked('early-3', 'ask', NOW)
+  stepEnd('early-2')
+  stepAsked(NOW)
   stepsReset('turn-2')
   stepStart('early-3', HASH, NOW)
   expect(runawayNow(NOW + 11 * MIN)?.minutes).toBe(11)
-  // Only the decision and the time are kept, never the command
+  stepEnd('early-3')
+  // A notice kept too long (a refused step never started) does not untime a later step
+  stepAsked(NOW)
+  stepStart('late-1', HASH, NOW + 31_000)
+  expect(runawayNow(NOW + 31_000 + 11 * MIN)?.minutes).toBe(11)
   stepsReset()
 })
 
@@ -135,7 +133,7 @@ test('the presses do what they say, on every surface; Swedish words', () => {
   const pressed: string[] = []
   const step = { stop: () => pressed.push('stop'), wait: () => pressed.push('wait') }
   for (const surface of [el, { ...el, Svg: undefined } as unknown as El]) {
-    const tree = HomeBand(surface, view([line(runawayLine(12, true))]), 'short', () => pressed.push('pane'), undefined, undefined, 100, undefined, undefined, undefined, undefined, step)
+    const tree = HomeBand(surface, view([line(runawayLine(12, true))]), 'short', () => pressed.push('pane'), undefined, undefined, 100, undefined, undefined, undefined, step)
     const buttons = walk(tree).filter(x => x.type === 'Button')
     const stop = buttons.find(b => String(b.props.label).includes(RUNAWAY_STOP))
     const wait = buttons.find(b => String(b.props.label).includes(RUNAWAY_WAIT))
@@ -148,7 +146,7 @@ test('the presses do what they say, on every surface; Swedish words', () => {
   expect(plain.some(b => String(b.props.label).includes(RUNAWAY_STOP))).toBe(false)
   setLang('sv')
   try {
-    const sv = walk(HomeBand(el, view([line(runawayLine(12, true))]), 'short', () => undefined, undefined, undefined, 100, undefined, undefined, undefined, undefined, step))
+    const sv = walk(HomeBand(el, view([line(runawayLine(12, true))]), 'short', () => undefined, undefined, undefined, 100, undefined, undefined, undefined, step))
     const words = JSON.stringify(sv)
     expect(words).toContain('Ett steg har kört i 12 min')
     expect(words).toContain('Stoppa svaret')

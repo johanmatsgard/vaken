@@ -80,7 +80,7 @@ test('one amber line with the Needs you mark and Open session, counted in Needs 
   expect(warn.mode === 'line' && warn.needs).toBe(1)
   expect(warn.mode === 'line' && warn.open?.label).toBe('See all')
   // A real wait on the person: amber, beside the Needs you chip that counts it
-  const drawn = flat(HomeBand(el, view(), 'explained', () => undefined, undefined, undefined, 100, undefined, undefined, undefined, () => undefined))
+  const drawn = flat(HomeBand(el, view(), 'explained', () => undefined, undefined, undefined, 100, undefined, undefined, () => undefined))
   const line = drawn.find(n => n.type === 'Text' && JSON.stringify(n.props.children).includes('Web fixes'))
   expect(line?.props.dimColor).toBe(false)
   expect(line?.props.color).toBe(WARNING)
@@ -97,7 +97,7 @@ test('while Quiet is on, the relay line never hides End quiet: it is the one but
   const cannot = bandPlan(view({ band: [quiet] }), 'explained', 100, [], false, false, true)
   expect(cannot.mode === 'line' && cannot.open?.kind).toBe('session')
   const ended: string[] = []
-  const drawn = flat(HomeBand(el, view({ band: [quiet] }), 'explained', () => undefined, () => void ended.push('quiet'), undefined, 100, undefined, undefined, undefined, () => ended.push('session')))
+  const drawn = flat(HomeBand(el, view({ band: [quiet] }), 'explained', () => undefined, () => void ended.push('quiet'), undefined, 100, undefined, undefined, () => ended.push('session')))
   const button = drawn.find(n => n.type === 'Button' && String(n.props.label).includes('End quiet'))
   expect(button).toBeDefined()
   ;(button?.props.onPress as () => void)()
@@ -107,15 +107,15 @@ test('while Quiet is on, the relay line never hides End quiet: it is the one but
 test('the press opens that session: the app\'s link on the desktop, else the app\'s window tool; never an answer', () => {
   const opened: string[] = []
   const press = (r: RelayView) => void opened.push(r.sid)
-  const button = flat(HomeBand(el, view(), 'explained', () => undefined, undefined, undefined, 100, undefined, undefined, undefined, press)).find(n => n.type === 'Button' && String(n.props.label).includes('Open session'))
+  const button = flat(HomeBand(el, view(), 'explained', () => undefined, undefined, undefined, 100, undefined, undefined, press)).find(n => n.type === 'Button' && String(n.props.label).includes('Open session'))
   expect(button).toBeDefined()
   ;(button?.props.onPress as () => void)()
   expect(opened).toEqual(['web-1111'])
-  const linked = flat(HomeBand(el, view({ relay: { ...RELAY, link: 'claude://session/local_web-1111' } }), 'explained', () => undefined, undefined, undefined, 100, undefined, undefined, undefined, press))
+  const linked = flat(HomeBand(el, view({ relay: { ...RELAY, link: 'claude://session/local_web-1111' } }), 'explained', () => undefined, undefined, undefined, 100, undefined, undefined, press))
   expect(linked.find(n => n.type === 'Link')?.props.href).toBe('claude://session/local_web-1111')
   // Too narrow for Open session: the Needs you chip, which counts only this question, opens that session in its place
   opened.length = 0
-  const narrow = flat(HomeBand(el, view(), 'explained', () => undefined, undefined, () => void opened.push('needs'), 40, undefined, undefined, undefined, press))
+  const narrow = flat(HomeBand(el, view(), 'explained', () => undefined, undefined, () => void opened.push('needs'), 40, undefined, undefined, press))
   expect(narrow.some(n => n.type === 'Button' && String(n.props.label).includes('Open session'))).toBe(false)
   ;(narrow.find(n => n.type === 'Button' && String(n.props.label).includes('1 needs you'))?.props.onPress as () => void)()
   expect(opened).toEqual(['web-1111'])

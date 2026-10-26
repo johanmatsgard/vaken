@@ -106,10 +106,10 @@ export const CAP_DEPTH_BAND = 'Agent stopped: agents went too deep. Agent cap in
 // The cap's figure in dollars; Infinity when off or unknown
 export const spendMaxOf = capMaxOf
 
-// A spawn the task runner raised (it has its own budget, so the per-request spend cap leaves it alone). Two ways in: a plugin's own call (`$.agent.spawn`; the model's and the person's spawns have the engine as origin),
-// and a helper Claude starts for a run in the "ask Claude" route, found by the run's waiting task (its code or "Task n"). Reads the run only; never the prompt's words beyond that code.
+// A spawn the task runner raised (it has its own budget, so the per-request spend cap leaves it alone). Two ways in: a plugin's own call (the model's and the person's spawns have the engine as origin; vaken itself starts none),
+// and a helper Claude starts when the task runner asks it, found by the run's waiting task (the code on its brief's first line). Reads the run only; never the prompt's words beyond that code.
 export const isRunnerSpawn = (originPlugin: string, run: Run | undefined, spawn: { description: string; prompt: string }): boolean =>
-  originPlugin !== 'engine' || (run !== undefined && run.via === 'claude' && (reviewForSpawn(run, spawn.prompt) !== undefined || taskForSpawn(run, spawn.description, spawn.prompt) !== undefined))
+  originPlugin !== 'engine' || (run !== undefined && (reviewForSpawn(run, spawn.prompt) !== undefined || taskForSpawn(run, spawn.description, spawn.prompt) !== undefined))
 
 // The agent's depth: 1 plus its parent's, walked through the session's agent list (`parents`: agent id to its parent's id). An unknown parent counts as one level.
 export function depthOf(parentAgentId: string | undefined, parents: ReadonlyMap<string, string | undefined>): number {

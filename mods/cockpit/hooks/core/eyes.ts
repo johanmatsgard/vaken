@@ -178,7 +178,7 @@ export function pct(p: number): string {
   if (p === 0) return tr('0%')
   if (p < 0.05) return tr('under 0.1%')
   const shown = String(p >= 10 ? Math.round(p) : p.toFixed(1))
-  return langNow() === 'sv' ? `${shown.replace('.', ',')} %` : `${shown}%`
+  return langNow() === 'sv' ? `${shown.replace('.', ',')}\u00a0%` : `${shown}%`
 }
 
 const wide = (w: number): string => fillIn(tr('{label}, {w} wide'), { label: tr(widthLabel(w as Width)), w })

@@ -81,7 +81,7 @@ test('the loop breaker, neighbours, drift, routing and plugin updates say their 
     '5 ändringar i 1 ny mapp: docs',
     '5 ändringar i 2 nya mappar: docs, site',
     'Den körs på Haiku i stället.',
-    'Sätt Agentmodeller till Auto så körs den på Haiku.',
+    'Be Claude starta den på Haiku nästa gång.',
     'acme gick från version 1.0.0 till 1.1.0.',
   ])
 })

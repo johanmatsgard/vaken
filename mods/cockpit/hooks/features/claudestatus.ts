@@ -4,7 +4,7 @@
 import type { EngineInterface, On } from 'claude-code'
 
 import { clearBand, postBand } from '../core/band'
-import { SERVICE_ERRORS, STATUS_BAND_ID, STATUS_BAND_TTL_MS, STATUS_EVERY_MS, STATUS_URL, forgetStatus, parseStatus, statusDue, statusMem } from '../core/claudestatus'
+import { SERVICE_ERRORS, STATUS_BAND_ID, STATUS_BAND_TTL_MS, STATUS_EVERY_MS, forgetStatus, parseStatus, statusDue, statusMem } from '../core/claudestatus'
 import { HEALTH_MODE_KEY } from '../core/health'
 import { withToastGate } from '../core/io'
 import { homeFrom } from '../core/platform'
@@ -36,7 +36,7 @@ function io($: EngineInterface): Io {
 // The page's text, or undefined when the host refuses or cannot reach it (an organization's web policy, offline): then nothing shows.
 async function fetchStatus($: EngineInterface): Promise<string | undefined> {
   try {
-    const r = await $.http.fetch(STATUS_URL)
+    const r = await $.http.fetch('https://status.claude.com/api/v2/summary.json')
     return r.ok ? r.text : undefined
   } catch {
     return undefined

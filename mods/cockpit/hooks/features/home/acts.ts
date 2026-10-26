@@ -4,7 +4,7 @@ import { langNow, t, tr } from '../../core/lang'
 import { chipWord, modeLabel, presetLabel } from '../../core/settingsmap'
 import { QUIET_ASKED_KEY, parseAsked } from '../../core/whatis'
 import { USUAL_MODE, findPreset, modeNow, presetSteps } from '../../core/presets'
-import { isRoleKey, rolesChanged, tasksCommand, throwLoss } from '../orchestra'
+import { tasksCommand, throwLoss } from '../orchestra'
 import { lastAnswer, simpler } from '../simple'
 import { applySteps, clearProjectSetting, clearSessionSetting, projectOf, readGlobalSettings, readProjectSet, writeProjectSetting, writeSessionSetting } from '../../core/projects'
 import { ROLE_NAMES, THROW_HOLD, roleSettingKey } from '../../core/orchestra'
@@ -102,7 +102,6 @@ async function finishSetup(eng: HomeEngine, answers: SetupAnswers, root: string 
   await keepUndo(i, 'setup', [...(preset === undefined ? [] : presetSteps(preset)), ...setupSteps(answers)].map(st => st.key), root)
   if (preset !== undefined) {
     await applySteps(i, presetSteps(preset), root)
-    if (Object.keys(preset.values).some(isRoleKey)) await rolesChanged(eng.runnerOps())
   }
   await applySteps(i, setupSteps(answers), root)
   if ((await i.get(FIRST_RUN_KEY)) !== 'done') await openFirstCards(i)
@@ -217,7 +216,6 @@ export function actsOf(eng: HomeEngine): Acts {
             // Settings > Mode offers Undo for a press that changed a row
             if (changed > 0) await keepUndo(i, preset.name, steps.map(st => st.key), root)
             await applySteps(i, steps, root)
-            if (Object.keys(preset.values).some(isRoleKey)) await rolesChanged(eng.runnerOps())
             if (fromWelcome) i.toast(tr(MODE_IS_ON).replace('{mode}', modeLabel(preset.name, langNow())), true)
             if (!fromWelcome && changed > 0) i.toast(t('settings.undo_mode_toast', { preset: presetLabel(preset.name, langNow()), n: changed }), true)
           }
@@ -256,7 +254,6 @@ export function actsOf(eng: HomeEngine): Acts {
         .then(async () => {
           const i = eng.io()
           const done = await runUndo(i)
-          if (done !== undefined && done.keys.some(isRoleKey)) await rolesChanged(eng.runnerOps())
           i.toast(done === undefined || done.n === 0 ? t('settings.undo_nothing') : t('settings.undo_done', { n: done.n }), true)
           i.invalidate()
         })
@@ -273,7 +270,6 @@ export function actsOf(eng: HomeEngine): Acts {
           const values = root === undefined ? await readGlobalSettings(i) : { ...(await readGlobalSettings(i)), ...(await readProjectSet(i, root)) }
           const base = baselineOf(s, modeNow(values))
           await applySteps(i, [base === s.default ? { key } : { key, value: base }], root)
-          if (isRoleKey(key)) await rolesChanged(eng.runnerOps())
           i.toast(t('settings.changed_undone', { name: tr(s.label), value: tr(chipWord(s, base, switchOf(s) !== undefined)) }), true)
           i.invalidate()
         })
@@ -401,7 +397,6 @@ export function actsOf(eng: HomeEngine): Acts {
         const root = flags.settingsScope === 'project' ? await projectOf(i) : undefined
         if (root === undefined) await writeSetting(i, key, value)
         else await writeProjectSetting(i, root, key, value)
-        if (isRoleKey(key)) await rolesChanged(eng.runnerOps())
         i.invalidate()
       })()
     },
@@ -571,7 +566,6 @@ export function actsOf(eng: HomeEngine): Acts {
         if (flags.rolesScope === 'session') await writeSessionSetting(i, await i.sessionId(), key, value)
         else if (root !== undefined) await writeProjectSetting(i, root, key, value)
         else await writeSetting(i, key, value)
-        if (isRoleKey(key)) await rolesChanged(eng.runnerOps())
         i.invalidate()
       })()
     },

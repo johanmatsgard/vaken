@@ -22,10 +22,9 @@ import { STUCK_FRESH, STUCK_HEAD, STUCK_MEANS, STUCK_NEXT, STUCK_NEXT_FRESH, STU
 import type { StuckOffer } from '../../core/loopbreaker'
 import { KEEP_HEAD, KEEP_MAX_MEANS, KEEP_MAX_NEXT, KEEP_MAX_TITLE, KEEP_ROUNDS, KEEP_TITLE, keepMaxed, keepOn } from '../../core/keepgoing'
 import type { KeepGoing } from '../../core/proof'
-import { ALLOW_ONCE, DISMISS_LABEL, KEEP_DISMISS_ROW, KEEP_STOPPED_ROW, keepStart, REPEAT_NO, REPEAT_YES, RESUME_ALL, STUCK_FRESH_ROW, STUCK_STRONG_ROW, TEACH_NO, TEACH_YES, checkClaims, copyRule, dismissHold, dismissRule, fixCheck } from './rowact'
+import { ALLOW_ONCE, DISMISS_LABEL, KEEP_DISMISS_ROW, KEEP_STOPPED_ROW, keepStart, REPEAT_NO, REPEAT_YES, RESUME_ALL, STUCK_FRESH_ROW, STUCK_STRONG_ROW, TEACH_NO, TEACH_YES, checkClaims, dismissHold, fixCheck } from './rowact'
 import { openShort } from '../../core/allowonce'
-import { KEEP_STOPPED, RULE_COPY, RULE_FILE, RULE_HEAD, RULE_NEXT, RULE_TITLE, STEP_FACT, offerWords, whatShown } from '../../core/allowrules'
-import type { Offer } from '../../core/allowrules'
+import { KEEP_STOPPED, STEP_FACT } from '../../core/allowrules'
 import type { Inside } from './rowact'
 import { langNow, t as tKey, trFill } from '../../core/lang'
 import { fmt } from '../../core/fmt'
@@ -116,18 +115,6 @@ export function needsGroups(items: InboxItem[], now: number, t: (s: string) => s
     const of = shown.filter(x => x.kind === k).map((it, n) => ({ it, n })).sort(newestFirst)
     return of.length === 0 ? [] : [{ head: HEAD[k] ?? k, rows: of.map(({ it, n }) => itemRow(it, n, now, t)) }]
   })
-}
-
-// An offered allow rule: a calm row, not counted in the Needs you number
-export function ruleGroups(offers: readonly Offer[], t: (s: string) => string): LineGroup[] {
-  if (offers.length === 0) return []
-  const rows: InsideRow[] = offers.map(o => ({
-    key: `rule-${o.rule}`,
-    title: t(RULE_TITLE).replace('{what}', whatShown(o.what, t)),
-    what: { means: offerWords(o, x => x), facts: [RULE_FILE], next: RULE_NEXT },
-    inside: { label: RULE_COPY, action: copyRule(o.rule), more: [{ label: DISMISS_LABEL, action: dismissRule(o.rule) }] },
-  }))
-  return [{ head: t(RULE_HEAD), rows }]
 }
 
 export const NEWS_HEAD = 'News from other cards'

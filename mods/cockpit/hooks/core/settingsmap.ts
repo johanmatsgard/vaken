@@ -103,7 +103,6 @@ const NOTES: Record<string, string> = {
   'cache.keeper': 'settings.while_you_are_away_it_messages_claude',
   'loop.breaker': 'settings.when_claude_retries_a_failing_step',
   'agents.board': 'settings.when_helpers_run_it_lists_them',
-  'agents.offer': 'settings.offer_helper_types_note',
   'neighbors.warn': 'settings.when_another_session_works_in_this',
   'fresh.nudge': 'settings.when_a_new_topic_would_cost',
   'plan.first': 'settings.before_a_big_task_it_suggests',

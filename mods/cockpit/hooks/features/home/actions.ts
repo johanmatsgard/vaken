@@ -9,7 +9,7 @@ import { compacting, notGoodNow, runCompaction } from '../compaction'
 import type { CompactOps } from '../compaction'
 import { dismissOpenEnds } from '../calm'
 import { allowHeldOnce, dismissHeld, keepHeldStopped, setHalt } from '../guard'
-import { KEPT_SAID, RULE_COPIED, RULE_DISMISSED, RULE_NOT_COPIED, dropDenied, dropOffer } from '../../core/allowrules'
+import { KEPT_SAID } from '../../core/allowrules'
 import { forgetPaneInbox } from '../inbox'
 import type { HomeEngine } from './engine'
 import { previewLast, previewNamed } from '../undo'
@@ -326,18 +326,6 @@ export async function runRow(eng: HomeEngine, a: RowAction): Promise<void> {
       await keepHeldStopped(i, await i.sessionId(), 'button')
       forgetPaneInbox()
       i.toast(tr(KEPT_SAID), true)
-      i.invalidate()
-    } else if (a.kind === 'copyRule') {
-      const copied = eng.copy === undefined ? false : await eng.copy(a.rule).catch(() => false)
-      if (copied) {
-        dropOffer(a.rule)
-        dropDenied(a.rule)
-      }
-      i.toast(copied ? tr(RULE_COPIED) : tr(RULE_NOT_COPIED).replace('{rule}', a.rule), true)
-      i.invalidate()
-    } else if (a.kind === 'dismissRule') {
-      dropOffer(a.rule)
-      i.toast(tr(RULE_DISMISSED), true)
       i.invalidate()
     } else if (a.kind === 'dismissHold') {
       await dismissHeld(i, a.sid, 'button')

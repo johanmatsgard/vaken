@@ -8,7 +8,7 @@
 
 Free and open source (MIT) · No server, no telemetry · macOS and Windows 11 · Light and dark
 
-[Install](#install) · [Features](#what-it-does) · [All 190 features](docs/features.md) · [How it works](#how-it-works-and-what-it-touches) · [FAQ](#faq)
+[Install](#install) · [Features](#what-it-does) · [All 187 features](docs/features.md) · [How it works](#how-it-works-and-what-it-touches) · [FAQ](#faq)
 
 <picture><source media="(prefers-color-scheme: dark)" srcset="docs/pictures/safety-dark.webp"><img src="docs/pictures/safety-light.webp" alt="vaken stops git reset --hard in Claude Code Desktop and waits for your OK" width="860"></picture>
 
@@ -135,9 +135,9 @@ Small, calm alerts at the right moment. Each one is a real vaken alert.
 
 <p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="docs/pictures/catches-dark.gif"><img src="docs/pictures/catches-light.gif" alt="Six vaken alerts: a stopped risky command, a question from Claude, a plan limit forecast, a cheap moment to compact, a step that keeps failing, and another session in the same folder"></picture></p>
 
-## 190 features, in 8 groups
+## 187 features, in 8 groups
 
-Every group below opens to its full list. The [feature list page](docs/features.md) has all 190 features, one per line.
+Every group below opens to its full list. The [feature list page](docs/features.md) has all 187 features, one per line.
 
 <details>
 <summary><b>🛡️ Safety and proof</b>: Stops risky steps before they run, and checks that "done" is really done.</summary>
@@ -180,9 +180,7 @@ Every group below opens to its full list. The [feature list page](docs/features.
 
 **Explains**
 
-- Claude Code's own "Allow?" question, in plain words, before you answer.
 - A step that was denied, and why.
-- Offers an allow rule after you said yes 3 times. Never for a risky step, and you add it yourself.
 - What left your computer this turn (outbox), and the last 50 commands with secrets masked.
 - A judge for each command: safe, risky or blocked.
 - What each plugin you installed can do.
@@ -253,7 +251,7 @@ Every group below opens to its full list. The [feature list page](docs/features.
 - A huge @ file can send only its last 200 lines.
 - Repeated reminders are skipped.
 - Suggests a cheaper model or lower effort when the ask is small.
-- Lookup helpers run on the cheaper model.
+- A tip when a lookup helper could use a cheaper model.
 - Warns that switching model mid-chat throws away the cheap cached part.
 - Shows the size of your CLAUDE.md files and their repeated lines.
 - Keeps the cache warm while you think. Off by default.
@@ -456,7 +454,7 @@ vaken is a Claude Code plugin. Its hooks run inside Claude Code on your computer
 | **Runs** | `git`, `gh` (if you have it), and system tools such as `ps` and `netstat`, to read facts. They only read. |
 | **Sends** | Nothing to its authors. Two small web reads: a package name to the npm registry, and the public Claude status page. |
 | **Never** | Says yes for you, writes your `settings.json`, or edits your source files. Undo restores a file only on your yes. |
-| **Version** | 1.168.7. See the [releases](https://github.com/johanmatsgard/vaken/releases). |
+| **Version** | 1.169.0. See the [releases](https://github.com/johanmatsgard/vaken/releases). |
 
 The safety stop is a seat belt, not a sandbox: [SECURITY.md](SECURITY.md) says what it does and does not promise.
 
@@ -473,7 +471,7 @@ vaken never answers "yes" for you, and it never writes permission rules into you
 - **Budget.** On Stop it says no to costly calls once the session or day budget is used up. Off by default. Settings > Money and plan > Budget.
 - **Agent cap.** On Stop it says no to a new agent over your limit. New install: Warn, which never says no. Settings > Agents > Agent cap.
 - **Loop breaker.** On Stop it says no to a step that keeps failing, until your next message. New install: Warn. Settings > Safety > Loop breaker.
-- **Agent models.** On Auto it gives a lookup agent the Researcher's model. New install: Suggest, which only tells you. Settings > Agents > Agent models.
+- **Agent models.** It tells you when a lookup agent could use a cheaper model. It never changes the agent. Settings > Agents > Agent models.
 
 ### Output it makes shorter
 

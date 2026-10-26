@@ -85,12 +85,12 @@ export type AwakeNow = { held?: Held; lowBattery: boolean; capped: boolean }
 export const lowBatteryNow = (l: Laptop | undefined, now: number): boolean => l !== undefined && typeof l.at === 'number' && now - l.at <= ROOM_FRESH_MS && batteryLow(l)
 
 export function awakeReason(away: AwakeAway, f: AwakeFacts, now: number): Held | undefined {
-  const on = (r: Reason): boolean => REASONS[r].on.includes(away)
-  if (f.working > 0 && on('working')) return { reason: 'working' }
-  if (f.night === true && on('night')) return { reason: 'night' }
-  if (f.phoneAt !== undefined && now - f.phoneAt >= 0 && now - f.phoneAt < AWAKE_AWAY_MAX_MS && on('phone')) return { reason: 'phone', until: f.phoneAt + AWAKE_AWAY_MAX_MS }
-  if (f.waiting.count > 0 && f.waiting.latestSince !== undefined && f.waiting.latestSince + AWAKE_WAIT_MAX_MS > now && on('waiting')) return { reason: 'waiting', until: f.waiting.latestSince + AWAKE_WAIT_MAX_MS }
-  if (f.background > 0 && on('background')) return { reason: 'background' }
+  const holds = (r: Reason): boolean => REASONS[r].on.includes(away)
+  if (f.working > 0 && holds('working')) return { reason: 'working' }
+  if (f.night === true && holds('night')) return { reason: 'night' }
+  if (f.phoneAt !== undefined && now - f.phoneAt >= 0 && now - f.phoneAt < AWAKE_AWAY_MAX_MS && holds('phone')) return { reason: 'phone', until: f.phoneAt + AWAKE_AWAY_MAX_MS }
+  if (f.waiting.count > 0 && f.waiting.latestSince !== undefined && f.waiting.latestSince + AWAKE_WAIT_MAX_MS > now && holds('waiting')) return { reason: 'waiting', until: f.waiting.latestSince + AWAKE_WAIT_MAX_MS }
+  if (f.background > 0 && holds('background')) return { reason: 'background' }
   return undefined
 }
 

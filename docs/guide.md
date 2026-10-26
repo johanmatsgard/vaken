@@ -62,7 +62,6 @@ This card is always on top. It lists what waits for you:
 - A question from Claude.
 - A step that waits for your OK, also one that an agent of the session asks for.
 - A step the safety check stopped, with a short form of the step, such as `git reset --hard`. Press "Allow once" to let it through, or "Keep stopped" to keep that exact step stopped for the session. A step stopped again and again is one row.
-- An allow rule, after you allowed the same kind of step 3 times in a week where Claude Code asked first. Press "Copy the rule", then paste it into `.claude/settings.json` under "permissions" > "allow". This row is not counted.
 - A call stopped by the cost budget.
 - An agent that waits because the agent limit is reached.
 - A session paused for safety.
@@ -238,7 +237,7 @@ You find these in the All view, or in Custom if you pick them:
 - A destructive command or a secret stops and waits for you when Claude Code would not ask you first. [SECURITY.md](../SECURITY.md) lists those modes.
 - When Claude Code asks you itself, vaken adds a warning. When it cannot tell, it warns.
 - Your own choice in Settings always wins.
-- Fewer may-I stops: after you allow the same kind of step 3 times in a week, vaken shows the allow rule once, never for a risky step. `/vaken-guard rules` lists the rules offered. Turn it off with `/vaken-settings allow.rules off`.
+- Why a step stopped: when Claude Code itself stops a step, the band says why in one line for a few minutes. Turn it off with `/vaken-settings allow.rules off`.
 - `/vaken-pause` pauses every change step in this session. `/vaken-pause off` resumes.
 - `/vaken-undo` lists changed files and restores them when you say yes.
 

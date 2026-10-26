@@ -211,20 +211,19 @@ test('the spend band line says the next message lifts it, and points to no setti
   expect(CAP_SPEND_BAND).toBe('Agent stopped: this request reached its spend limit. Your next message lifts it.')
 })
 
-test('a spawn the task runner raised is told apart: a plugin\'s own call, or the helper of a waiting task in the ask-Claude route; the model\'s own Agent call is not', () => {
+test('a spawn the task runner raised is told apart: a plugin\'s own call, or the helper Claude starts for a waiting task; the model\'s own Agent call is not', () => {
   const direct = newRun(['Fix the login', 'Write tests'], NOW)
-  const run = { ...direct, status: 'running' as const, via: 'claude' as const }
+  const run = { ...direct, status: 'running' as const }
   const spawn = (description: string, prompt: string) => ({ description, prompt })
-  // a plugin raised it ($.agent.spawn): the engine is the origin of the model's and the person's spawns
+  // a plugin raised it: the engine is the origin of the model's and the person's spawns
   expect(isRunnerSpawn('vaken', undefined, spawn('Task 1', 'Fix the login'))).toBe(true)
   expect(isRunnerSpawn('engine', undefined, spawn('Look around', 'Read the code'))).toBe(false)
-  // Claude's Agent call for a waiting task of the run (its exact code, or "Task n")
+  // Claude's Agent call for a waiting task of the run: only its exact code binds, never a name like "Task n"
   expect(isRunnerSpawn('engine', run, spawn('Task 1', `vaken-task ${run.id}-1`))).toBe(true)
-  expect(isRunnerSpawn('engine', run, spawn('Task 2', 'whatever'))).toBe(true)
+  expect(isRunnerSpawn('engine', run, spawn('Task 2', 'whatever'))).toBe(false)
   // another call, or a run that has ended, is the model's own
   expect(isRunnerSpawn('engine', run, spawn('Look around', 'Read the code'))).toBe(false)
   expect(isRunnerSpawn('engine', { ...run, status: 'done' as const }, spawn('Task 1', `vaken-task ${run.id}-1`))).toBe(false)
-  expect(isRunnerSpawn('engine', { ...run, via: 'direct' as const }, spawn('Task 1', `vaken-task ${run.id}-1`))).toBe(false)
 })
 
 test('the caps read the one Agent cap setting: Stop denies with a band line, Warn gives a translated line, Off nothing', async () => {

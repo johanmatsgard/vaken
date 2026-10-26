@@ -24,7 +24,7 @@ vaken never answers "yes" for you, and it never writes permission rules into you
 - **Budget.** On Stop it says no to costly calls once the session or day budget is used up. Off by default. Settings > Money and plan > Budget.
 - **Agent cap.** On Stop it says no to a new agent over your limit. New install: Warn, which never says no. Settings > Agents > Agent cap.
 - **Loop breaker.** On Stop it says no to a step that keeps failing, until your next message. New install: Warn. Settings > Safety > Loop breaker.
-- **Agent models.** On Auto it gives a lookup agent the Researcher's model. New install: Suggest, which only tells you. Settings > Agents > Agent models.
+- **Agent models.** It tells you when a lookup agent could use a cheaper model. It never changes the agent. Settings > Agents > Agent models.
 
 ### Output it makes shorter
 
@@ -39,7 +39,7 @@ vaken never answers "yes" for you, and it never writes permission rules into you
 ### Things it runs
 
 - **Compacting.** New install: Watch only. The This session card shows a good moment, and Compact now does it. Auto compacts by itself at a break or at 60% full, never while you type or work runs. The first-start question "Long chats" offers Auto, or set it in Settings > Money and plan > Compact by itself.
-- **Task runner.** Nothing runs until you press Start. The four agent types (Researcher, Builder, Reviewer, Fixer) are offered to Claude only once a run starts; Settings > Agents > Offer agent types, Off by default, offers them at every session start instead. Then it starts agents for your task list. Only for the agents of a run you started, it sets each one's task, model and folder. After a plan limit it waits: press Go on on the Agents card. A run set to "After a plan limit: Go on" goes on by itself. Stop all on the Agents card, or `/vaken-tasks stop`, stops a run.
+- **Task runner.** Nothing runs until you press Start. The four agent types (Researcher, Builder, Reviewer, Fixer) are agent files in the plugin. When a run starts, vaken asks Claude in a message to start the agents for your task list, with each one's task, type, model and folder. To stop one, vaken asks Claude in a message. A stop is a request: the task shows as stopped at once, but the agent ends only when Claude stops it, so a time or cost limit is no longer a hard stop. After a plan limit it waits: press Go on on the Agents card. A run set to "After a plan limit: Go on" goes on by itself. Stop all on the Agents card, or `/vaken-tasks stop`, stops a run.
 - **Night run.** Off by default. `/vaken-tasks night` runs the list unattended on mains power, keeps the Mac awake and turns on While away: Careful, then puts them back. It goes on after a limit by itself. Turn it on with `/vaken-settings night.mode on`.
 - **After a limit.** New install: Remind, a note when the limit resets. Resume also sends "continue" for you, a few times a day at most. Settings > Money and plan > After a limit.
 - **Keep session cheap.** Off by default. In a break it sends a short model call to keep the cache warm. Settings > Money and plan > Keep session cheap.
@@ -73,6 +73,21 @@ Everything vaken does on its own, besides what is listed above. Programs run on 
 - Undo copies: before a file changes, a copy goes under `~/.claude/cockpit/checkpoints/`. Copies older than 7 days that no Undo list uses are removed, and so are hand-over notes older than 14 days.
 - A hand-over note: written under `~/.claude/cockpit/` just before Auto compacts the chat, so the next step can find what was open.
 - Task run folders: when you press Start on a task run, a task that writes code gets its own git worktree under `.claude/worktrees/`. vaken removes one only when you press Remove this copy.
+
+## What vaken does on your computer
+
+A short list of everything vaken does by itself, per kind. Facts read from the code. The sections below give more detail.
+
+- **Files it writes.** Only on your computer. Under `~/.claude/cockpit/`: Undo copies of a file just before it changes, hand-over notes, pictures and browser profiles. In your project, only when you press or type a command: `.claude/cockpit-*` files, `.claude/cockpit-eyes/` and `.claude/worktrees/`. Agent files under `.claude/agents/` or `~/.claude/agents/` and a CLAUDE.md block only when you accept them in Set up agents (a `.bak` copy first). It never writes `settings.json` or a hook file. The write in `agentcap.ts` is the shared file block every feature file holds; `agentcap.ts` itself writes no file.
+- **Programs it starts, and why.** Each is a fixed program name with fixed arguments: `git` and `gh` (branch, checks and pull request facts; `gh` merges only when you press Merge), `ps`, `lsof`, `top`, `sysctl`, `vm_stat`, `pmset` (the load of the computer and the battery; on Windows `tasklist`, `netstat` and fixed PowerShell lines), `curl` to `http://localhost:<port>` (does your dev server answer), headless Google Chrome (a picture of a `localhost` page), `osascript` (a fixed notice while you are away), `caffeinate` (only with Keep Mac awake on), `npm view` (the package check), `kill` or `taskkill` (only a program vaken started, or one you pressed Stop on), `find`, `rm`, `mkdir`, `mv`, `chmod`, `du` (only inside `~/.claude/cockpit/`), `git worktree add` and `remove` and `git branch -D` (only for a task run's own copy, the remove only when you press Keep, which keeps its branch, or Throw away), `gh run view --log-failed` (why a check failed), and `sh -c` with the check command you set for a task run, or a fixed line that starts `caffeinate` or Chrome. The run call in `agentcap.ts` is the shared block; `agentcap.ts` itself starts no program.
+- **Hosts it contacts, and what it sends.** Two only. `https://status.claude.com/api/v2/summary.json` (a fixed address), every 5 minutes while a session is active: a plain read that sends nothing of yours. `https://registry.npmjs.org/` through `npm view` before an install: only the package name. vaken has no server and no telemetry.
+- **Slash commands it runs itself.** `/compact`, only when the app refuses a direct compaction (`compaction.ts`; see "`/compact`" below for when). And the skill or command you press Start on in the Skills card (`home/actions.ts`), only on that press.
+- **Prompts it submits, and what is in them.** Fixed text, almost always after a press, or your own words: a quick action you saved yourself, sent when you type `/vaken quick <name>`. The fixed ones: Nudge (`continue`), Send the better one, a fix button, the task runner's plan and start requests, and Finish safely (`cost.ts`: "<check> failed 3 times in a row. Do not try the same fix again. Start one agent with model ... to find why and fix it ... Keep this session's model as it is."), sent when the turn ends if you pressed it while Claude worked. With Resume on (default Remind) it submits "The plan limit has reset. Continue where you stopped." after a limit, with a daily cap.
+- **Messages to other sessions** (`$.session.send`). Only after a press or a yes: your typed answer or a Nudge (`continue`) to another session from the pane (`home/talk.ts`), a message you wrote to another session after you say yes (`inbox.ts`), and a line you type for one helper of your task run (`/vaken-tasks say`, `orchestra.ts`).
+- **The prompt box and sound.** It puts text in your prompt box for you to send or edit, never sends it (`$.prompt.fill`: `ship.ts`, `phonedo.ts`, `crew3.ts`, `notes.ts`). It shows a dim hint you take with Tab (`$.prompt.suggest`: `nextsteps.ts`, `inbox.ts`). With Tell me set to Speak, it reads a short notice aloud on your computer (`$.audio.speak`, `tellme.ts`).
+- **Agents it starts.** None by itself. For a task run you started (`home.tsx`, `orchestra.ts`), it asks Claude in a message to start them, and Claude starts them. Its four agents (`vaken:researcher`, `vaken:builder`, `vaken:reviewer`, `vaken:fixer`) set no `permissionMode` and no hooks, so they keep Claude Code's own permission mode.
+- **Tools it calls itself.** None of Claude Code's own tools. It only reads two things: the list of tools each plugin adds, for the plugin card (`$.tool.list`, `trust.ts`), and what Claude Code would decide for a step, for the guard (`$.tool.check`, `guard.ts`, `guardworld.ts`); it changes neither. When you press Stop or a task passes your time or cost limit, it asks Claude in a message to stop that agent. The app's session and window tools listed below. Its own `vaken_status` tool is answered by vaken from its store (`steer.ts`); it does not answer any other tool. `tellme.ts` calls the app's own notice (`$.ui.notify`), not another plugin.
+- **Permission decisions.** vaken never says "yes" for you and has no hook on Claude Code's permission check or its "Allow?" question. Two hooks only watch: `classic.Notification` (`home.tsx`, `attention.ts`) notes that Claude Code asked you, for the pane and the step timer, and `classic.PermissionDenied` (`allowrules.ts`) shows why Claude Code stopped a step. Both pass on with `next(e)` unchanged. The only answers vaken gives are a `deny` from the guard, `/vaken-pause` or a cap you set. The hooks on `agent.spawn` and `command.run` pass on unchanged except where "For reviewers" says why. vaken never changes Remote Control, your permission mode or your settings.
 
 ## Install
 
@@ -127,6 +142,7 @@ Where vaken changes an event before it passes it on, it does so on purpose. This
 **Notes added to what Claude reads.**
 
 - Assumption review (`assumptions.ts`, `prompt.submit`): one line asks Claude to list its assumptions. Setting `assume.check`, default off.
+- Working habits (`tasklist.ts`, `prompt.submit`): for a long prompt, one note with the habits you turned on (a visible task list, a done and next close), at most once an hour. Only habits set to On.
 - Plan first (`planfirst.ts`, `prompt.submit`): one line asks for a short plan. Only when `plan.first` is Ask. Default Suggest shows a line to you only.
 - Prompt review (`promptcheck.ts`, `prompt.submit`): one line asks Claude to ask one question about a short prompt. Only when `prompt.check` is Ask. Default Tip shows a line to you only.
 - Checks (`proof.ts`, `prompt.submit`): a note that a claim has no passing check. Only when `claude.notes` is "All checks"; default "Safety only". With Claims on (default Warn), a "done" claim without a passing check also gets a one-line warning in the turn result.
@@ -154,15 +170,16 @@ The first prompt from the phone in a stint also adds the phone hello (a `system`
 
 **Effort for quick asks** (`home.tsx`, `turn.step`). Only after you press the low-effort button the model-fit card offers for quick asks (setting `hints.model`), the main session's steps are sent with low effort while your asks stay quick; it ends when you stop pressing or an ask is not quick. Nothing else about the step changes, and helper agents are never touched.
 
-**Model routing** (`route.ts`, `agent.spawn`). With `route.mode` Auto, a helper that only reads or searches gets a cheaper model. Plan and review helpers, helpers from your own agent files, and a model Claude chose are not changed. Default Suggest changes nothing.
+**Model routing** (`route.ts`, `agent.spawn`). A tip only: when a helper that only reads or searches could use a cheaper model, vaken says so. It passes the event on unchanged, so the agent starts as Claude asked.
 
-**Task runner** (`orchestra.ts`, `agent.spawn`). When a run started with `/vaken-tasks` asks Claude to start agents, this hook swaps the placeholder prompt for the full task text and sets the agent type, model and folder. It acts only on agents of your run.
+**Task runner** (`orchestra.ts`, `agent.spawn`). It only watches. It passes the event on unchanged, then notes which task of your run a new agent belongs to, by the task code on the first line of its brief.
 
 **Away mode** (`away.ts`, `command.run`). It handles its own `/vaken-away` command and removes a time such as "for 2h" from the arguments before the base switch reads them. `away.policy` (default Off) makes the guard stricter while you are away.
 
 **Permission.**
 
-- A `classic.Notification` hook (`home.tsx`) notes when Claude Code asks you for permission, so the pane can show "needs you". It only records that and passes the event on; it never answers.
+- A `classic.Notification` hook (`home.tsx`, `attention.ts`) notes when Claude Code asks you for permission, so the pane can show "needs you" and the step timer does not time a step that waits for you. It only records that and passes the event on; it never answers.
+- A `classic.PermissionDenied` hook (`allowrules.ts`) shows in the band why Claude Code stopped a step. It passes the event on unchanged and never retries the step.
 - The guard (`guard.ts`, `tool.call`) answers only `deny`, or passes the step on. With a block set to Stop it denies a risky step with a reason. With Warn (default) it adds a note. It asks Claude Code what it would decide (`$.tool.check`) and reads settings (`$.settings.read`), and changes neither.
 - "Allow once" approves nothing itself. Pressing it, or typing `/vaken-guard allow once`, stores a one-time permit for that exact step (tool name and a hash of its input). The guard does not hold that step when Claude tries it again, and the permit is used up.
 - `/vaken-pause` denies every step that changes things in this session until you lift it.
@@ -175,20 +192,19 @@ The first prompt from the phone in a stint also adds the phone hello (a `system`
 
 **The app's built-in tools** (`continuity.ts`, pane). Nothing leaves your computer.
 
-- `ccd_session_mgmt`: `get_usage`, `list_sessions` and `search_session_transcripts` only read. `set_session_model` and `set_session_effort` change another session, only when you press a model-fit button; the pane offers Undo.
+- `ccd_session_mgmt`: `get_usage`, `get_session`, `list_sessions` and `search_session_transcripts` only read. `set_session_model` and `set_session_effort` change another session, only when you press a model-fit button; the pane offers Undo.
 - `ccd_window`: `open_session_in` opens this session in its own window when you press Pop out.
 
 **Agents and prompts** (`home.tsx`, `orchestra.ts`).
 
-- Helper agents start (`$.agent.spawn`) only for a run you started. The next task of that run starts by itself, one at a time.
-- `TaskStop` is called when you press Stop, or when a task passes the time or cost limit you set.
-- A prompt is submitted (`$.prompt.submit`) only when you press a button, with fixed text: "Send the better one", "Nudge" (`continue`), a fix button, and the task runner's plan request. The task runner's start request is the exception: when the app's auto mode refuses a helper vaken starts itself, a running run asks Claude to start it, and asks again every 2 minutes while it has not started, at most 3 times a task; then the task waits until you press Go on (`/vaken-tasks go`). One more case: with `resume.mode` set to Resume (default Remind), it submits "The plan limit has reset. Continue where you stopped." after a limit resets, with a daily cap.
+- vaken starts no agent itself and calls no tool to stop one. For a run you started, it asks Claude in a message to start each helper, and to stop one when you press Stop or a task passes the time or cost limit you set.
+- A prompt is submitted (`$.prompt.submit`) only when you press a button, with fixed text: "Send the better one", "Nudge" (`continue`), a fix button, and the task runner's plan request. The task runner's start and stop requests are the exception: a running run asks Claude to start each helper, and asks again every 2 minutes while it has not started, at most 3 times a task; then the task waits until you press Go on (`/vaken-tasks go`). One more case: with `resume.mode` set to Resume (default Remind), it submits "The plan limit has reset. Continue where you stopped." after a limit resets, with a daily cap.
 
-**Added to Claude Code.** Agents `vaken:researcher`, `vaken:builder`, `vaken:reviewer` and `vaken:fixer` for the task runner (models set by `runner.*`), registered when a run starts, or at every session start with Offer agent types On. One tool, `vaken_status`, which returns the session goal, checks and last turn from the store (`steer.mode`, default on). Slash commands: `/vaken`, `/vaken-away`, `/vaken-compact`, `/vaken-explain`, `/vaken-guard`, `/vaken-help`, `/vaken-memory`, `/vaken-pause`, `/vaken-resume`, `/vaken-settings`, `/vaken-ship`, `/vaken-tasks`, `/vaken-today`, `/vaken-undo`, `/vaken-usage`.
+**Added to Claude Code.** Agents `vaken:researcher`, `vaken:builder`, `vaken:reviewer` and `vaken:fixer` for the task runner as plain agent files in the plugin's `agents/` folder (the model each run picks, `runner.*`, goes in the start message). One tool, `vaken_status`, which returns the session goal, checks and last turn from the store (`steer.mode`, default on). Slash commands: `/vaken`, `/vaken-away`, `/vaken-compact`, `/vaken-explain`, `/vaken-guard`, `/vaken-help`, `/vaken-memory`, `/vaken-pause`, `/vaken-resume`, `/vaken-settings`, `/vaken-ship`, `/vaken-tasks`, `/vaken-today`, `/vaken-undo`, `/vaken-usage`.
 
 **Files it writes**, on your computer only. Under `~/.claude/cockpit/`: Undo copies (automatic), briefs, pictures and browser profiles. In your project, on request: `.claude/cockpit-tasks.md`, `-packet.md`, `-audit.md`, `-decisions.md`, `.claude/cockpit-eyes/`, and `.claude/worktrees/`. Agent and skill files you accept go in `~/.claude/agents/` and your skills folder; Agent setup keeps a `.bak` copy.
 
-**"Uses a credential from the user's machine."** vaken reads no credential, token or key file. It reads only the environment names HOME, USERPROFILE, HOMEDRIVE, HOMEPATH, OS, LANG, LANGUAGE and LC_ALL. Words such as "secret" and "token" in the code are patterns the guard uses to detect a secret in a step of Claude. `gh` uses its own sign-in.
+**"Uses a credential from the user's machine."** vaken reads no credential, token or key file. It reads only the environment names HOME, USERPROFILE, HOMEDRIVE, HOMEPATH, LOCALAPPDATA, ProgramFiles and ProgramFiles(x86) (where Chrome is on Windows), OS, LANG, LANGUAGE and LC_ALL. Words such as "secret" and "token" in the code are patterns the guard uses to detect a secret in a step of Claude. `gh` uses its own sign-in.
 
 **`lines.tsx`.** A lazy getter builds a card view only when the pane reads it.
 

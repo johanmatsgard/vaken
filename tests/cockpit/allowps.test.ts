@@ -1,14 +1,13 @@
-// A recursive PowerShell delete (Remove-Item and its aliases with -Recurse) takes a whole folder, so the Allow? line says so (allow.ask_delete_folder).
+// A recursive PowerShell delete (Remove-Item and its aliases with -Recurse) takes a whole folder, so the stopped-step line says so (allow.ask_delete_folder).
 import { expect } from 'claude-code/testing'
 import { test } from './slow'
 
-import { askLineOf, askWords, wholeFolderOf } from '../hooks/core/allowrules'
+import { askWords, stepSaid, wholeFolderOf } from '../hooks/core/allowrules'
 import { setLang } from '../hooks/core/lang'
 
-const NOW = Date.parse('2026-10-17T12:00:00Z')
 const ENV = { home: '/home/user', cwd: '/w/app', root: '/w/app' }
-const NO_UNDO = { on: true, changed: [] as string[], copied: false }
-const step = (command: string): string => askWords(askLineOf('PowerShell', { command }, ENV, NO_UNDO, NOW)).step
+const said = (command: string) => stepSaid('PowerShell', { command }, ENV, [])
+const step = (command: string): string => askWords({ said: said(command).said }).step
 
 test('Remove-Item and its aliases with -Recurse name the whole folder, in any case and with any -r prefix', () => {
   const folder = 'Deletes the folder build/ and everything in it.'
@@ -43,12 +42,11 @@ test('a PowerShell delete without -Recurse keeps its count, and -Force alone is 
 
 test('the folder is said from the project, outside it with its own path, and it is risky', () => {
   expect(wholeFolderOf('Remove-Item -Recurse ../shared/build', ENV)).toBe('shared/build/')
-  const line = askLineOf('PowerShell', { command: 'Remove-Item -Recurse -Force build' }, ENV, NO_UNDO, NOW)
+  const line = said('Remove-Item -Recurse -Force build')
   expect(line.risky).toBe(true)
-  expect(line.rule).toBeUndefined()
   setLang('sv')
   try {
-    expect(askWords(line).step).toBe('Tar bort mappen build/ och allt i den.')
+    expect(askWords({ said: line.said }).step).toBe('Tar bort mappen build/ och allt i den.')
   } finally {
     setLang('en')
   }

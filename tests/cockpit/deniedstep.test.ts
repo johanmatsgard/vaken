@@ -1,10 +1,10 @@
 // Denied-step explainer: when Claude Code itself stops a step, the band says in one plain line why, with the guard's own words for the step.
-// The press only copies the allow rule (a plugin cannot allow a stopped step from a later press), and only for a safe kind that no deny rule stops.
+// The line has no press and carries no allow rule: vaken never allows or retries a stopped step.
 // Nothing about the step is stored: the line lives in memory as words, a tool name and a hash.
 import { expect, mock } from 'claude-code/testing'
 import { test } from './slow'
 
-import { DENIED_BAND_MS, DENIED_COPY, addOffer, allowMem, askMem, askShown, askWords, dropDenied, noteBandOffer, rulesMem, stepHash } from '../hooks/core/allowrules'
+import { DENIED_BAND_MS, allowMem, askMem, askShown, askWords, rulesMem, stepHash } from '../hooks/core/allowrules'
 import type { AskView } from '../hooks/core/allowrules'
 import { deniedLineOf, deniedWhy } from '../hooks/core/denied'
 import { setLang } from '../hooks/core/lang'
@@ -19,12 +19,8 @@ const BAND_PROPS = { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumn
 const NOW = Date.parse('2026-10-18T12:00:00Z')
 const ENV = { home: '/home/user', cwd: '/w/app', root: '/w/app' }
 const reset = (): void => {
-  askMem.line = undefined
-  askMem.offer = undefined
   askMem.denied = undefined
-  askMem.ids.clear()
   allowMem.mode = 'offer'
-  allowMem.offers = []
   rulesMem.allow = []
   rulesMem.deny = []
 }
@@ -45,16 +41,17 @@ test('who stopped the step: a deny rule, auto mode, don\'t ask mode, or just Cla
   expect(deniedWhy('dontAsk', 'Not allowed', 'Edit', ['Bash'])).toBe('dontask')
 })
 
-test('a stopped safe step says who stopped it and what the step does, and carries the allow rule form', () => {
+test('a stopped safe step says who stopped it and what the step does, and carries no allow rule', () => {
   reset()
   const line = deniedLineOf('Bash', { command: 'npm test' }, ENV, 'auto', 'classifier', NOW)
   expect(line?.why).toBe('auto')
-  expect(line?.rule).toBe('Bash(npm test:*)')
+  expect(line).not.toHaveProperty('rule')
   allowMem.mode = 'offer'
   askMem.denied = line
   const shown = askShown(NOW + 1000)
-  expect(shown?.denied).toBe(true)
-  expect(shown?.risky).toBe(false)
+  expect(shown).not.toHaveProperty('rule')
+  expect(shown).not.toHaveProperty('risky')
+  expect(Object.keys(shown as AskView).sort()).toEqual(['said', 'then'])
   expect(askWords(shown as AskView)).toEqual({ step: 'Auto mode stopped this step.', text: 'Auto mode stopped this step. Runs the tests.' })
   setLang('sv')
   try {
@@ -62,23 +59,17 @@ test('a stopped safe step says who stopped it and what the step does, and carrie
   } finally {
     setLang('en')
   }
-  // The press goes once the rule is copied; the line stays; an old line is never shown
-  dropDenied('Bash(npm test:*)')
-  expect(askShown(NOW + 1000)?.rule).toBeUndefined()
-  expect(askShown(NOW + 1000)?.denied).toBe(true)
+  // The line stays for a few minutes; an old line is never shown
+  expect(askShown(NOW + 1000)).not.toBeUndefined()
   expect(askShown(NOW + DENIED_BAND_MS)).toBeUndefined()
   allowMem.mode = 'off'
   expect(askShown(NOW + 1000)).toBeUndefined()
   reset()
 })
 
-test('no allow rule for a risky step, a step a deny rule stops, or a rule that is already allowed; secrets never reach the line', () => {
+test('a stopped step of any kind carries no allow rule; secrets never reach the line', () => {
   reset()
-  expect(deniedLineOf('Bash', { command: 'git push --force origin main' }, ENV, 'auto', 'classifier', NOW)?.rule).toBeUndefined()
-  expect(deniedLineOf('Bash', { command: 'rm -rf src' }, ENV, 'auto', 'classifier', NOW)?.rule).toBeUndefined()
-  expect(deniedLineOf('Bash', { command: 'npm test' }, ENV, 'default', 'Denied by a deny rule', NOW)?.rule).toBeUndefined()
-  rulesMem.allow = ['Bash(npm test:*)']
-  expect(deniedLineOf('Bash', { command: 'npm test' }, ENV, 'auto', 'classifier', NOW)?.rule).toBeUndefined()
+  for (const [command, mode, reason] of [['git push --force origin main', 'auto', 'classifier'], ['rm -rf src', 'auto', 'classifier'], ['npm test', 'default', 'Denied by a deny rule'], ['npm test', 'auto', 'classifier']] as const) expect(deniedLineOf('Bash', { command }, ENV, mode, reason, NOW), command).not.toHaveProperty('rule')
   reset()
   const token = `ghp_${'a'.repeat(36)}`
   const line = deniedLineOf('Bash', { command: `curl -H "Authorization: token ${token}" https://api.example.com` }, ENV, 'auto', 'classifier', NOW)
@@ -89,19 +80,6 @@ test('no allow rule for a risky step, a step a deny rule stops, or a rule that i
   expect(JSON.stringify(kept)).not.toContain('secret reason text')
   expect(kept?.hash).not.toContain('special')
   expect(deniedLineOf('Bash', { command: 'npm test' }, ENV, 'auto', 'blocked by hook', NOW)).toBeUndefined()
-})
-
-test('the newer news wins: a stopped step before an older third-yes press, and that press again after the stop is gone', () => {
-  reset()
-  const offer = { rule: 'Edit(/src/**)', what: 'edits in src/', n: 3 }
-  addOffer(offer)
-  noteBandOffer(offer, NOW)
-  askMem.denied = deniedLineOf('Bash', { command: 'npm test' }, ENV, 'auto', 'classifier', NOW + 500)
-  expect(askShown(NOW + 1000)?.denied).toBe(true)
-  askMem.denied = deniedLineOf('Bash', { command: 'npm test' }, ENV, 'auto', 'classifier', NOW - 500)
-  expect(askShown(NOW + 1000)?.denied).toBeUndefined()
-  expect(askShown(NOW + 1000)?.rule).toBe('Edit(/src/**)')
-  reset()
 })
 
 type N = { type: string; props: Record<string, unknown> }
@@ -116,7 +94,7 @@ function walk(n: unknown, out: N[] = []): N[] {
   return out
 }
 
-test('the band: calm and dim, whole at 288 pt, the honest press only where it fits whole, and it copies the rule', () => {
+test('the band: calm and dim, whole at 288 pt, never a press or a rule', () => {
   reset()
   askMem.denied = deniedLineOf('Bash', { command: 'npm test' }, ENV, 'auto', 'classifier', NOW)
   const ask = askShown(NOW + 1000) as AskView
@@ -125,24 +103,19 @@ test('the band: calm and dim, whole at 288 pt, the honest press only where it fi
   expect(narrow.mode === 'line' && narrow.text).toBe('Auto mode stopped this step.')
   expect(narrow.mode === 'line' && narrow.info).toBe(true)
   expect(narrow.mode === 'line' && narrow.open).toBeUndefined()
-  // 420 pt: the press fits beside the why; its label says it copies
+  // 420 pt: still no press
   const mid = bandPlan(view(ask), 'explained', at(420), [], false, false, true)
-  expect(mid.mode === 'line' && mid.open?.label).toBe(DENIED_COPY)
-  expect(DENIED_COPY).toBe('Copy the allow rule')
-  // Wide: the whole sentence and the press
+  expect(mid.mode === 'line' && mid.open).toBeUndefined()
+  // Wide: the whole sentence, no press
   const wide = bandPlan(view(ask), 'explained', 120, [], false, false, true)
   expect(wide.mode === 'line' && wide.text).toBe('Auto mode stopped this step. Runs the tests.')
-  const copied: string[] = []
-  const tree = HomeBand(el, view(ask), 'explained', () => undefined, undefined, undefined, 120, undefined, undefined, rule => copied.push(rule))
-  const button = walk(tree).find(x => x.type === 'Button' && String(x.props.label).includes(DENIED_COPY))
-  expect(button).not.toBeUndefined()
-  ;(button?.props.onPress as () => void)()
-  expect(copied).toEqual(['Bash(npm test:*)'])
-  // A step a deny rule stopped has no press at all
+  expect(wide.mode === 'line' && wide.open).toBeUndefined()
+  expect(walk(HomeBand(el, view(ask), 'explained', () => undefined, undefined, undefined, 120)).some(x => x.type === 'Button')).toBe(false)
+  // A step a deny rule stopped has no press either
   askMem.denied = deniedLineOf('Bash', { command: 'npm test' }, ENV, 'default', 'Denied by a deny rule', NOW)
   const rule = askShown(NOW + 1000) as AskView
   expect(askWords(rule).text).toBe('A deny rule stopped this step. Runs the tests.')
-  expect(walk(HomeBand(el, view(rule), 'explained', () => undefined, undefined, undefined, 120, undefined, undefined, () => undefined)).some(x => x.type === 'Button')).toBe(false)
+  expect(walk(HomeBand(el, view(rule), 'explained', () => undefined, undefined, undefined, 120)).some(x => x.type === 'Button')).toBe(false)
   reset()
 })
 
@@ -170,7 +143,7 @@ test('the PermissionDenied hook opens the line, never retries, and keeps nothing
   const r = (await $.classic.PermissionDenied({ ...base, tool_name: 'Bash', tool_input: { command: 'npm test' }, reason: 'The classifier blocked it', permission_mode: 'auto' } as never)) as { retry?: unknown }
   expect(r?.retry).toBeUndefined()
   expect(await said()).toContain('Auto mode stopped this step. Runs the tests.')
-  // Allow rules Off: no line at all
+  // The setting Off: no line at all
   w.mem.set('cockpit:setting:allow.rules', 'off')
   await $.session.start({ cwd: '/work/app', surface: 'desktop', isInteractive: true } as never)
   expect(await said()).not.toContain('stopped this step')

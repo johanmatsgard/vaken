@@ -7,9 +7,8 @@ import type { EngineInterface, On } from 'claude-code'
 import { ALLOW_SET_WHAT, ALLOW_USED_WHAT, BLOCKS, DISMISS_WHAT, GUARD_WHATS, HALT_DENY_WHAT, HALT_SCOPE, HALT_WHAT, HELD_WHAT, OTHER_RULES, OTHER_SETTING_KEY, RESUME_WHAT, SETTING_KEY, WARNED_WHAT, allowKey, allowLive, canChange, detailOf, guardBrokeReason, haltKey, haltMem, haltReason, haltStops, heldToast, holdReason, parseAllow, parseGuardAsk, parseHalt, parsePkg, pkgKey, scopeFrom, scopeKey, statusText, strings, warnNote, warnToast, withPkg } from '../core/guard'
 import type { Block, Found, Mode, OtherRule } from '../core/guard'
 import { GUARD_UPGRADE_WHAT, upgradeGuardWorst } from '../core/guardupgrade'
-import { findSetting, readSetting } from '../core/settings'
+import { findSetting } from '../core/settings'
 import { KEPT_STOPPED_REASON, closeStop, grantAllow, isKeptStopped, keepOpenStop, noteHeld, stepOf, takeAllow } from '../core/allowonce'
-import { ALLOW_RULES_KEY, allowRulesModeOf, parseBook, rulesText } from '../core/allowrules'
 import { judgeTool } from '../core/guardjudge'
 import type { Env, Judged, Modes } from '../core/guardjudge'
 import { bindFs } from '../core/fileops'
@@ -280,7 +279,6 @@ export function registerGuard(on: On): void {
     const sid = await i.sessionId()
     const ask = parseGuardAsk(e.args)
     if (ask.kind === 'bad') return { text: ask.why }
-    if (ask.kind === 'rules') return { text: rulesText(parseBook(await i.get(ALLOW_RULES_KEY)), allowRulesModeOf(await readSetting(i, 'allow.rules'))) }
     // Letting a held step through or changing your folders loosens the guard, so only the person may type it.
     if ((ask.kind === 'allow' || ask.kind === 'scope-off' || ask.kind === 'scope-set') && !byPerson(e.origin)) return { text: BY_PERSON_ONLY }
     if (ask.kind === 'allow') {

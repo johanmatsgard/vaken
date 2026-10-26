@@ -105,7 +105,7 @@ export type View = {
   ledger?: Entry[]
   firstRun?: boolean
   band?: BandItem[]
-  // Claude Code's own "Allow?" question that waits now, or the press after a third yes (core/allowrules.ts askShown); memory only
+  // The line for a step Claude Code itself stopped (core/allowrules.ts askShown); memory only
   ask?: AskView
   // A tool's question that waits in another session (core/relay.ts): the band names that session; from the store, never the question's words
   relay?: RelayView

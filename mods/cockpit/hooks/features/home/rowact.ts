@@ -17,8 +17,6 @@ export type RowAction =
   | { kind: 'allowOnce' } // this session's stopped step goes through once (core/allowonce.ts, only the step held last)
   | { kind: 'dismissHold'; sid: string } // the stopped steps of that session leave Needs you; nothing is allowed
   | { kind: 'keepStopped' } // this session's stopped step leaves Needs you and that exact step stays stopped for the session
-  | { kind: 'copyRule'; rule: string }
-  | { kind: 'dismissRule'; rule: string }
   | { kind: 'prFix' }
   | { kind: 'prShip'; open: string }
   | { kind: 'prLook' }
@@ -94,9 +92,7 @@ export const PUT_BACK_ROW: RowAction = { kind: 'putBack' }
 export const keepStart = (check: ProofKind): RowAction => ({ kind: 'keepGoing', act: 'start', check })
 export const KEEP_STOP_ROW: RowAction = { kind: 'keepGoing', act: 'stop' }
 export const KEEP_DISMISS_ROW: RowAction = { kind: 'keepGoing', act: 'dismiss' }
-export const copyRule = (rule: string): RowAction => ({ kind: 'copyRule', rule })
 export const removeCopyRow = (copy: Copy): RowAction => ({ kind: 'copyRemove', copy })
-export const dismissRule = (rule: string): RowAction => ({ kind: 'dismissRule', rule })
 export const fixCheck = (check: ProofKind): RowAction => ({ kind: 'prompt', prompt: { ask: 'fix', check } })
 export const checkClaims = (n: number): RowAction => ({ kind: 'prompt', prompt: { ask: 'claims', n: Math.max(1, Math.floor(n)) } })
 

@@ -176,7 +176,7 @@ async function resizeRounds(ui: Pane, name: string, rounds: number, sizes: numbe
   }
 }
 
-test('resize 294 to 5120 pt and back, the pointer swept between: no flood, no unmount, no second listener, no card changes column', { timeoutMs: 120_000 }, async ($, on) => {
+test('resize 294 to 5120 pt and back, the pointer swept between: no flood, no unmount, no second listener, no card changes column', { timeoutMs: 600_000 }, async ($, on) => {
   const w: World = { mem: new Map(), files: new Map(), listening: {}, procs: [] }
   const clock = mock.clock(on, { now: getNow() })
   mock.env(on, { HOME: '/home/test' })

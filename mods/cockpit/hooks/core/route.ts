@@ -1,4 +1,4 @@
-// Routing: sends a lookup helper to a cheaper model at spawn, in Auto. A mod cannot switch the main thread's model, so it is only watched for a switch that would throw away a warm cache. The store holds counts and averages, never a prompt.
+// Routing: a tip when a lookup helper could run on a cheaper model (Suggest; Auto, an older value, works the same). It never changes the helper. A mod cannot switch the main thread's model, so it is only watched for a switch that would throw away a warm cache. The store holds counts and averages, never a prompt.
 import { tr } from './lang'
 import { langNow } from '../i18n/t'
 import { fillIn } from './fillin'
@@ -19,7 +19,7 @@ export const ROUTE_SETTINGS: Setting[] = [
     key: 'route.mode',
     group: 'Model choice',
     label: 'Agent models',
-    note: 'Off, tell you, or send lookup agents to the Researcher’s model.', // en-only: a setting note; /vaken-settings text stays English
+    note: 'Off, or tell you when a lookup agent could use the Researcher’s model.', // en-only: a setting note; /vaken-settings text stays English
     options: [
       { value: 'off', label: 'Off' },
       { value: 'suggest', label: 'Suggest' },
@@ -32,7 +32,7 @@ export const ROUTE_SETTINGS: Setting[] = [
 ]
 
 export const ROUTE_HELP: HelpEntry[] = [
-  { title: 'How do I save usage with cheaper models?', text: 'An agent that only searches or reads does not need the biggest model. Auto sends such an agent to a cheaper one. Suggest only tells you. Plan and review agents are never changed, nor an agent that an agent file of yours defines (it keeps the model its file chose), nor a model Claude chose.' },
+  { title: 'How do I save usage with cheaper models?', text: 'An agent that only searches or reads does not need the biggest model. Suggest and Auto tell you when such an agent could run on a cheaper one; vaken never changes the agent. Plan and review agents are never flagged, nor an agent that an agent file of yours defines (it keeps the model its file chose), nor a model Claude chose.' },
   { title: 'Why does it warn when I switch model?', text: 'When you switch model in a long session, the saved copy of the session is thrown away and written again. Vaken tells you what that costs before it happens.' },
   ...FIT_HELP,
 ]
@@ -90,9 +90,9 @@ export type SpawnFacts = {
   isWorkflow: boolean
 }
 
-type Route = { action: 'none' } | { action: 'rewrite'; model: string } | { action: 'suggest'; model: string }
+type Route = { action: 'none' } | { action: 'suggest'; model: string }
 
-// Routing only sends down.
+// Routing only points down, and only as a tip: 'auto' (an older value) gives the same tip as 'suggest'.
 export function decideRoute(f: SpawnFacts): Route {
   if (f.mode === 'off' || f.job !== 'lookup') return { action: 'none' }
   if (f.fork || f.isTeammate || f.isWorkflow) return { action: 'none' }
@@ -100,7 +100,7 @@ export function decideRoute(f: SpawnFacts): Route {
   if (f.userDefined === true) return { action: 'none' }
   if (rank(f.parentModel) <= rank(f.cheap)) return { action: 'none' }
   if (f.ownModel !== undefined && rank(f.ownModel) <= rank(f.cheap)) return { action: 'none' }
-  return { action: f.mode === 'auto' ? 'rewrite' : 'suggest', model: f.cheap }
+  return { action: 'suggest', model: f.cheap }
 }
 
 
@@ -127,11 +127,12 @@ export function fileModel(text: string): string | undefined {
 export const SUGGEST_GAP_MS = 10 * 60_000
 export const suggestDue = (last: number | undefined, now: number): boolean => last === undefined || now - last >= SUGGEST_GAP_MS
 
+// Older log rows only: vaken no longer changes a helper's model.
 export const ROUTED_WHAT = 'Sent a lookup agent to a cheaper model'
 export const SUGGEST_WHAT = 'A lookup agent could run on a cheaper model'
 export const WARNED_WHAT = 'Warned before a model switch'
 export const routedDetail = (model: string): string => `It runs on ${model} instead.`
-export const suggestDetail = (model: string): string => `Set Agent models to Auto and it runs on ${model}.`
+export const suggestDetail = (model: string): string => `Ask Claude to start it on ${model} next time.`
 
 
 // Below it, writing the cache again is cheap.
@@ -213,7 +214,7 @@ export const NO_DATA = `Not enough data for a quote yet. It needs ${MIN_RUNS} fi
 const modeWords: Record<RouteMode, string> = {
   off: 'off. Agents run as Claude chose them.',
   suggest: 'suggest. A lookup agent that could run cheaper is flagged, nothing is changed.',
-  auto: 'auto. A lookup agent with no model of its own runs on the cheaper model.',
+  auto: 'auto. Works as suggest: a lookup agent that could run cheaper is flagged, nothing is changed.',
 }
 
 export function routeText(mode: RouteMode, cheap: string, last: string[], stats: Stats, mine: boolean = false): string {

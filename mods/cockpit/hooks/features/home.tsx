@@ -15,8 +15,6 @@ import type { OfferKind } from '../core/offerlearn'
 import { noteActive } from '../core/quiet'
 import { forgetLeader, releaseLease } from '../core/leader'
 import { markSelfStart, noteCall, noteRun } from '../core/selfcost'
-import { hasProgress } from './agentboard'
-import { ROLES, ROLE_PROMPT, roleDescription } from '../core/orchestra'
 import { runnerOpsOf } from './orchestra'
 import type { RunnerOps } from './orchestra'
 import { PROJECT_OF_KEY } from '../core/projects'
@@ -35,7 +33,7 @@ import { BORDER_X_PT, CARD_MIN_INNER_PT, columnPt, setColumnSystem } from '../ui
 import { elementsFor } from '../ui/kit'
 import { runPress } from '../ui/firstclick'
 import { compactAnyway, compactCheckLines, runRow } from './home/actions'
-import { FRESH_BRIEF, copyRule as copyRuleRow } from './home/rowact'
+import { FRESH_BRIEF } from './home/rowact'
 import { t as tNow } from '../i18n/t'
 import { actsOf, flip } from './home/acts'
 import { seedCardHistory } from './home/appear'
@@ -104,11 +102,6 @@ function ioWithExists($: EngineInterface): Io {
 // The task runner's engine calls, for the pane's buttons and the heartbeat (core/orchestra.ts
 function runnerOps($: EngineInterface): RunnerOps {
   return runnerOpsOf({
-    spawn: async a => {
-      const got = await $.agent.spawn(a)
-      return got as { agentId?: string; deny?: unknown; model?: unknown }
-    },
-    stop: agentId => $.tool.call({ tool: 'TaskStop', task_id: agentId } as never),
     send: (agentId, text) => $.session.send({ to: { agentId }, text } as never),
     run: (argv, init) => {
       noteRun()
@@ -119,11 +112,6 @@ function runnerOps($: EngineInterface): RunnerOps {
     list: () => $.agent.list(),
     submit: text => $.prompt.submit({ text, asUser: true }),
     after: (ms, f) => $.clock.after(ms, f),
-    register: (r, m) => {
-      if (ROLES[r].tools === undefined) return $.agent.register({ name: r, description: roleDescription(r), prompt: ROLE_PROMPT(r), model: m })
-      return $.agent.register({ name: r, description: roleDescription(r), prompt: ROLE_PROMPT(r), model: m, tools: ROLES[r].tools })
-    },
-    seen: hasProgress,
     io: ioSys($),
   })
 }
@@ -704,7 +692,7 @@ export function registerHome(on: On): void {
     return (
       <Box flexDirection="column">
         {theirs}
-        {HomeBand(el, view, detail, openPane, () => void endFocus(io($), true), openNeeds, e.props.bodyColumns, { actions: nextActs(view), press: pressNext }, () => void runRow(engineOf($), FRESH_BRIEF), rule => void runRow(engineOf($), copyRuleRow(rule)), r => void openRelaySession(engineOf($), r), step)}
+        {HomeBand(el, view, detail, openPane, () => void endFocus(io($), true), openNeeds, e.props.bodyColumns, { actions: nextActs(view), press: pressNext }, () => void runRow(engineOf($), FRESH_BRIEF), r => void openRelaySession(engineOf($), r), step)}
       </Box>
     )
   })

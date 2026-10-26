@@ -1190,7 +1190,7 @@ export function LinkButton(el: El, key: string, label: string, onPress: () => vo
         ) : (
           [
             <Box key={`${key}-tab`} position="absolute" top={0} left={0}>
-              <Button key={key} label={' '.repeat(Math.max(1, Math.round(WORD_FOOT_W / BLANK_PT)))} plain hover={{ backgroundColor: HOVER_CLEAR }} onPress={onPress} />
+              <Button key={key} label={'\u00a0'.repeat(Math.max(1, Math.round(WORD_FOOT_W / BLANK_PT)))} plain hover={{ backgroundColor: HOVER_CLEAR }} onPress={onPress} />
             </Box>,
             <Box key={`${key}-words`} flexGrow={1} flexShrink={1}>
               <Text dimColor={dim}>{words}</Text>
@@ -1238,7 +1238,7 @@ const THIN_LETTERS = 't' + 'fr' + 'I()-/'
 const WIDE_LETTERS = 'mwMW'
 // A no-break space (between "about" and "$0.12") is a space as wide as any other
 export const glyphPt = (c: string): number =>
-  c === ' ' || c === ' ' ? TEXT_SPACE_PT : NARROW_LETTERS.includes(c) ? TEXT_NARROW_PT : THIN_LETTERS.includes(c) ? TEXT_THIN_PT : WIDE_LETTERS.includes(c) ? TEXT_WIDE_PT : c >= 'A' && c <= 'Z' ? TEXT_CAP_PT : TEXT_ROUND_PT
+  c === ' ' || c === '\u00a0' ? TEXT_SPACE_PT : NARROW_LETTERS.includes(c) ? TEXT_NARROW_PT : THIN_LETTERS.includes(c) ? TEXT_THIN_PT : WIDE_LETTERS.includes(c) ? TEXT_WIDE_PT : c >= 'A' && c <= 'Z' ? TEXT_CAP_PT : TEXT_ROUND_PT
 const proportionalPt = (s: string): number => [...s].reduce((sum, c) => sum + glyphPt(c), 0)
 const linesIn = (text: string, roomPt: number): number => {
   const room = Math.max(TEXT_CHAR_PT, roomPt)

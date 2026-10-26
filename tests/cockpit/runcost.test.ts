@@ -158,20 +158,13 @@ function world() {
     toast: () => undefined,
     invalidate: () => undefined,
   }
-  let nextId = 0
+  // Each message to Claude that starts helpers counts as one call.
   const ops: RunnerOps = {
-    spawn: async a => {
-      nextId += 1
-      calls.push(`spawn ${a.description}`)
-      return { agentId: `ag${nextId}` }
-    },
-    stop: async () => undefined,
     send: async () => undefined,
     sh: async () => ({ code: 0, out: 'ok' }),
     root: async () => ROOT,
     statuses: async () => [],
-    ask: async () => undefined,
-    roles: async () => true,
+    ask: async text => void calls.push(`ask ${text.split('\n')[0]}`),
   }
   return { io, ops, mem, calls, reads: () => reads }
 }

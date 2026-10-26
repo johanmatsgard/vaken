@@ -7,7 +7,6 @@ import { readSettings, writeSetting } from '../../core/settings'
 import type { SetupDo, SetupFacts, SetupRead } from '../../core/setupcard'
 import { parseScope, setupApplyOn } from '../../core/setupcard'
 import { SETUP_SAID_CAP, SETUP_SAID_FAILED, SETUP_SAID_KEPT, SETUP_SAID_MODEL, SETUP_SAID_OFF, SETUP_SAID_REPLACED, SETUP_SAID_SESSION, SETUP_SAID_SYNC, SETUP_SAID_WROTE } from '../../core/setupwords'
-import { isRoleKey, rolesChanged } from '../orchestra'
 import { readSetup, writeItem } from '../setupfiles'
 import { refusedWords } from '../../core/safewrite'
 import type { HomeEngine } from './engine'
@@ -76,7 +75,6 @@ export async function runSetup(eng: HomeEngine, a: SetupDo): Promise<void> {
       if (flags.rolesScope === 'session') await writeSessionSetting(i, await i.sessionId(), key, a.family)
       else if (root !== undefined) await writeProjectSetting(i, root, key, a.family)
       else await writeSetting(i, key, a.family)
-      if (isRoleKey(key)) await rolesChanged(eng.runnerOps())
       i.toast(tr(SETUP_SAID_MODEL).replace('{name}', a.role).replace('{a}', a.family), true)
     } else {
       const values = await readSettings(i)

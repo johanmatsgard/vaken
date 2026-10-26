@@ -80,7 +80,7 @@ import { NEEDS_CALM_OPEN, withOpenCards } from '../../core/headline'
 import { extraOf } from './compactwhy'
 import { talkSignature } from './talk'
 import { selfCostSignature } from '../../core/selfcost'
-import { askShown, offersSignature } from '../../core/allowrules'
+import { askShown } from '../../core/allowrules'
 import type { AskView } from '../../core/allowrules'
 import { stopSignature } from '../../core/allowonce'
 import { wordSystemNow } from '../../core/syswords'
@@ -457,7 +457,7 @@ async function relayFor(i: Io, raw: View, sid: string, now: number): Promise<{ r
   return relay === undefined ? {} : { relay }
 }
 
-// The waiting "Allow?" question for the band (core/allowrules.ts), from memory
+// The line for a step Claude Code stopped, for the band (core/allowrules.ts), from memory
 const askOf = (now: number): { ask?: AskView } => {
   const ask = askShown(now)
   return ask === undefined ? {} : { ask }
@@ -534,7 +534,6 @@ export const paneSignature = (view: View, p: Prefs): string =>
       `${startSignature(p)}`,
       `${fitSignature(view, p.values)}`,
       `${selfCostSignature()}`,
-      `${offersSignature()}`,
       `${stopSignature()}`,
       `${p.values.detail}`,
       `${view.share === undefined ? '' : `${Math.round(view.share.here)}:${Math.round(view.share.agents)}`}`,

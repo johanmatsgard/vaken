@@ -1,8 +1,7 @@
 // Denied-step explainer: when Claude Code itself stops a step (its auto mode, a deny rule, don't ask mode), the band says why in one plain line.
-// The step's words are the guard's own readings (allowrules.ts stepSaid); this file only decides who stopped it and whether an allow rule would help.
-// A plugin can retry a stopped step only inside the PermissionDenied hook, never from a later press, so the one press is Copy the allow rule.
+// The step's words are the guard's own readings (allowrules.ts stepSaid); this file only decides who stopped it. The line has no press: vaken never retries a step.
 import type { DeniedLine, DeniedWhy, Env } from './allowrules'
-import { clashesOf, rulesMem, ruleFormOf, stepHash, stepSaid } from './allowrules'
+import { rulesMem, stepHash, stepSaid } from './allowrules'
 
 // A step a settings hook stopped is told by that hook's own line; the engine's reason is read here and never kept
 const HOOK = /\bhooks?\b/i
@@ -23,12 +22,10 @@ export function deniedWhy(mode: string | undefined, reason: string, tool: string
   return 'other'
 }
 
-// The line for a stopped step. The allow rule shows only for a safe kind (ruleFormOf rates it), when no deny rule is the cause and it is not already allowed.
+// The line for a stopped step: who stopped it and what the step was.
 export function deniedLineOf(tool: string, args: Record<string, unknown>, env: Env, mode: string | undefined, reason: string, now: number): DeniedLine | undefined {
   const why = deniedWhy(mode, reason, tool, rulesMem.deny)
   if (why === undefined) return undefined
   const s = stepSaid(tool, args, env, [])
-  const form = why === 'rule' || s.risky ? undefined : ruleFormOf(tool, args, env)
-  const rule = form === undefined || clashesOf([form.rule], rulesMem.allow).length > 0 ? undefined : form.rule
-  return { why, said: s.said, tool, hash: stepHash(tool, args), at: now, ...(rule === undefined ? {} : { rule }) }
+  return { why, said: s.said, tool, hash: stepHash(tool, args), at: now }
 }

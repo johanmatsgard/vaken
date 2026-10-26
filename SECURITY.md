@@ -22,7 +22,7 @@ Each kind starts on "warn". One thing stays on from the start: a destructive com
 
 You can allow one stopped step with `/vaken-guard allow once`, or press "Allow once" in Needs you. The yes ends after 30 minutes. "Keep stopped" beside it dismisses the row, and that exact step stays stopped for the rest of the session.
 
-When you allow the same kind of step 3 times in a week where Claude Code asks first, vaken shows the allow rule that stops the question, once. You add it yourself; vaken never changes `settings.json`. It never offers a rule for a step its safety check rates risky (destructive, outside actions, secrets, protected files) or for a step with more than one command in it.
+vaken never answers Claude Code's own "Allow?" question and never offers or writes an allow rule. When Claude Code itself stops a step, the band says why in one line; you decide what to do.
 
 A night run (`/vaken-tasks night`, setting `night.mode`, Off by default) turns on away mode with While away set to Careful for the whole run, so a risky step of any session is stopped by itself, and Allow once does not work. It turns on only what was off, and at the end (the run is done, you stop or pause it, or it reaches its night cost limit) it puts back only what is still as it set it: a choice you changed during the night stays. Ending away mode this way also puts back the cost budget away mode set. If the session ends during a night run, away mode stays on until you type `/vaken-away off`. Only you can start a night run: Claude cannot, and the runner's other limits (your agent limit, the computer's room, the cost per agent) still hold.
 

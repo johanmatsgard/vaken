@@ -2,6 +2,7 @@
 // Claude Code or the API. Pure rules plus the memory the band and the Notices card read (no store read per beat).
 
 export const STATUS_PAGE = 'https://status.claude.com'
+// features/claudestatus.ts writes this same address as fixed text in its fetch, so the plugin directory can read it there: change both together
 export const STATUS_URL = `${STATUS_PAGE}/api/v2/summary.json`
 export const STATUS_BAND_ID = 'claude-status'
 // At most one check every 5 minutes; an error from Claude's own service asks at once, but not more than once a minute.

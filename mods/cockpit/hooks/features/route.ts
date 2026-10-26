@@ -6,7 +6,7 @@ import { withToastGate } from '../core/io'
 import { shownTitle } from '../core/ledger'
 import { homeFrom } from '../core/platform'
 import type { Io } from '../core/io'
-import { ROUTED_WHAT, STATS_KEY, SUGGEST_WHAT, SWITCH_BAND_ID, SWITCH_BAND_MS, WARNED_WHAT, addRun, agentFilePaths, decideRoute, definedElsewhere, fileModel, jobType, normalizeStats, routeMode, routeText, routedDetail, shouldWarnSwitch, suggestDetail, suggestDue, switchBandLine, switchDetail, switchDue, switchKey, switchPercent, switchWarning } from '../core/route'
+import { ROUTED_WHAT, STATS_KEY, SUGGEST_WHAT, SWITCH_BAND_ID, SWITCH_BAND_MS, WARNED_WHAT, addRun, agentFilePaths, decideRoute, definedElsewhere, fileModel, jobType, normalizeStats, routeMode, routeText, shouldWarnSwitch, suggestDetail, suggestDue, switchBandLine, switchDetail, switchDue, switchKey, switchPercent, switchWarning } from '../core/route'
 import type { JobType } from '../core/route'
 import { postBand } from '../core/band'
 import { HINT_KEY, parseSamples } from '../core/costhint'
@@ -91,8 +91,6 @@ export function registerRoute(on: On): void {
   on('agent.spawn', { subagentType: /(?<route>)/ }, async ($, e, next) => {
     const i = io($)
     let job: JobType = 'normal'
-    let model: string | undefined
-    let rewrite = false
     try {
       job = jobType(e.subagentType, e.description)
       const mode = routeMode(await readSetting(i, 'route.mode'))
@@ -123,10 +121,8 @@ export function registerRoute(on: On): void {
         isTeammate: e.isTeammate === true,
         isWorkflow: e.workflow !== undefined,
       })
-      if (route.action === 'rewrite') {
-        model = route.model
-        rewrite = true
-      } else if (route.action === 'suggest') {
+      // A tip only: the helper starts as Claude asked.
+      if (route.action === 'suggest') {
         const now = await i.now()
         if (suggestDue(lastSuggestAt, now)) {
           lastSuggestAt = now
@@ -136,21 +132,14 @@ export function registerRoute(on: On): void {
         }
       }
     } catch {
-      model = undefined
-      rewrite = false
+      // the tip is optional: the helper starts as Claude asked
     }
-    const result = await next(model === undefined ? e : { ...e, model })
+    const result = await next(e)
     // Nothing below may throw: the helper has started.
     try {
-      if (result.deny === undefined) {
-        if (result.agentId !== undefined) {
-          if (pending.size >= PENDING_MAX) pending.delete(pending.keys().next().value as string)
-          pending.set(result.agentId, job)
-        }
-        if (rewrite && model !== undefined) {
-          await pushLog(i, LEDGER_KEY, { at: await i.now(), session: await i.sessionId(), what: ROUTED_WHAT, detail: routedDetail(model), how: 'auto', did: true })
-          i.invalidate()
-        }
+      if (result.deny === undefined && result.agentId !== undefined) {
+        if (pending.size >= PENDING_MAX) pending.delete(pending.keys().next().value as string)
+        pending.set(result.agentId, job)
       }
     } catch {
     }

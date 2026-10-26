@@ -16,14 +16,15 @@ import { serialUpdate } from '../core/serial'
 import type { Io } from '../core/io'
 import { bindSafeFs, refusedWords, safeFsOf, safeWrite } from '../core/safewrite'
 import {
-  AT_ONCE_AUTO, AT_ONCE_SANE, HOLD_MS, autoCeiling, busy, withAtOnce, capRoom, capWhy, staggerWait, MODEL_PICKS, afterCheck, endReview, nextReviews, reviewDescription, reviewForSpawn, reviewPrompt, taskOfReview, ORCH_KEY, PLAN_PROMPT, TASKS_MAX, TEMPLATES_KEY, addTask, askPrompt, editChoices, editTask, isAutoModeRefusal, parseTemplates, removeTask, OFFER_KEY, roleSettingKey, taskForSpawn, templateOf, ROLES, ROLE_NAMES, ROLE_PROMPT, roleDescription, TASKS_FILE, addTaskCost, descriptionOf, endTask, folderOf, isFinished, modelFor, newRun, nextToStart, overLimits,
-  throwHoldText, parseRun, runCost, ASK_MAX, ASK_WAIT_MS, ASKED_OUT, askAfresh, goOnBudget, openFolders, parseTaskFile, reordersStart, retryTask, rerunOf, roleType, runOverBudget, runSummary, running, skipBlocked, taskOfAgent, taskPrompt, tasksText, withTask, ranOn, templateFor,
+  AT_ONCE_AUTO, AT_ONCE_SANE, HOLD_MS, autoCeiling, busy, withAtOnce, capRoom, capWhy, MODEL_PICKS, afterCheck, endReview, nextReviews, reviewForSpawn, taskOfReview, ORCH_KEY, PLAN_PROMPT, TASKS_MAX, TEMPLATES_KEY, addTask, askPrompt, editChoices, editTask, parseTemplates, removeTask, roleSettingKey, taskForSpawn, templateOf, ROLE_NAMES, TASKS_FILE, addTaskCost, endTask, folderOf, isFinished, newRun, nextToStart, overLimits,
+  throwHoldText, parseRun, runCost, ASK_MAX, ASK_WAIT_MS, ASKED_OUT, askAfresh, goOnBudget, openFolders, parseTaskFile, reordersStart, retryTask, rerunOf, runOverBudget, runSummary, running, skipBlocked, taskOfAgent, tasksText, withTask, ranOn, templateFor,
   plainProgram,
   plainThrown,
+  stopPrompt,
 } from '../core/orchestra'
 import { isFamily } from '../core/models'
 import { capMaxOf } from '../core/agentcap'
-import type { ModelPick, Role, Run, Task, TaskEdit } from '../core/orchestra'
+import type { ModelPick, Role, Run, StopAsk, Task, TaskEdit } from '../core/orchestra'
 import { money } from '../core/prices'
 import { readSetting, settingStoreKey } from '../core/settings'
 import { roomLine, roomOf } from '../core/computer'
@@ -31,7 +32,6 @@ import type { Room } from '../core/computer'
 import { LAPTOP_KEY } from '../core/crewlaptop'
 import type { Laptop } from '../core/crewlaptop'
 import { runningNow } from './agentcap'
-import { hasProgress } from './agentboard'
 import { APP_USAGE_KEY, parseStoredUsage } from '../core/appusage'
 import { HISTORY_KEY as PACE_HISTORY_KEY, parseHistory } from '../core/pace'
 import { RUNNER_SHORT_MIN, windowShort } from '../core/planfit'
@@ -77,26 +77,18 @@ function io($: EngineInterface): Io {
 // IO-BLOCK-END
 
 // What the runner asks of the engine.
+// Helpers are started and stopped by Claude: `ask` sends Claude a message (core/orchestra.ts askPrompt, stopPrompt).
 export type RunnerOps = {
-  spawn: (a: { prompt: string; description: string; subagentType: string; model: string; cwd?: string }) => Promise<{ agentId?: string; deny?: string; model?: string }>
-  stop: (agentId: string) => Promise<void>
   send: (agentId: string, text: string) => Promise<void>
   sh: (argv: string[], cwd: string, timeoutMs: number) => Promise<{ code: number; out: string }>
   shell?: (script: string) => Promise<{ argv: string[]; windows: boolean }>
   root: () => Promise<string>
   statuses: () => Promise<{ id: string; status: string }[] | undefined>
   ask: (text: string) => Promise<void>
-  roles: () => Promise<boolean>
-  // The 'Offer agent types' switch: on registers the types at every session start, off only when a run starts.
-  offered: () => Promise<boolean>
-  // Undefined: the engine cannot tell, and helpers start together.
-  seen?: (agentId: string) => boolean
 }
 
 // The engine calls the runner needs
 type RunnerEngine = {
-  spawn: (a: { prompt: string; description: string; subagentType: string; model: string; cwd?: string }) => Promise<{ agentId?: string; deny?: unknown; model?: unknown }>
-  stop: (agentId: string) => Promise<unknown>
   send: (agentId: string, text: string) => Promise<unknown>
   run: (argv: string[], init: { cwd: string; timeoutMs: number }) => Promise<{ exitCode?: number | null; stdout: string; stderr: string }>
   root: () => Promise<string>
@@ -104,21 +96,12 @@ type RunnerEngine = {
   list: () => Promise<{ id: string; status: string }[]>
   submit: (text: string) => Promise<unknown>
   after: (ms: number, f: () => void) => unknown
-  register: (role: Role, model: string) => Promise<unknown>
-  seen?: (agentId: string) => boolean
   io: Io
 }
 
 // The runner's ops on top of the engine calls.
 export function runnerOpsOf(en: RunnerEngine): RunnerOps {
   return {
-    spawn: async a => {
-      const r = await en.spawn(a)
-      return { ...(r.agentId === undefined ? {} : { agentId: r.agentId }), ...(typeof r.deny === 'string' ? { deny: r.deny } : {}), ...(typeof r.model === 'string' ? { model: r.model } : {}) }
-    },
-    stop: async agentId => {
-      await en.stop(agentId)
-    },
     send: async (agentId, text) => {
       await en.send(agentId, text)
     },
@@ -148,9 +131,6 @@ export function runnerOpsOf(en: RunnerEngine): RunnerOps {
         return undefined
       }
     },
-    roles: async () => ensureRoles(en, await roleModels(en.io)),
-    offered: async () => (await readSetting(en.io, OFFER_KEY)) === 'on',
-    ...(en.seen === undefined ? {} : { seen: en.seen }),
     // A prompt cannot be sent inside the hook call that runs now (a command, a turn's end): it goes a moment later.
     ask: async text => {
       en.after(ASK_DELAY_MS, () => {
@@ -169,11 +149,6 @@ export function runnerOpsOf(en: RunnerEngine): RunnerOps {
 
 function opsOf($: EngineInterface): RunnerOps {
   return runnerOpsOf({
-    spawn: async a => {
-      const got = await $.agent.spawn(a)
-      return got as { agentId?: string; deny?: unknown; model?: unknown }
-    },
-    stop: agentId => $.tool.call({ tool: 'TaskStop', task_id: agentId } as never),
     send: (agentId, text) => $.session.send({ to: { agentId }, text } as never),
     run: (argv, init) => {
       noteRun()
@@ -184,11 +159,6 @@ function opsOf($: EngineInterface): RunnerOps {
     list: () => $.agent.list(),
     submit: text => $.prompt.submit({ text, asUser: true }),
     after: (ms, f) => $.clock.after(ms, f),
-    register: (r, m) => {
-      if (ROLES[r].tools === undefined) return $.agent.register({ name: r, description: roleDescription(r), prompt: ROLE_PROMPT(r), model: m })
-      return $.agent.register({ name: r, description: roleDescription(r), prompt: ROLE_PROMPT(r), model: m, tools: ROLES[r].tools })
-    },
-    seen: hasProgress,
     io: bindPlatform(io($), () => $.env.get('OS')),
   })
 }
@@ -207,6 +177,17 @@ const lastLine = (out: string): string => {
 
 export async function loadRun(i: Io): Promise<Run | undefined> {
   return parseRun(await i.get(ORCH_KEY(await i.sessionId())))
+}
+// Helpers Claude starts from one message bind, and finish, close together: each load-change-save of the run waits here for the one before it,
+// so one save never drops another's change.
+let runTail: Promise<unknown> = Promise.resolve()
+export function runLocked<T>(change: () => Promise<T>): Promise<T> {
+  const done = runTail.then(change)
+  runTail = done.then(
+    () => undefined,
+    () => undefined,
+  )
+  return done
 }
 async function saveRun(i: Io, run: Run | undefined): Promise<void> {
   const key = ORCH_KEY(await i.sessionId())
@@ -234,7 +215,11 @@ export async function roleModels(i: Io): Promise<Partial<Record<Role, string>>> 
   return out
 }
 
-const typeFor = (t: Task, rolesOk: boolean): string => (rolesOk ? roleType(t.role) : ROLES[t.role].writes ? 'general-purpose' : 'Explore') // en-only: the name of a Claude Code agent type
+// Claude is asked to stop these helpers; `why` goes into the message. Never throws.
+async function askStop(ops: RunnerOps, stops: StopAsk[], why: string): Promise<void> {
+  if (stops.length === 0) return
+  await ops.ask(stopPrompt(stops, why)).catch(() => undefined)
+}
 
 // How many commits of a task's branch the branch you are on does not have.
 async function unmergedCount(ops: RunnerOps, root: string, branch: string, ms = GIT_TIMEOUT_MS): Promise<number | undefined> {
@@ -291,49 +276,11 @@ async function prepareFolder(i: Io, ops: RunnerOps, run: Run, t: Task): Promise<
   return { run: withTask(run, t.n, { path: f.path, branch: f.branch, ...(base === undefined ? {} : { base }) }), task }
 }
 
-let lastStart: { id: string; at: number } | undefined
-const lastOfRun = (run: Run): { id: string; at: number } | undefined => (lastStart !== undefined && run.tasks.some(t => t.agentId === lastStart!.id || t.reviewAgent === lastStart!.id) ? lastStart : undefined)
-
 async function capRoomNow(i: Io, run: Run, statuses?: { id: string; status: string }[]): Promise<{ room: number; max: number; off: boolean }> {
   const max = capMaxOf(await readSetting(i, 'cap.max'))
   const own = running(run).length + run.tasks.filter(t => t.review === 'running').length
   const mode = await readSetting(i, 'cap.mode')
   return { room: capRoom(mode, max, await runningNow(i, statuses), own), max, off: mode === 'off' }
-}
-
-async function startTask(i: Io, ops: RunnerOps, run0: Run, t0: Task): Promise<Run> {
-  const now = await i.now()
-  const prepared = await prepareFolder(i, ops, run0, t0)
-  if (prepared.task === undefined) return prepared.run
-  const run = prepared.run
-  const t = prepared.task
-  const task: Task = { ...t, tries: t.tries + 1 }
-  const cwd = task.path
-  try {
-    const model = modelFor(task.model, task.role, await roleModels(i))
-    const r = await ops.spawn({ prompt: taskPrompt(task), description: descriptionOf(task), subagentType: typeFor(task, await ops.roles()), model, ...(cwd === undefined ? {} : { cwd }) })
-    if (r.agentId === undefined && r.deny !== undefined && isAutoModeRefusal(r.deny)) return { ...withTask(run, t.n, { ...task, tries: t.tries }), via: 'claude' }
-    if (r.agentId === undefined) return withTask(run, t.n, { ...task, tries: t.tries, holdUntil: now + HOLD_MS, why: plainProgram(`waits: ${r.deny ?? 'the agent did not start'}`) })
-    lastStart = { id: r.agentId, at: now }
-    const { holdUntil: _h, why: _w, ...fresh } = task
-    return { ...run, tasks: run.tasks.map(x => (x.n === t.n ? { ...fresh, state: 'running' as const, agentId: r.agentId, startedAt: now, ran: ranOn(model, r.model) } : x)) }
-  } catch (err) {
-    return withTask(run, t.n, { ...task, state: 'failed', endedAt: now, why: plainThrown(`the agent did not start: ${err instanceof Error ? err.message : String(err)}`, 'why') })
-  }
-}
-
-async function startReview(i: Io, ops: RunnerOps, run: Run, t: Task): Promise<Run> {
-  try {
-    const r = await ops.spawn({ prompt: reviewPrompt(t), description: reviewDescription(t), subagentType: typeFor({ ...t, role: 'reviewer' }, await ops.roles()), model: modelFor('auto', 'reviewer', await roleModels(i)), ...(t.path === undefined ? {} : { cwd: t.path }) })
-    if (r.agentId !== undefined) {
-      lastStart = { id: r.agentId, at: await i.now() }
-      return withTask(run, t.n, { review: 'running', reviewAgent: r.agentId })
-    }
-    if (r.deny !== undefined && isAutoModeRefusal(r.deny)) return { ...run, via: 'claude' }
-    return withTask(run, t.n, { review: 'failed', reviewLines: [`The reviewer did not start: ${(r.deny ?? 'refused').slice(0, 100)}`] })
-  } catch {
-    return withTask(run, t.n, { review: 'failed', reviewLines: ['The reviewer did not start.'] })
-  }
 }
 
 async function runCheck(ops: RunnerOps, command: string, t: Task): Promise<(run: Run) => Run> {
@@ -456,11 +403,13 @@ export async function tick(i: Io, ops: RunnerOps, statuses?: { id: string; statu
       await postBand(i, 'warn', 'orch', gaveUpWords, DONE_BAND_MS)
     }
   }
+  const overStops: StopAsk[] = []
   for (const o of overLimits(run, now, liveOf)) {
     const t = run.tasks.find(x => x.n === o.n)
-    if (t?.agentId !== undefined) await ops.stop(t.agentId).catch(() => undefined)
+    if (t?.agentId !== undefined) overStops.push({ n: o.n, agentId: t.agentId })
     run = withTask(run, o.n, { state: 'stopped', endedAt: now, why: o.why })
   }
+  await askStop(ops, overStops, 'they ran past the time or cost limit of the run') // en-only: a prompt for Claude, sent in English
   if (run.status === 'running' && runOverBudget(run, liveOf)) {
     run = { ...run, status: 'paused', costPause: run.choices.runUsd }
     await postBand(i, 'warn', 'orch', tLine('band.task_run_paused_it_cost_more', { n: run.choices.runUsd }), DONE_BAND_MS)
@@ -487,34 +436,23 @@ export async function tick(i: Io, ops: RunnerOps, statuses?: { id: string; statu
   if (room !== undefined && room.n === 0) for (const t of nextToStart(run, now)) run = withTask(run, t.n, { why: FULL_WHY(room) })
   const short = wanting === 0 || left <= 0 ? false : windowShort(parseStoredUsage(await i.get(APP_USAGE_KEY)), parseHistory(await i.get(PACE_HISTORY_KEY)), now, RUNNER_SHORT_MIN)
   if (short && run.smallFirst !== true && reordersStart(run, now)) run = { ...run, smallFirst: true }
-  for (const t of nextReviews(ef(run), now)) {
-    if (run.via === 'claude' || left <= 0 || staggerWait(lastOfRun(run), ops.seen, now)) break
-    left -= 1
-    run = await startReview(i, ops, run, t)
+  // Claude is asked in a message to start the helpers: the message carries each one's brief, type, model and folder.
+  const reviews = nextReviews(ef(run), now).slice(0, Math.max(0, left))
+  for (const t of reviews) run = withTask(run, t.n, { reviewAskedAt: now, reviewAsks: (t.reviewAsks ?? 0) + 1 })
+  const ready: Task[] = []
+  for (const t of nextToStart({ ...ef(run), choices: { ...run.choices, atOnce: ef(run).choices.atOnce - reviews.length } }, now, short).slice(0, Math.max(0, left - reviews.length))) {
+    const p = await prepareFolder(i, ops, run, t)
+    run = p.run
+    if (p.task !== undefined) ready.push(p.task)
   }
-  for (const t of nextToStart(ef(run), now, short)) {
-    if (run.via === 'claude' || left <= 0 || staggerWait(lastOfRun(run), ops.seen, now)) break
-    left -= 1
-    run = await startTask(i, ops, run, t)
+  if (ready.length + reviews.length > 0) {
+    for (const t of ready) run = withTask(run, t.n, { askedAt: now, asks: (t.asks ?? 0) + 1 })
+    await saveRun(i, run)
+    await ops.ask(askPrompt(run, ready, reviews, await roleModels(i))).catch(() => undefined)
   }
-  if (!halted && cap !== undefined && cap.room < Infinity && left <= 0 && run.via !== 'claude' && (room === undefined || room.n > 0)) for (const t of nextToStart(run, now)) run = withTask(run, t.n, { why: capWhy(cap.max) })
-  if (run.via === 'claude') {
-    const reviews = nextReviews(ef(run), now).slice(0, left)
-    for (const t of reviews) run = withTask(run, t.n, { reviewAskedAt: now, reviewAsks: (t.reviewAsks ?? 0) + 1 })
-    const ready: Task[] = []
-    for (const t of nextToStart({ ...ef(run), choices: { ...run.choices, atOnce: ef(run).choices.atOnce - reviews.length } }, now, short).slice(0, Math.max(0, left - reviews.length))) {
-      const p = await prepareFolder(i, ops, run, t)
-      run = p.run
-      if (p.task !== undefined) ready.push(p.task)
-    }
-    if (ready.length + reviews.length > 0) {
-      await ops.roles()
-      for (const t of ready) run = withTask(run, t.n, { askedAt: now, asks: (t.asks ?? 0) + 1 })
-      await saveRun(i, run)
-      await ops.ask(askPrompt(run, ready, reviews)).catch(() => undefined)
-    }
-    for (const t of run.tasks) if (t.state === 'waiting' && (t.asks ?? 0) >= ASK_MAX && t.askedAt !== undefined && now - t.askedAt >= ASK_WAIT_MS) run = withTask(run, t.n, { why: ASKED_OUT(t.asks ?? ASK_MAX) })
-  }
+  // The tasks left waiting because the agent cap is full say so.
+  if (!halted && cap !== undefined && cap.room < Infinity && left - ready.length - reviews.length <= 0 && (room === undefined || room.n > 0)) for (const t of nextToStart(run, now)) run = withTask(run, t.n, { why: capWhy(cap.max) })
+  for (const t of run.tasks) if (t.state === 'waiting' && (t.asks ?? 0) >= ASK_MAX && t.askedAt !== undefined && now - t.askedAt >= ASK_WAIT_MS) run = withTask(run, t.n, { why: ASKED_OUT(t.asks ?? ASK_MAX) })
   if (isFinished(run) && run.status === 'running') {
     run = { ...run, status: 'done' }
     if (run.told !== true) {
@@ -569,7 +507,8 @@ export const keepWatching = (run: Run | undefined): boolean =>
 // Beats run one after the other, never two at once.
 let chain: Promise<unknown> = Promise.resolve()
 export function beat(i: Io, ops: RunnerOps, statuses?: { id: string; status: string }[]): Promise<Run | undefined> {
-  const next = chain.then(() => tick(i, ops, statuses)).catch(() => undefined)
+  // The 10 s update waits its turn with the binds and ends, so its save never drops a helper Claude just started
+  const next = chain.then(() => runLocked(() => tick(i, ops, statuses))).catch(() => undefined)
   chain = next
   return next
 }
@@ -648,7 +587,6 @@ export async function steer(i: Io, ops: RunnerOps, s: Steer): Promise<string> {
       }
       run = { ...run, status: 'running', startedAt: run.startedAt ?? (await i.now()), told: false }
       await saveRun(i, run)
-      await ops.roles()
       await runRow(i, RUN_STARTED_WHAT, run, await i.now())
       const own = run.choices.atOnce === AT_ONCE_AUTO ? autoCeiling(capMaxOf(await readSetting(i, 'cap.max')), true, (await readSetting(i, 'cap.mode')) === 'off') : run.choices.atOnce
       const hint = await runHint(i, check.est.usd, tr)
@@ -668,7 +606,6 @@ export async function steer(i: Io, ops: RunnerOps, s: Steer): Promise<string> {
       const { resumeAt: _r, replans: _p, costPause: _c, ...rest } = run
       const started = await nightStart(i, { ...rest, status: 'running', startedAt: run.startedAt ?? now, told: false }, now)
       await saveRun(i, started)
-      await ops.roles()
       await runRow(i, RUN_STARTED_WHAT, started, now)
       return fillIn(NIGHT_STARTED, { n: started.tasks.length, usd: money(started.night?.usd ?? started.choices.runUsd) })
     }
@@ -702,8 +639,10 @@ export async function steer(i: Io, ops: RunnerOps, s: Steer): Promise<string> {
       await saveRun(i, editChoices(run, { afterLimit: s.go ? 'go' : 'wait' }))
       return s.go ? tr('After a plan limit the run goes on by itself when the limit resets.') : tr('After a plan limit the run waits for you.')
     case 'stopAll':
-      for (const t of running(run)) if (t.agentId !== undefined) await ops.stop(t.agentId).catch(() => undefined)
-      for (const t of run.tasks) if (t.review === 'running' && t.reviewAgent !== undefined) await ops.stop(t.reviewAgent).catch(() => undefined)
+      await askStop(ops, [
+        ...running(run).flatMap(t => (t.agentId === undefined ? [] : [{ n: t.n, agentId: t.agentId }])),
+        ...run.tasks.flatMap(t => (t.review === 'running' && t.reviewAgent !== undefined ? [{ n: t.n, agentId: t.reviewAgent, review: true }] : [])),
+      ], 'I stopped the run') // en-only: a prompt for Claude, sent in English
       {
         const now = await i.now()
         let next: Run = { ...run, status: 'stopped' }
@@ -714,7 +653,7 @@ export async function steer(i: Io, ops: RunnerOps, s: Steer): Promise<string> {
         await saveRun(i, await nightEnd(i, stopped))
         await runRow(i, RUN_STOPPED_WHAT, stopped, now)
       }
-      return tr('Stopped every agent of the run.')
+      return tr('Stopped the run and asked Claude to stop its running agents.')
     case 'clear': {
       if (running(run).length > 0) return tr('Agents still run. Stop the run first.')
       const left = foldersLeft(run)
@@ -738,9 +677,9 @@ export async function steer(i: Io, ops: RunnerOps, s: Steer): Promise<string> {
       return fillIn(tr('Task {n} waits for its turn again.'), { n: s.n })
     case 'stop':
       if (task!.state !== 'running' || task!.agentId === undefined) return fillIn(tr('Task {n} is not running.'), { n: s.n })
-      await ops.stop(task!.agentId).catch(() => undefined)
+      await askStop(ops, [{ n: s.n, agentId: task!.agentId }], 'I stopped it') // en-only: a prompt for Claude, sent in English
       await saveRun(i, withTask(run, s.n, { state: 'stopped', endedAt: await i.now(), why: 'you stopped it' }))
-      return fillIn(tr('Stopped task {n}.'), { n: s.n })
+      return fillIn(tr('Stopped task {n} and asked Claude to stop its agent.'), { n: s.n })
     case 'keep':
     case 'throw': {
       const t = task!
@@ -910,17 +849,22 @@ export async function tasksCommand(i: Io, ops: RunnerOps, args: string): Promise
     return fillIn(tr('Wrote {file} with an example. Write one task per line, then /vaken-tasks start.'), { file: TASKS_FILE })
   }
   if (typeof ask === 'object' && ask.kind === 'night' && (await readSetting(i, 'night.mode')) !== 'on') return NIGHT_OFF
-  const now = await loadRun(i)
-  if (ask === 'load' || (typeof ask === 'object' && (ask.kind === 'start' || ask.kind === 'night') && (now === undefined || now.status === 'done' || now.status === 'stopped'))) {
-    if (now !== undefined && running(now).length > 0) return tr('Agents still run. Stop the run first.')
-    const left = now === undefined ? undefined : foldersLeft(now)
-    if (left !== undefined) return left
-    const lines = await readFileTasks(i, root)
-    if (lines === undefined || lines.length === 0) return tasksText(undefined, lines, await i.now(), dur)
-    await saveRun(i, newRun(lines, await i.now(), 'Task run', now?.choices))
-    if (ask === 'load') return fillIn(tr('Loaded {tasks} from {file}. Change them in the Agents view, then start.'), { tasks: tWord('words.task', { n: lines.length }), file: TASKS_FILE })
-  }
-  const said = await steer(i, ops, ask as Steer)
+  // A load-change-save of the run waits its turn with the binds, the ends and the 10 s update
+  const done = await runLocked(async (): Promise<{ text: string; final?: true }> => {
+    const now = await loadRun(i)
+    if (ask === 'load' || (typeof ask === 'object' && (ask.kind === 'start' || ask.kind === 'night') && (now === undefined || now.status === 'done' || now.status === 'stopped'))) {
+      if (now !== undefined && running(now).length > 0) return { text: tr('Agents still run. Stop the run first.') }
+      const left = now === undefined ? undefined : foldersLeft(now)
+      if (left !== undefined) return { text: left }
+      const lines = await readFileTasks(i, root)
+      if (lines === undefined || lines.length === 0) return { text: tasksText(undefined, lines, await i.now(), dur) }
+      await saveRun(i, newRun(lines, await i.now(), 'Task run', now?.choices))
+      if (ask === 'load') return { text: fillIn(tr('Loaded {tasks} from {file}. Change them in the Agents view, then start.'), { tasks: tWord('words.task', { n: lines.length }), file: TASKS_FILE }) }
+    }
+    return { text: await steer(i, ops, ask as Steer), final: true }
+  })
+  if (done.final !== true) return done.text
+  const said = done.text
   const after = await beat(i, ops)
   return after === undefined ? said : `${said}\n${runSummary(after)}.`
 }
@@ -935,56 +879,38 @@ async function runRow(i: Io, what: string, run: Run, now: number): Promise<void>
   }
 }
 
-// Claude sees them too: a type the model is not offered cannot be dispatched by its own Agent call either
-let registered: string | undefined
-export const forgetRoles = (): void => {
-  registered = undefined
+// A helper Claude started: the run's waiting task (or review) it belongs to, found by the code on its brief's first line, is marked running; a refused start waits a minute.
+// True when it was one of the run's.
+export function bindSpawn(i: Io, description: string, prompt: string, model: string | undefined, result: { agentId?: string; deny?: string; model?: string }): Promise<boolean> {
+  return runLocked(() => bindNow(i, description, prompt, model, result))
 }
-// Registered already in this session: a changed model re-registers them even with the switch off.
-export const rolesAreRegistered = (): boolean => registered !== undefined
-async function ensureRoles(en: Pick<RunnerEngine, 'register'>, models: Partial<Record<Role, string>>): Promise<boolean> {
-  const sig = ROLE_NAMES.map(r => modelFor('auto', r, models)).join(',')
-  if (registered === sig) return true
-  let ok = true
-  for (const r of ROLE_NAMES) {
-    try {
-      await en.register(r, modelFor('auto', r, models))
-    } catch {
-      ok = false
-    }
+async function bindNow(i: Io, description: string, prompt: string, model: string | undefined, result: { agentId?: string; deny?: string; model?: string }): Promise<boolean> {
+  const run = await loadRun(i)
+  if (run === undefined) return false
+  const review = reviewForSpawn(run, prompt)
+  if (review !== undefined) {
+    await saveRun(i, withTask(run, review.n, result.agentId === undefined ? { review: 'failed', reviewLines: [`The reviewer did not start: ${(result.deny ?? 'refused').slice(0, 100)}`] } : { review: 'running', reviewAgent: result.agentId }))
+    return true
   }
-  registered = ok ? sig : undefined
-  return ok
-}
-
-// Never throws.
-export async function rolesChanged(ops: RunnerOps): Promise<void> {
-  const was = rolesAreRegistered()
-  forgetRoles()
-  try {
-    if (was || (await ops.offered())) await ops.roles()
-  } catch {
+  const task = taskForSpawn(run, description, prompt)
+  if (task === undefined) return false
+  const at = await i.now()
+  // A refused start is no failure: the task waits a minute, then Claude is asked again.
+  if (result.agentId === undefined) {
+    const { askedAt: _q, ...rest } = task
+    await saveRun(i, { ...run, tasks: run.tasks.map(x => (x.n === task.n ? { ...rest, holdUntil: at + HOLD_MS, why: plainProgram(`waits: ${(result.deny ?? 'the agent did not start').slice(0, 120)}`) } : x)) })
+    return true
   }
+  const { askedAt: _a, holdUntil: _h, why: _w, ...fresh } = task
+  await saveRun(i, { ...run, tasks: run.tasks.map(x => (x.n === task.n ? { ...fresh, state: 'running' as const, agentId: result.agentId, startedAt: at, tries: x.tries + 1, ran: ranOn(model ?? '', result.model) } : x)) })
+  return true
 }
-// The same for a file that has only closures (the engine's `$` may not be passed across an import): the register call and the io.
-export async function rolesChangedWith(en: Pick<RunnerEngine, 'register' | 'io'>): Promise<void> {
-  const was = rolesAreRegistered()
-  forgetRoles()
-  try {
-    if (!was && (await readSetting(en.io, OFFER_KEY)) !== 'on') return
-    await ensureRoles(en, await roleModels(en.io))
-  } catch {
-  }
-}
-
-export const isRoleKey = (key: string): boolean => key === OFFER_KEY || ROLE_NAMES.some(r => roleSettingKey(r) === key)
 
 // On Windows it says "this PC" (core/syswords.ts).
 export const TASKS_HINT = 'Run a task list with agents, as many at a time as this Mac has room for (or your own limit), and steer it. A word after it runs a part: agents, agents-board, route, goal.' // en-only: slash menu hint
 
 export function registerOrchestra(on: On): void {
   on('session.start', { cwd: /(?<orchestra>)/ }, async ($, e, next) => {
-    await rolesChanged(opsOf($))
     try {
       const os = await $.env.get('OS')
       const plat = procPlatformOf(os)
@@ -1007,52 +933,12 @@ export function registerOrchestra(on: On): void {
     }
   })
 
+  // Claude starts each helper the runner asked for. This hook only watches: it hands on its own event and binds the started helper to its task.
+  // Nothing after next(e) may throw: the helper has started.
   on('agent.spawn', { subagentType: /(?<orchestra>)/ }, async ($, e, next) => {
-    let task: Task | undefined
-    let review: Task | undefined
-    let sent = e
+    const result = await next(e)
     try {
-      await opsOf($).roles()
-    } catch {
-    }
-    try {
-      const run = await loadRun(io($))
-      review = run === undefined || run.via !== 'claude' ? undefined : reviewForSpawn(run, e.prompt)
-      if (review !== undefined) sent = { ...e, prompt: reviewPrompt(review), subagentType: typeFor({ ...review, role: 'reviewer' }, await opsOf($).roles()), model: modelFor('auto', 'reviewer', await roleModels(io($))), ...(review.path === undefined ? {} : { cwd: review.path }) }
-      else task = run === undefined || run.via !== 'claude' ? undefined : taskForSpawn(run, e.description, e.prompt)
-      if (task !== undefined) sent = { ...e, prompt: taskPrompt(task), subagentType: typeFor(task, await opsOf($).roles()), model: modelFor(task.model, task.role, await roleModels(io($))), ...(task.path === undefined ? {} : { cwd: task.path }) }
-    } catch {
-      task = undefined
-      review = undefined
-      sent = e
-    }
-    const result = await next(sent)
-    if (review !== undefined) {
-      try {
-        const i = io($)
-        const now = await loadRun(i)
-        if (now !== undefined) await saveRun(i, withTask(now, review.n, result.agentId === undefined ? { review: 'failed', reviewLines: [`The reviewer did not start: ${(result.deny ?? 'refused').slice(0, 100)}`] } : { review: 'running', reviewAgent: result.agentId }))
-        watch($)
-      } catch {
-      }
-      return result
-    }
-    try {
-      if (task !== undefined && result.agentId === undefined) {
-        const i = io($)
-        const run = await loadRun(i)
-        if (run !== undefined) await saveRun(i, withTask(run, task.n, { state: 'failed', endedAt: await i.now(), why: plainProgram(`did not start: ${(result.deny ?? 'refused').slice(0, 120)}`) }))
-      }
-      if (task !== undefined && result.agentId !== undefined) {
-        const i = io($)
-        const run = await loadRun(i)
-        if (run !== undefined) {
-          const { askedAt: _a, holdUntil: _h, why: _w, ...fresh } = run.tasks.find(x => x.n === task!.n) ?? task
-          const at = await i.now()
-          await saveRun(i, { ...run, tasks: run.tasks.map(x => (x.n === task!.n ? { ...fresh, state: 'running' as const, agentId: result.agentId, startedAt: at, tries: x.tries + 1, ran: ranOn(sent.model ?? '', result.model) } : x)) })
-          watch($)
-        }
-      }
+      if (await bindSpawn(io($), e.description, e.prompt, e.model, result)) watch($)
     } catch {
       // the 10 s watch cannot bind it; the task is asked for again after two minutes
     }
@@ -1075,21 +961,25 @@ export function registerOrchestra(on: On): void {
       clearStepCost(agentId)
       try {
         const i = io($)
-        let run = await loadRun(i)
-        if (run !== undefined && taskOfReview(run, agentId) !== undefined) {
-          const now = await i.now()
-          const t = taskOfReview(run, agentId)!
-          run = withTask(run, t.n, { usd: (t.usd ?? 0) + (turnOf(e.usage, now, e.durationMs, true)?.usd ?? 0) })
-          run = endReview(run, agentId, e.reason === 'answer', e.answer)
-          await saveRun(i, run)
-          void beat(i, opsOf($))
-        } else if (run !== undefined && taskOfAgent(run, agentId) !== undefined) {
-          const now = await i.now()
-          run = addTaskCost(run, agentId, turnOf(e.usage, now, e.durationMs, true)?.usd)
-          run = endTask(run, agentId, e.reason === 'answer' ? 'done' : 'failed', now, e.reason === 'answer' ? undefined : e.reason)
-          await saveRun(i, run)
-          void beat(i, opsOf($))
-        }
+        const ended = await runLocked(async () => {
+          let run = await loadRun(i)
+          if (run !== undefined && taskOfReview(run, agentId) !== undefined) {
+            const now = await i.now()
+            const t = taskOfReview(run, agentId)!
+            run = withTask(run, t.n, { usd: (t.usd ?? 0) + (turnOf(e.usage, now, e.durationMs, true)?.usd ?? 0) })
+            run = endReview(run, agentId, e.reason === 'answer', e.answer)
+            await saveRun(i, run)
+            return true
+          } else if (run !== undefined && taskOfAgent(run, agentId) !== undefined) {
+            const now = await i.now()
+            run = addTaskCost(run, agentId, turnOf(e.usage, now, e.durationMs, true)?.usd)
+            run = endTask(run, agentId, e.reason === 'answer' ? 'done' : 'failed', now, e.reason === 'answer' ? undefined : e.reason)
+            await saveRun(i, run)
+            return true
+          }
+          return false
+        })
+        if (ended) void beat(i, opsOf($))
       } catch {
         // the 10 s watch reads the engine's list as well
       }

@@ -62,7 +62,7 @@ export const ROLES: Record<Role, { label: string; about: string; writes: boolean
   reviewer: { label: 'Reviewer', about: 'Reads a change and says if it is good.', writes: false, model: 'haiku', tools: ['Read', 'Grep', 'Glob', 'Bash'] },
   fixer: { label: 'Fixer', about: 'Fixes what failed, with the strongest model.', writes: true, model: 'opus' },
 }
-// `about` stays as is because it is written into the role's agent file, and a changed word would show the file as different in Agent setup.
+// `about` is written into the role's agent file too (agents/*.md): change both together.
 export const ROLE_SHOWN: Partial<Record<Role, string>> = { researcher: 'Reads and reports. Changes no file.' }
 export const roleShown = (r: Role): string => ROLE_SHOWN[r] ?? ROLES[r].about
 export const roleSettingKey = (r: Role): string => `runner.${r}`
@@ -75,23 +75,8 @@ export const RUNNER_SETTINGS: Setting[] = (['researcher', 'builder', 'reviewer',
   default: ROLES[r].model,
 }))
 
-// Off by default: the four agent types are not offered to Claude at every session start; a task run registers them when it starts.
-export const OFFER_KEY = 'agents.offer'
-export const OFFER_SETTINGS: Setting[] = [
-  {
-    key: OFFER_KEY,
-    group: 'Agents',
-    label: 'Offer agent types',
-    note: 'Off: Claude is offered the four agent types only when a task run starts.',
-    options: [
-      { value: 'off', label: 'Off' },
-      { value: 'on', label: 'On' },
-    ],
-    default: 'off',
-  },
-]
-
-export const roleType = (r: Role): string => `cockpit:${r}`
+// The four roles are plain agent files of the plugin (agents/*.md), installed under the plugin's name.
+export const roleType = (r: Role): string => `vaken:${r}` // en-only: the name of a Claude Code agent type
 
 export type ModelPick = 'auto' | 'cheap' | 'normal' | 'strong'
 export const MODEL_PICKS: ModelPick[] = ['auto', 'cheap', 'normal', 'strong']
@@ -140,8 +125,8 @@ type ReviewState = 'pending' | 'running' | 'done' | 'failed'
 type Choices = { atOnce: number; check: string; reviewer: boolean; helperMin: number; helperUsd: number; runUsd: number; afterLimit: 'go' | 'wait'; nightUsd: number }
 export const DEFAULT_CHOICES: Choices = { atOnce: AT_ONCE_AUTO, check: '', reviewer: false, helperMin: 30, helperUsd: 2, runUsd: 10, afterLimit: 'wait', nightUsd: 0 }
 type RunStatus = 'setup' | 'running' | 'paused' | 'done' | 'stopped'
-// `via` 'claude': the app's auto mode refuses a helper the person's own message did not ask for, so Claude is asked in a message and the agent.spawn hook gives each helper its details. `replans` counts waits planned again because a window still read full.
-export type Run = { id: string; name: string; status: RunStatus; createdAt: number; startedAt?: number; tasks: Task[]; choices: Choices; told?: boolean; via?: 'direct' | 'claude'; resumeAt?: number; replans?: number; smallFirst?: true; atNow?: { n: number; room: boolean }; costPause?: number; night?: Night }
+// Helpers are started by Claude: vaken asks in a message that carries each helper's brief, type, model and folder. `replans` counts waits planned again because a window still read full.
+export type Run = { id: string; name: string; status: RunStatus; createdAt: number; startedAt?: number; tasks: Task[]; choices: Choices; told?: boolean; resumeAt?: number; replans?: number; smallFirst?: true; atNow?: { n: number; room: boolean }; costPause?: number; night?: Night }
 
 const cut = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s)
 
@@ -242,7 +227,7 @@ export function parseRun(raw: unknown): Run | undefined {
   if (typeof o !== 'object' || o === null || !Array.isArray(o.tasks) || typeof o.id !== 'string' || !isNum(o.createdAt)) return undefined
   const tasks = o.tasks.slice(0, TASKS_MAX).map(parseTask).filter((t): t is Task => t !== undefined).map((t, k) => ({ ...t, n: k + 1 }))
   if (tasks.length === 0) return undefined
-  return { id: o.id, name: typeof o.name === 'string' && o.name !== '' ? cut(o.name, 40) : 'Task run', status: oneOf(o.status, STATUSES, 'setup'), createdAt: o.createdAt, ...(isNum(o.startedAt) ? { startedAt: o.startedAt } : {}), tasks, choices: parseChoices(o.choices), ...(o.told === true ? { told: true } : {}), ...(o.via === 'claude' || o.via === 'direct' ? { via: o.via } : {}), ...(isNum(o.resumeAt) ? { resumeAt: o.resumeAt } : {}), ...(isNum(o.replans) ? { replans: o.replans } : {}), ...(o.smallFirst === true ? { smallFirst: true as const } : {}), ...(isNum(o.costPause) ? { costPause: o.costPause } : {}), ...(parseNight(o.night) === undefined ? {} : { night: parseNight(o.night) as Night }), ...(typeof o.atNow === 'object' && o.atNow !== null && isNum(o.atNow.n) ? { atNow: { n: o.atNow.n, room: o.atNow.room === true } } : {}) }
+  return { id: o.id, name: typeof o.name === 'string' && o.name !== '' ? cut(o.name, 40) : 'Task run', status: oneOf(o.status, STATUSES, 'setup'), createdAt: o.createdAt, ...(isNum(o.startedAt) ? { startedAt: o.startedAt } : {}), tasks, choices: parseChoices(o.choices), ...(o.told === true ? { told: true } : {}), ...(isNum(o.resumeAt) ? { resumeAt: o.resumeAt } : {}), ...(isNum(o.replans) ? { replans: o.replans } : {}), ...(o.smallFirst === true ? { smallFirst: true as const } : {}), ...(isNum(o.costPause) ? { costPause: o.costPause } : {}), ...(parseNight(o.night) === undefined ? {} : { night: parseNight(o.night) as Night }), ...(typeof o.atNow === 'object' && o.atNow !== null && isNum(o.atNow.n) ? { atNow: { n: o.atNow.n, room: o.atNow.room === true } } : {}) }
 }
 
 
@@ -304,24 +289,49 @@ export function askAfresh(run: Run): Run {
   return { ...run, tasks }
 }
 
-export const isAutoModeRefusal = (deny: string): boolean => /classifier|auto mode/i.test(deny)
-
-// Each helper gets a short exact code as its prompt; the agent.spawn hook finds the task by it.
+// Claude starts each helper: vaken asks in a message that carries all the helper needs. Each brief starts with a short exact code; the agent.spawn watch finds the task by it.
 const taskCode = (run: Run, t: Task): string => `vaken-task ${run.id}-${t.n}`
-export function askPrompt(run: Run, tasks: Task[], reviews: Task[] = []): string {
+export const taskBrief = (run: Run, t: Task): string => `${taskCode(run, t)}\n${taskPrompt(t)}`
+export const reviewBrief = (run: Run, t: Task): string => `${reviewCode(run, t)}\n${reviewPrompt(t)}`
+const BRIEF_LINE = '---'
+const oneAsk = (k: number, description: string, type: string, model: string, folder: string | undefined, brief: string): string[] => [
+  '',
+  `Agent ${k}`, // en-only: a prompt for Claude, sent in English
+  `- description: ${description}`, // en-only: a prompt for Claude, sent in English
+  `- subagent_type: ${type}`, // en-only: a prompt for Claude, sent in English
+  `- model: ${model}`, // en-only: a prompt for Claude, sent in English
+  ...(folder === undefined ? [] : [`- cwd (the folder it works in): ${folder}`]), // en-only: a prompt for Claude, sent in English
+  '- prompt: the lines between the two --- lines, exactly as written', // en-only: a prompt for Claude, sent in English
+  BRIEF_LINE,
+  brief,
+  BRIEF_LINE,
+]
+// `roleModels`: the person's model for each role (Settings > Task runner).
+export function askPrompt(run: Run, tasks: Task[], reviews: Task[] = [], roleModels: Partial<Record<Role, string>> = {}): string {
   const n = tasks.length + reviews.length
   return [
-    `Please start ${n === 1 ? 'this agent' : `these ${n} agents`} for my task run now: one Agent call each, in the background, with exactly these values.`,
-    ...tasks.map(t => `- description "Task ${t.n}", prompt "${taskCode(run, t)}"`),
-    ...reviews.map(t => `- description "Review ${t.n}", prompt "${reviewCode(run, t)}"`),
-    'Vaken fills in each agent\'s full task, folder, role and model. Then wait: each agent reports back to you when it is done.', // en-only: a prompt for an agent, sent in English
+    `Please start ${n === 1 ? 'this agent' : `these ${n} agents`} for my task run now: one Agent call each, in the background, with exactly these values.`, // en-only: a prompt for Claude, sent in English
+    ...tasks.flatMap((t, k) => oneAsk(k + 1, `Task ${t.n}`, roleType(t.role), modelFor(t.model, t.role, roleModels), t.path, taskBrief(run, t))),
+    ...reviews.flatMap((t, k) => oneAsk(tasks.length + k + 1, `Review ${t.n}`, roleType('reviewer'), modelFor('auto', 'reviewer', roleModels), t.path, reviewBrief(run, t))),
+    '',
+    'Then wait: each agent reports back to you when it is done.', // en-only: a prompt for Claude, sent in English
+  ].join('\n')
+}
+
+// Claude stops a helper: vaken asks in a message with each helper's id. `why` is said in the message, in plain words.
+export type StopAsk = { n: number; agentId: string; review?: boolean }
+export function stopPrompt(stops: StopAsk[], why: string): string {
+  return [
+    `Please stop ${stops.length === 1 ? 'this agent' : `these ${stops.length} agents`} of my task run now (${why}): stop each background agent by its id.`, // en-only: a prompt for Claude, sent in English
+    ...stops.map(s => `- ${s.review === true ? 'Review' : 'Task'} ${s.n}: agent id ${s.agentId}`), // en-only: a prompt for Claude, sent in English
   ].join('\n')
 }
 
 export function taskForSpawn(run: Run, description: string, prompt = ''): Task | undefined {
   if (run.status !== 'running' && run.status !== 'paused') return undefined
   const code = /(?:vaken|cockpit)-task\s+([a-z0-9]+)-(\d+)/i.exec(prompt) // legacy: a run started before the rename
-  const n = code !== null && code[1] === run.id ? Number(code[2]) : code === null ? taskNumber(description) : undefined
+  // Only the code binds: an agent you start yourself, even one named "Task 2", never joins the run
+  const n = code !== null && code[1] === run.id ? Number(code[2]) : undefined
   const t = n === undefined ? undefined : run.tasks.find(x => x.n === n)
   return t !== undefined && t.state === 'waiting' ? t : undefined
 }
@@ -430,11 +440,6 @@ export function taskPrompt(t: Task): string {
     : 'Work in the project folder. Other agents may work at the same time: change only what this task needs.' // en-only: a prompt for an agent, sent in English
   return [`You are the agent for task ${t.n} of a task list.`, `The task: ${t.text}`, where, 'End with a short report of at most 8 lines: what you did, what you checked, and what is left.'].join('\n') // en-only: a prompt for an agent, sent in English
 }
-
-// The description a role is registered with
-export const roleDescription = (r: Role): string => `Task runner ${ROLES[r].label.toLowerCase()}: ${ROLES[r].about} Started by vaken's task runner.`
-export const ROLE_PROMPT = (r: Role): string =>
-  [`You are a ${ROLES[r].label.toLowerCase()} agent. ${ROLES[r].about}`, 'Keep to your one task. Use short plain words in your report.'].join(' ') // en-only: a prompt for an agent, sent in English
 
 export const folderOf = (root: string, run: Run, t: Task): { path: string; branch: string } => ({ path: under(root, '.claude/worktrees', `run-${run.id}-${t.n}`), branch: `vaken-run/${run.id}-${t.n}` })
 

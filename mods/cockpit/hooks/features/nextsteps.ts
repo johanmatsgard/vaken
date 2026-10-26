@@ -22,7 +22,6 @@ import { flushLearn, forgetLearn, learnMem, learnNote, loadLearn, rankPicks } fr
 import type { OfferKind } from '../core/offerlearn'
 import { weekStamp } from '../core/value'
 import { flags, langOf } from './home/state'
-import { forgetTypeahead, typeaheadRows } from '../core/typeahead'
 
 // IO-BLOCK-START
 function io($: EngineInterface): Io {
@@ -76,14 +75,12 @@ export async function quickAnswer(i: Io, args: string, t: Say, person: boolean):
     const made = addOwn(own, ask.name, ask.prompt)
     if (!made.ok) return { said: addWhyText(made.why, t) }
     await i.set(OWN_KEY, made.list)
-    forgetTypeahead()
     return { said: quickSaid(QUICK_ADDED, t, made.name) }
   }
   if (ask.kind === 'remove') {
     const kept = removeOwn(own, ask.name)
     if (kept === undefined) return { said: quickSaid(QUICK_NOT_YOURS, t, ask.name) }
     await i.set(OWN_KEY, kept)
-    forgetTypeahead()
     return { said: quickSaid(QUICK_REMOVED, t, ask.name) }
   }
   const a = findAction(ask.word, own)
@@ -95,7 +92,6 @@ export function registerNextSteps(on: On): void {
   on('session.start', { cwd: /(?<nextsteps>)/ }, async ($, e, next) => {
     forgetNext()
     forgetLearn()
-    forgetTypeahead()
     try {
       nextMem.mode = nextModeOf(await readSetting(io($), 'next.mode'))
       const root = await $.session.root()
@@ -194,22 +190,6 @@ export function registerNextSteps(on: On): void {
     } catch {
     }
     return next(e)
-  }).catch(($, e, next) => next(e))
-
-  // Typeahead rows with Buttons and hint: the person's quick actions and task sets after "/" or a word, open pull requests after "#", changed files after "@".
-  // A key press reads nothing: what is read is kept for a short while (core/typeahead.ts). The engine's own rows stay first; Tab takes one.
-  on('prompt.autocomplete', { token: /^(?:[/#@]|[^\s/#@]{3})/ }, async ($, e, next) => {
-    const r = await next(e)
-    if (nextMem.mode !== 'hint') return r
-    try {
-      const i = io($)
-      const cwd = await $.session.cwd()
-      const now = await $.clock.now()
-      const rows = await typeaheadRows(i, e.token, cwd, now, () => quickSay(i))
-      return rows.length === 0 ? r : { suggestions: [...r.suggestions, ...rows] }
-    } catch {
-      return r
-    }
   }).catch(($, e, next) => next(e))
 
   // The engine's own hint is kept: vaken's is dropped when the engine proposed one after this turn began.

@@ -12,8 +12,7 @@ import { chipWord, needsCount, reasonWords } from '../logic'
 import { chevronOf, groupsView, toggle, whatLine } from '../parts'
 import type { PaneCtx } from '../parts'
 import type { LineGroup } from '../linecards'
-import { agoWord, hereNews, needsGroups, newsCount, newsFactsOf, newsGroups, ruleGroups } from '../needs'
-import { allowMem } from '../../../core/allowrules'
+import { agoWord, hereNews, needsGroups, newsCount, newsFactsOf, newsGroups } from '../needs'
 import { askOpen } from './talk'
 import { FRESH_BAND_ID, FRESH_PRESS } from '../../../core/freshstart'
 import { FRESH_BRIEF } from '../rowact'
@@ -44,7 +43,7 @@ export function BandListCard(c: PaneCtx) {
 export const needsGroupsOf = (c: { view: PaneCtx['view']; prefs: PaneCtx['prefs'] }): LineGroup[] => {
   const now = c.view.now ?? 0
   const news = newsFactsOf(c.prefs, now)
-  return joinHeads([...hereNews(news, tr), ...needsGroups(c.prefs.inbox, now, tr), ...newsGroups(news, tr), ...ruleGroups(allowMem.offers, tr)])
+  return joinHeads([...hereNews(news, tr), ...needsGroups(c.prefs.inbox, now, tr), ...newsGroups(news, tr)])
 }
 const joinHeads = (groups: LineGroup[]): LineGroup[] =>
   groups.reduce<LineGroup[]>((out, g) => {

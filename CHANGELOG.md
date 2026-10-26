@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.169.0
+
+Ready for the plugin directory's policy check. vaken now has no hook on Claude Code's permission check, and it starts or stops no agent itself.
+
+- Removed: the rows vaken added under the chat box while you typed.
+- Removed: the band line while Claude Code's "Allow?" question waits, and the offer of an allow rule after 3 yeses. `/vaken-guard rules` is gone too.
+- The band still says why Claude Code stopped a step. That line has no button now. Its setting is now called "Why a step stopped". It is always a calm line now: a risky step no longer gets the amber ▲ there.
+- Task runner: the four helper types (Researcher, Builder, Reviewer, Fixer) are now agent files in the plugin, so the "Offer agent types" setting is gone. vaken asks Claude in a message to start each helper, with its task, type, model and folder. To stop a helper, vaken asks Claude in a message. A stop is a request, so a time or cost limit is no longer a hard stop.
+- Agent models: Auto now gives the same tip as Suggest. vaken never changes an agent's model.
+- The step timer now uses Claude Code's "needs your permission" notice. It still does not time a step that waits for you.
+- The status page address is written as fixed text in the code.
+- No local name `on` any more where the directory keeps that name.
+- An invisible character in the Overlap card's code is now written as an escape. The card looks the same.
+- The README has a new section, "What vaken does on your computer": files, programs, web addresses, prompts, agents, tools and permission decisions.
+
+## 1.168.8
+
+A slow layout test gets the same 10-minute limit as the other layout sweeps, so a slow Windows test machine no longer fails it. No change in what vaken does.
+
 ## 1.168.7
 
 The type check passes with Claude Code 2.1.310, whose hook error types changed. No change in what vaken does.

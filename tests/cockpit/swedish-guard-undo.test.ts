@@ -4,7 +4,6 @@ import type { On } from 'claude-code'
 
 import { setLang } from '../hooks/core/lang'
 import { buildDigest, modeLines, restoreLines } from '../hooks/core/away'
-import { rulesText } from '../hooks/core/allowrules'
 import { parseGuardAsk, statusText } from '../hooks/core/guard'
 import { commandsText } from '../hooks/core/guardcmds'
 import { emptyState } from '../hooks/core/proof'
@@ -50,10 +49,7 @@ test('the guard status, its asks and the command list read in Swedish, and in En
   expect(commandsText(list, true)).toContain('failed (exit 1)')
 })
 
-test('the rules offered and the away lines read in Swedish', () => {
-  expect(inSv(() => rulesText({}, 'offer'))).toContain('Ingen regel har föreslagits ännu.')
-  expect(inSv(() => rulesText({}, 'off'))).toContain('Tillåtelseregler är av.')
-  expect(rulesText({}, 'offer')).toContain('No rule offered yet.')
+test('the away lines read in Swedish', () => {
   const run = { at: NOW - 30 * MIN, until: NOW + 90 * MIN, costBase: {} }
   const saved = { policy: { old: null, set: 'careful' }, budget: { old: 'warn', set: 'stop', limit: 25 } }
   const sv = inSv(() => modeLines(run, saved, NOW).join('\n'))
@@ -167,7 +163,6 @@ test('the commands answer in the language of Settings: Swedish when it says so',
     expect(await ask($, 'vaken-pause', 'status')).toMatch(/^Pausad för säkerhets skull\./)
     expect(await ask($, 'vaken-pause', 'off')).toBe('Återupptagen. Steg som ändrar saker fungerar igen i den här sessionen.')
     expect(await ask($, 'vaken-guard', 'scope')).toBe('Inga mappar valda. /vaken-guard scope <mappar...> väljer dem för den här sessionen.')
-    expect(await ask($, 'vaken-guard', 'rules')).toContain('Ingen regel har föreslagits ännu.')
     expect(await ask($, 'vaken-undo')).toContain('Ingen fil har ändrats i den här sessionen ännu, så det finns inget att ångra.')
     expect(await ask($, 'vaken-away', 'digest')).toBe('Det finns ingen sammanfattning ännu. Vaken gör en när du avslutar frånvaroläget: /vaken-away off.')
     expect(await ask($, 'vaken-help', 'run after-limit off')).toBe('Avbrutet. Inget väntar på en återställning i den här sessionen nu.')

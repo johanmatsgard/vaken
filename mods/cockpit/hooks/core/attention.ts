@@ -95,51 +95,34 @@ const STEPS_MAX = 20
 
 export function stepStart(id: string, hash: string, now: number): void {
   runawayMem.steps.delete(id)
-  const step: Step = { hash, startedAt: now, asked: false }
+  // The notice came before the call: this step is the one that waits for the person
+  const step: Step = { hash, startedAt: now, asked: askEarly.at !== undefined && now >= askEarly.at && now - askEarly.at < ASK_EARLY_MS }
+  askEarly.at = undefined
   runawayMem.steps.set(id, step)
-  // The check came before the call: its answer is already known, so the step is timed from it
-  const early = earlyChecks.get(id)
-  if (early !== undefined) {
-    earlyChecks.delete(id)
-    applyCheck(step, early.decision, early.at)
-  }
   while (runawayMem.steps.size > STEPS_MAX) {
     const first = runawayMem.steps.keys().next().value
     if (first === undefined) break
     runawayMem.steps.delete(first)
   }
 }
-// The check's answers that came before their step's call, by call id: only the decision and the time, a few kept
-const earlyChecks = new Map<string, { decision: string; at: number }>()
-const checkedEarlyMax = 20
-const applyCheck = (s: Step, decision: string, at: number): void => {
-  if (decision === 'ask') s.asked = true
-  else if (decision === 'allow') s.startedAt = at
-}
-// Claude Code's own check of the step: allowed now, so its clock starts now; or it asks the person, so it is not timed.
-// A check that comes before the step's call is kept by its id, and stepStart reads it.
-export function stepChecked(id: string, decision: string, now: number): void {
-  const s = runawayMem.steps.get(id)
-  if (s === undefined) {
-    earlyChecks.delete(id)
-    earlyChecks.set(id, { decision, at: now })
-    while (earlyChecks.size > checkedEarlyMax) {
-      const first = earlyChecks.keys().next().value
-      if (first === undefined) break
-      earlyChecks.delete(first)
-    }
-    return
-  }
-  applyCheck(s, decision, now)
+// Claude Code told the person it needs a permission (its Notification): the newest step still running waits for the person, so it is not timed.
+// The notice names no call id, so the newest open step is the one asked about; with no step open yet, the next step to start is.
+// A notice with no step is kept this long only: a refused step never starts, and must not leave the next step untimed
+const ASK_EARLY_MS = 30_000
+const askEarly: { at?: number } = {}
+export function stepAsked(now: number): void {
+  let newest: Step | undefined
+  for (const s of runawayMem.steps.values()) newest = s
+  if (newest !== undefined) newest.asked = true
+  else askEarly.at = now
 }
 export const stepEnd = (id: string): void => {
   runawayMem.steps.delete(id)
-  earlyChecks.delete(id)
 }
 // A turn's start and end: no step of an older answer still runs
 export function stepsReset(turnId?: string): void {
   runawayMem.steps.clear()
-  earlyChecks.clear()
+  askEarly.at = undefined
   runawayMem.turnId = turnId
   runawayMem.silenced = undefined
 }

@@ -1,4 +1,4 @@
-# All 190 vaken features
+# All 187 vaken features
 
 vaken is mission control for Claude Code Desktop. Every feature below ships in the plugin. Back to the [README](../README.md).
 
@@ -26,12 +26,10 @@ Seat belt, not a sandbox.
 18. "Going round in circles" note when the same file is edited again and again.
 19. Goal-drift watch: many edits far from your goal.
 20. Agent cap: warns or stops when too many agents run.
-21. Explains Claude Code's own "Allow?" question in plain words, before you answer.
-22. Explains a step that was denied, for 3 minutes.
-23. Offers an allow rule after you said yes 3 times. Never for a risky step, and you add it yourself.
-24. Plugin trust card: what each plugin you installed can do.
-25. Merge guard: a merge needs every check green, and vaken reads the exact command first.
-26. Keep going until green: at most 3 fix rounds, then it stops and tells you.
+21. Explains a step that was denied, for 3 minutes.
+22. Plugin trust card: what each plugin you installed can do.
+23. Merge guard: a merge needs every check green, and vaken reads the exact command first.
+24. Keep going until green: at most 3 fix rounds, then it stops and tells you.
 
 ## 👀 Needs you, in one line
 
@@ -77,7 +75,7 @@ Know before you hit the wall.
 14. Big-file question: a huge @ file can send only its last 200 lines.
 15. Skips repeated reminders.
 16. Model and effort hint: a cheaper model or lower effort when the ask is small.
-17. Lookup agents on the cheaper model.
+17. A tip when a lookup agent could use a cheaper model.
 18. Warns that a model switch drops the prompt cache.
 19. Instruction-file diet: size and repeated lines of your CLAUDE.md files.
 20. Cost hint before a big job.
@@ -118,16 +116,15 @@ Better asks, better answers.
 9. What just happened: a short story of the last turn.
 10. Next-step buttons (Run tests, Commit, What changed) send the likely next ask in one press.
 11. Quick actions: your own one-word asks.
-12. Typeahead: quick actions, pull requests and changed files as you type.
-13. Working habits: a visible task list, a done and next close, questions you can press.
-14. Skill coach: offers a skill for a request you repeat.
-15. Learns you: a correction you repeat 3 times becomes a project rule, on your yes.
-16. Selected text: explain it, make it a task, or copy it.
-17. Steer queue: line up sentences for a busy session.
-18. Skills card: which skills you use, what they cost, and a search.
-19. Decision log.
-20. Parking lot for side ideas, per project.
-21. A read-only status tool that Claude itself can call.
+12. Working habits: a visible task list, a done and next close, questions you can press.
+13. Skill coach: offers a skill for a request you repeat.
+14. Learns you: a correction you repeat 3 times becomes a project rule, on your yes.
+15. Selected text: explain it, make it a task, or copy it.
+16. Steer queue: line up sentences for a busy session.
+17. Skills card: which skills you use, what they cost, and a search.
+18. Decision log.
+19. Parking lot for side ideas, per project.
+20. A read-only status tool that Claude itself can call.
 
 ## ✅ Proof, not promises
 

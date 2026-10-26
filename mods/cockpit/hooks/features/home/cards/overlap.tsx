@@ -30,7 +30,7 @@ export const pathLine = (path: string, roomPt: number): string =>
   path
     .split(/(?<=[/\\])/)
     .map(p => fitName(p, roomPt))
-    .join('​')
+    .join('\u200b')
 
 // The row names the file by its name; the opened row gives its whole path. With no file ("A file changed..."), the name is on its own dim line
 const overlapText = (c: PaneCtx, o: Overlap, file?: string): string => {

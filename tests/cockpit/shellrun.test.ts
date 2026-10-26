@@ -140,7 +140,7 @@ test('PowerShell that cannot start is a plain line, never an error (English and 
 
 test('the plan check asks for its argv by system', async () => {
   const run = async () => ({ exitCode: 0, stdout: '', stderr: '' })
-  const base = { spawn: async () => ({}), stop: async () => undefined, send: async () => undefined, run, root: async () => '/r', cwd: async () => '/r', list: async () => [], submit: async () => undefined, after: () => undefined, register: async () => undefined }
+  const base = { send: async () => undefined, run, root: async () => '/r', cwd: async () => '/r', list: async () => [], submit: async () => undefined, after: () => undefined }
   const mac = runnerOpsOf({ ...base, io: fakeIo(okRun([])) })
   expect(await mac.shell!('npm test')).toEqual({ argv: ['sh', '-c', 'npm test'], windows: false })
   const win = runnerOpsOf({ ...base, io: bindPlatform(fakeIo(okRun([])), async () => 'Windows_NT') })

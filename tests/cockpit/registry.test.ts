@@ -13,7 +13,6 @@ const LONGER: Record<string, number> = {
   'What the prompt review does': 5,
   'What the answer shape does': 7,
   'How sure is Claude, and what comes first?': 4,
-  'How do I save usage with cheaper models?': 4,
   'What the Computer card does': 4,
   'What the parking lot is': 4,
   'What happens when I hit my plan limit?': 4,

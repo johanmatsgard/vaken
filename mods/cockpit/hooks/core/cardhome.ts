@@ -56,7 +56,7 @@ export const CARD_SETTINGS: Record<string, readonly string[]> = {
   autopilot: ['fresh.nudge', 'plan.first', 'prompt.check', 'assume.check', 'tasks.visible', 'habit.summary', 'habit.ask', 'habit.chapters', 'rules.mode', 'decisions.mode', 'teach.mode', 'value.weekly', 'today.brief', 'brief.mode'],
   proof: ['proof.claims', 'proof.done', 'proof.receipts', 'proof.drift', 'proof.anomaly', 'proof.confidence'],
   guard: ['guard.destructive', 'guard.scope', 'guard.packages', 'guard.tests', 'guard.world', 'guard.secrets', 'guard.migrations', 'away.policy', 'guard.outbox', 'guard.env', 'guard.commands', 'guard.fence', 'allow.rules'],
-  agents: ['cap.mode', 'route.mode', 'runner.researcher', 'runner.builder', 'runner.reviewer', 'runner.fixer', 'cap.max', 'agents.offer', 'agents.board', 'crew.worktrees'],
+  agents: ['cap.mode', 'route.mode', 'runner.researcher', 'runner.builder', 'runner.reviewer', 'runner.fixer', 'cap.max', 'agents.board', 'crew.worktrees'],
   computer: ['laptop.mode', 'awake.mode', 'awake.away'],
   skills: ['coach.mode'],
   prs: ['crew.pr'],

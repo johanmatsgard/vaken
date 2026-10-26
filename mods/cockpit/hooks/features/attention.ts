@@ -3,7 +3,7 @@ import type { EngineInterface, On } from 'claude-code'
 
 import { parseStoredUsage, APP_USAGE_KEY } from '../core/appusage'
 import { parseStoredSessions, APP_SESSIONS_KEY } from '../core/appsessions'
-import { RECAP_AFTER_MS, RUNAWAY_BAND_ID, batchText, glanceLines, heartbeat, isQuiet, noticePlan, notices, recapWords, runawayLine, runawayMem, runawayNow, stepChecked, stepEnd, stepStart, stepsReset } from '../core/attention'
+import { RECAP_AFTER_MS, RUNAWAY_BAND_ID, batchText, glanceLines, heartbeat, isQuiet, noticePlan, notices, recapWords, runawayLine, runawayMem, runawayNow, stepAsked, stepEnd, stepStart, stepsReset } from '../core/attention'
 import { stepHash } from '../core/allowrules'
 import { fieldsOf } from '../core/eventfields'
 import { redrawIfChanged } from '../core/redraw'
@@ -174,15 +174,18 @@ export function registerAttention(on: On): void {
     }
   }).catch(($, e, next) => next(e))
 
-  // Claude Code's own check: an allowed step's clock starts now; a step it asks the person about is not timed
-  on('tool.check', { tool: /(?<runaway>)/ }, async ($, e, next) => {
-    const r = await next(e)
+  // Claude Code tells the person it needs a permission: the step that waits for the OK is not timed. It only notes it, never answers.
+  on('classic.Notification', { notification_type: /permission/i }, async ($, e, next) => {
     try {
-      const checkedAt = await $.clock.now()
-      if (typeof e.tool_use_id === 'string') stepChecked(e.tool_use_id, r.decision, checkedAt)
+      // The notice says the tool ("... permission to use Bash"); only a shell step is timed
+      const tool = /\buse (.+?)\s*$/i.exec(e.message)?.[1] ?? ''
+      if (e.agent_id === undefined && isShellTool(tool)) {
+        const askedAt = await $.clock.now()
+        stepAsked(askedAt)
+      }
     } catch {
     }
-    return r
+    return next(e)
   }).catch(($, e, next) => next(e))
 
   // The main loop's running answer, so Stop the answer can end it; a new or ended answer has no step left running

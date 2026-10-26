@@ -9,7 +9,7 @@ import { HISTORY_KEY, REPORT_KEY, parseReports } from '../hooks/core/overnight'
 import { AWAY_KEY } from '../hooks/core/guardworld'
 import { settingStoreKey } from '../hooks/core/settings'
 import { APP_USAGE_KEY } from '../hooks/core/appusage'
-import { loadRun, tasksCommand, tick, keepWatching } from '../hooks/features/orchestra'
+import { bindSpawn, loadRun, tasksCommand, tick, keepWatching } from '../hooks/features/orchestra'
 import type { RunnerOps } from '../hooks/features/orchestra'
 import { NIGHT_CLAIM_MAX_MS, forgetPower, nightClaimLive } from '../hooks/features/nightrun'
 import { noteAnswer, notePrompt } from '../hooks/features/night'
@@ -62,25 +62,34 @@ function world(files: Record<string, string> = { [FILE]: '- Fix the header\n- Wr
     toast: () => undefined,
     invalidate: () => undefined,
   }
+  // Claude, faked: `act` starts the helpers the last messages asked for, through the agent.spawn watch (bindSpawn).
+  const asked: string[] = []
   const ops: RunnerOps = {
-    spawn: async a => {
-      nextId += 1
-      calls.push(`spawn ${a.description}`)
-      return { agentId: `ag${nextId}` }
-    },
-    stop: async id => void calls.push(`stop ${id}`),
     send: async () => undefined,
     sh: async () => ({ code: 0, out: 'ok' }),
     root: async () => ROOT,
     statuses: async () => [],
-    ask: async text => void calls.push(`ask ${text}`),
-    roles: async () => true,
+    ask: async text => {
+      calls.push(`ask ${text}`)
+      asked.push(text)
+    },
+  }
+  const act = async (): Promise<void> => {
+    for (const text of asked.splice(0)) {
+      for (const block of text.split(/\n(?=Agent \d+\n)/).slice(1)) {
+        const description = /^- description: (.*)$/m.exec(block)?.[1] ?? ''
+        const prompt = /\n---\n([\s\S]*?)\n---/.exec(block)?.[1] ?? ''
+        nextId += 1
+        calls.push(`spawn ${description}`)
+        await bindSpawn(io, description, prompt, undefined, { agentId: `ag${nextId}` })
+      }
+    }
   }
   bindSafeFs(io, memSafeFs(() => disk.keys()))
   forgetPower()
   nightMem.lastPrompt = undefined
   nightMem.promises = []
-  return { io, ops, mem, calls, setNow: (t: number) => void (clock = t), setPower: (text: string) => void (pmset = text) }
+  return { io, ops, mem, calls, act, setNow: (t: number) => void (clock = t), setPower: (text: string) => void (pmset = text) }
 }
 
 test('Windows power: plugged in or no battery goes, battery pauses, bad text is unknown', () => {
@@ -132,6 +141,7 @@ test('a night run needs night.mode on, turns strict safety on, and puts it back 
   w.mem.set(settingStoreKey('night.mode'), 'on')
   w.mem.set(POLICY, 'off')
   const said = await tasksCommand(w.io, w.ops, 'night')
+  await w.act()
   expect(said).toMatch(/^Night run started: 2 tasks/)
   expect(w.mem.get(AWAY_KEY)).toEqual({ at: NOW })
   expect(w.mem.get(POLICY)).toBe('careful')
@@ -142,6 +152,7 @@ test('a night run needs night.mode on, turns strict safety on, and puts it back 
   expect(w.calls.filter(c => c.startsWith('spawn'))).toHaveLength(1)
   w.setNow(NOW + HOUR)
   await tick(w.io, w.ops, [{ id: 'ag1', status: 'completed' }])
+  await w.act()
   expect(w.calls.filter(c => c.startsWith('spawn'))).toHaveLength(2)
   expect(w.mem.get(AWAY_KEY)).toEqual({ at: NOW })
   w.setNow(NOW + 2 * HOUR)

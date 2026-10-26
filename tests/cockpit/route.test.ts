@@ -64,9 +64,9 @@ test('deep wins over lookup, and only the first words of the description count',
 
 const base: SpawnFacts = { mode: 'auto', cheap: 'haiku', job: 'lookup', parentModel: 'claude-opus-4-1', fork: false, isTeammate: false, isWorkflow: false }
 
-test('Auto rewrites a lookup helper with no model of its own; Suggest only says so', () => {
-  expect(decideRoute(base)).toEqual({ action: 'rewrite', model: 'haiku' })
-  expect(decideRoute({ ...base, cheap: 'sonnet' })).toEqual({ action: 'rewrite', model: 'sonnet' })
+test('Auto and Suggest both only say that a lookup helper with no model of its own could run cheaper; nothing is rewritten', () => {
+  expect(decideRoute(base)).toEqual({ action: 'suggest', model: 'haiku' })
+  expect(decideRoute({ ...base, cheap: 'sonnet' })).toEqual({ action: 'suggest', model: 'sonnet' })
   expect(decideRoute({ ...base, mode: 'suggest' })).toEqual({ action: 'suggest', model: 'haiku' })
   expect(decideRoute({ ...base, mode: 'off' })).toEqual({ action: 'none' })
 })
@@ -85,21 +85,21 @@ test('Routing only ever sends down: a Researcher on Opus or Fable never moves a 
   expect(decideRoute({ ...base, parentModel: 'claude-sonnet-5', cheap: 'opus' })).toEqual({ action: 'none' })
   expect(decideRoute({ ...base, parentModel: '', cheap: 'opus' })).toEqual({ action: 'none' })
   expect(decideRoute({ ...base, parentModel: 'claude-opus-5-5', cheap: 'fable' })).toEqual({ action: 'none' })
-  expect(decideRoute({ ...base, parentModel: 'claude-fable-5-1', cheap: 'opus' })).toEqual({ action: 'rewrite', model: 'opus' })
+  expect(decideRoute({ ...base, parentModel: 'claude-fable-5-1', cheap: 'opus' })).toEqual({ action: 'suggest', model: 'opus' })
 })
 
 test('nothing is cheaper than a parent that is already cheap', () => {
   expect(decideRoute({ ...base, parentModel: 'claude-haiku-4-5' })).toEqual({ action: 'none' })
   expect(decideRoute({ ...base, parentModel: 'claude-sonnet-4-5', cheap: 'sonnet' })).toEqual({ action: 'none' })
-  expect(decideRoute({ ...base, parentModel: 'claude-sonnet-4-5' })).toEqual({ action: 'rewrite', model: 'haiku' })
+  expect(decideRoute({ ...base, parentModel: 'claude-sonnet-4-5' })).toEqual({ action: 'suggest', model: 'haiku' })
 })
 
 test('a helper that a file or a plugin defines is never rewritten, and nothing goes above its own model', () => {
   expect(decideRoute({ ...base, userDefined: true })).toEqual({ action: 'none' })
-  expect(decideRoute({ ...base, userDefined: false })).toEqual({ action: 'rewrite', model: 'haiku' })
+  expect(decideRoute({ ...base, userDefined: false })).toEqual({ action: 'suggest', model: 'haiku' })
   expect(decideRoute({ ...base, cheap: 'sonnet', ownModel: 'haiku' })).toEqual({ action: 'none' })
   expect(decideRoute({ ...base, cheap: 'sonnet', ownModel: 'claude-sonnet-4-5' })).toEqual({ action: 'none' })
-  expect(decideRoute({ ...base, cheap: 'haiku', ownModel: 'opus' })).toEqual({ action: 'rewrite', model: 'haiku' })
+  expect(decideRoute({ ...base, cheap: 'haiku', ownModel: 'opus' })).toEqual({ action: 'suggest', model: 'haiku' })
 })
 
 test('who defined a type: the offer source or the provider, and the agent file', () => {
@@ -212,8 +212,8 @@ test('/vaken-tasks route says the settings and that there is not enough data', S
   expect(r.text).toMatch(/Not enough data/)
 })
 
-test('Auto sends a lookup helper to the Researcher’s model: All projects, then This session over it; an older Routing choice counts until the Researcher is set', async ($, on) => {
-  mock.clock(on, { now: NOW })
+test('Auto never changes a helper: the tip names the Researcher’s model, All projects, then This session over it; an older Routing choice counts until the Researcher is set', async ($, on) => {
+  mock.clock(on, { now: NOW + 1 * 3_600_000 })
   const mem = memStore(on)
   mock.session(on)
   on('session.id', () => ({ value: 'test-session' }))
@@ -231,13 +231,14 @@ test('Auto sends a lookup helper to the Researcher’s model: All projects, then
   expect(said.text).toBe('For this session only: runner.researcher is Sonnet.')
   expect(mem.get('cockpit:sessset:test-session')).toEqual({ 'runner.researcher': 'sonnet' })
   await $.agent.spawn({ prompt: 'Find it.', description: 'Search the repo', subagentType: 'Explore' })
-  expect(seen).toEqual(['sonnet', 'haiku', 'sonnet'])
+  expect(seen).toEqual([undefined, undefined, undefined])
+  expect(((mem.get('cockpit:ledger:compact') as Array<{ detail?: string }> | undefined) ?? []).map(l => l.detail)).toEqual(['Ask Claude to start it on sonnet next time.'])
   const r = (await $.command.run({ ...viaParent('vaken-route', ''), origin: { kind: 'composer' } } as never)) as { text: string }
   expect(r.text).toMatch(/Lookup model: sonnet \(this session only\)/)
 })
 
-test('Auto: a lookup helper is sent to the cheaper model and a ledger line is written; a helper with a model of its own is left alone', async ($, on) => {
-  mock.clock(on, { now: NOW })
+test('Auto: a lookup helper starts as Claude asked and a tip line is written; a helper with a model of its own gets no tip', async ($, on) => {
+  mock.clock(on, { now: NOW + 2 * 3_600_000 })
   const mem = memStore(on)
   mock.session(on)
   on('session.id', () => ({ value: 'test-session' }))
@@ -250,12 +251,12 @@ test('Auto: a lookup helper is sent to the cheaper model and a ledger line is wr
   await $.agent.spawn({ prompt: 'Find the settings code.', description: 'Search for settings', subagentType: 'Explore' })
   await $.agent.spawn({ prompt: 'Find the settings code.', description: 'Search for settings', subagentType: 'Explore', model: 'opus' })
   await $.agent.spawn({ prompt: 'Plan it.', description: 'Plan the work', subagentType: 'Plan' })
-  expect(seen).toEqual(['haiku', 'opus', undefined])
-  expect(whats(mem)).toEqual(['Sent a lookup agent to a cheaper model'])
+  expect(seen).toEqual([undefined, 'opus', undefined])
+  expect(whats(mem)).toEqual(['A lookup agent could run on a cheaper model'])
 })
 
-test('Auto: a user agent with its own model is not rewritten, a built-in lookup with no file is', async ($, on) => {
-  mock.clock(on, { now: NOW })
+test('Auto: a user agent with its own model gets no tip, a built-in lookup with no file does; neither is changed', async ($, on) => {
+  mock.clock(on, { now: NOW + 3 * 3_600_000 })
   const mem = memStore(on)
   mock.session(on)
   on('session.id', () => ({ value: 'test-session' }))
@@ -270,16 +271,16 @@ test('Auto: a user agent with its own model is not rewritten, a built-in lookup 
     return { model: e.model ?? 'inherit', agentId: `u${seen.length}` } as never
   })
   mem.set(settingStoreKey('route.mode'), 'auto')
-  // The Researcher is Sonnet in the map: a rewrite would send the haiku agent up.
+  // The Researcher is Sonnet in the map: a tip would point the haiku agent up.
   mem.set(settingStoreKey('runner.researcher'), 'sonnet')
   await $.agent.spawn({ prompt: 'Find it.', description: 'Search the repo', subagentType: 'scout' })
   await $.agent.spawn({ prompt: 'Find it.', description: 'Search the repo', subagentType: 'Explore' })
-  expect(seen).toEqual([undefined, 'sonnet'])
-  expect(whats(mem)).toEqual(['Sent a lookup agent to a cheaper model'])
+  expect(seen).toEqual([undefined, undefined])
+  expect(whats(mem)).toEqual(['A lookup agent could run on a cheaper model'])
 })
 
 test('Suggest: nothing is changed, one ledger line and no repeat within 10 minutes', async ($, on) => {
-  mock.clock(on, { now: NOW })
+  mock.clock(on, { now: NOW + 4 * 3_600_000 })
   const mem = memStore(on)
   mock.session(on)
   on('session.id', () => ({ value: 'test-session' }))

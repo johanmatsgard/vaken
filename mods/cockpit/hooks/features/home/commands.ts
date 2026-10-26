@@ -16,7 +16,6 @@ import { findSetting, parseAsk, readSetting, readSettings, settingsText, writeSe
 import type { Ask } from '../../core/settings'
 import { BY_PERSON_ONLY } from '../../core/origin'
 import { LEDGER_KEY, logLines, readLog } from '../compaction'
-import { isRoleKey, rolesChanged } from '../orchestra'
 import { applyLayout, deleteLayout, readLayouts, saveLayout, seedRecipes, snapshot } from './layouts'
 import { extraOf, whyNotNow } from './compactwhy'
 import { cacheTtlMs, foldWords, hereLines, limitBlocks, limitLines } from './logic'
@@ -114,7 +113,6 @@ export async function settingsCommand(eng: HomeEngine, args: string, person: boo
       const row = findSetting(words[1])
       return row === undefined ? `No setting named "${words[1]}". /vaken-settings all lists every key and its values.` : `No such choice: ${words[1]} ${words[2]}. ${words[1]} takes: ${row.options.map(o => o.value).join(', ')}.`
     }
-    if (isRoleKey(words[1])) await rolesChanged(eng.runnerOps())
     i.invalidate()
     const kept = (await readProjectSet(i, root))[words[1]]
     return `For this project (${projectName(root)}) only: ${words[1]} is ${findSetting(words[1])?.options.find(o => o.value === kept)?.label ?? words[2]}.`
@@ -128,7 +126,6 @@ export async function settingsCommand(eng: HomeEngine, args: string, person: boo
     }
     if (words.length !== 3) return `Use: /vaken-settings session KEY VALUE, or /vaken-settings session reset. Keys: ${SESSION_KEYS.join(', ')}.`
     if (!(await writeSessionSetting(i, sid, words[1], words[2]))) return `This session can keep only ${SESSION_KEYS.join(', ')}, each with one of its values. /vaken-settings all lists them.`
-    if (isRoleKey(words[1])) await rolesChanged(eng.runnerOps())
     i.invalidate()
     return `For this session only: ${words[1]} is ${findSetting(words[1])?.options.find(o => o.value === words[2])?.label ?? words[2]}.`
   }
@@ -149,7 +146,6 @@ export async function settingsCommand(eng: HomeEngine, args: string, person: boo
     const ownHere = root === undefined ? undefined : (await readProjectSet(i, root))[ask.key]
     const word = (v: string | undefined): string => row?.options.find(o => o.value === v)?.label ?? String(v)
     await writeSetting(i, ask.key, ask.value)
-    if (isRoleKey(ask.key)) await rolesChanged(eng.runnerOps())
     i.invalidate()
     const gone = ask.old === undefined ? '' : `"${ask.old}" is gone, so it is now ${word(ask.value)}. `
     return `${gone}${ask.key}: ${word(ask.value)}${before === ask.value ? ' (it was already so)' : ` (was ${word(before)})`}, for all projects.${ownHere === undefined ? '' : ` This project keeps its own: ${word(ownHere)}.`} /vaken-settings lists the rest.`

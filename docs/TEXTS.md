@@ -2,7 +2,7 @@
 
 <!-- GENERATED from hooks/i18n/rows/*.ts by scripts/strings-md.sh. Do not edit by hand. -->
 
-**Generated, never edit by hand.** This page is the one text table (`mods/cockpit/hooks/i18n/rows`) written out to read: 5131 texts in 66 areas, languages en, sv. To change a text, edit the table (or export the sheet with `sh scripts/strings-export.sh sheet.csv`, change it, and import it with `sh scripts/strings-import.sh sheet.csv`), then regenerate this page with `sh scripts/strings-md.sh`. `sh scripts/check-strings.sh` fails when this page is out of date.
+**Generated, never edit by hand.** This page is the one text table (`mods/cockpit/hooks/i18n/rows`) written out to read: 5101 texts in 66 areas, languages en, sv. To change a text, edit the table (or export the sheet with `sh scripts/strings-export.sh sheet.csv`, change it, and import it with `sh scripts/strings-import.sh sheet.csv`), then regenerate this page with `sh scripts/strings-md.sh`. `sh scripts/check-strings.sh` fails when this page is out of date.
 
 A text with a count has two lines, `one` and `other`. `{n}` and the like are filled in when the text is shown.
 
@@ -35,7 +35,7 @@ A text with a count has two lines, `one` and `other`. `{n}` and the like are fil
 - [preview](#preview) (29): The Preview card.
 - [setup](#setup) (63): The Agent setup card.
 - [do](#do) (75): Do: run commands from the last answer.
-- [next](#next) (36): Shown from the code.
+- [next](#next) (30): Shown from the code.
 - [welcome](#welcome) (39): Shown from the code.
 - [night](#night) (25): Shown from the code.
 - [tell](#tell) (16): Shown from the code.
@@ -43,9 +43,9 @@ A text with a count has two lines, `one` and `other`. `{n}` and the like are fil
 - [big](#big) (7): Shown from the code.
 - [selected](#selected) (13): Shown from the code.
 - [teach](#teach) (47): Shown from the code.
-- [allow](#allow) (51): Shown from the code.
+- [allow](#allow) (34): Shown from the code.
 - [shipstep](#shipstep) (38): Ship steps (merge and check).
-- [settings](#settings) (205): Settings: sections, rows, modes and layout names.
+- [settings](#settings) (203): Settings: sections, rows, modes and layout names.
 - [cards](#cards) (15): Cards: rules and titles.
 - [firstsetup](#firstsetup) (49): Shown from the code.
 - [guide](#guide) (52): The card guide.
@@ -70,7 +70,7 @@ A text with a count has two lines, `one` and `other`. `{n}` and the like are fil
 - [cmd](#cmd) (78): Shown from the code.
 - [cmda](#cmda) (163): Shown from the code.
 - [cmdb](#cmdb) (265): Shown from the code.
-- [cmdc](#cmdc) (193): Shown from the code.
+- [cmdc](#cmdc) (188): Shown from the code.
 - [cmdd](#cmdd) (227): Shown from the code.
 - [cmde](#cmde) (57): Shown from the code.
 - [cmdf](#cmdf) (326): Shown from the code.
@@ -2120,12 +2120,6 @@ Shown from the code. (Code: n/a.)
 | `next.quick_taken` | That name is taken. Pick another one. | Namnet är upptaget. Välj ett annat. |  |
 | `next.quick_yours` | Yours: {list} | Dina: {list} |  |
 | `next.run_tests` | Run tests | Kör testerna |  |
-| `next.type_changed` | Changed, not committed | Ändrad, inte committad |  |
-| `next.type_help_text` | With Next step buttons set to Buttons and hint, typing in the chat box offers rows under the app's own: a quick action after / or its name, a saved task set after /, an open pull request after #, and a file changed and not committed after @. Tab takes one, and vaken stores nothing new. | Med Knappar för nästa steg på Knappar och tips visar chattrutan rader under appens egna när du skriver: ett snabbval efter / eller dess namn, en sparad uppgiftsuppsättning efter /, en öppen pull request efter # och en ändrad fil som inte är committad efter @. Tab tar en, och vaken sparar inget nytt. |  |
-| `next.type_help_title` | What the rows under the chat box are | Vad raderna under chattrutan är |  |
-| `next.type_own` | Your quick action: {text} | Ditt snabbval: {text} |  |
-| `next.type_pr` | Open pull request | Öppen pull request |  |
-| `next.type_template` | Loads your saved task set | Laddar din sparade uppgiftsuppsättning |  |
 | `next.what_changed` | What changed | Vad har ändrats |  |
 
 ## welcome
@@ -2339,8 +2333,6 @@ Shown from the code. (Code: n/a.)
 
 | name | en | sv | note |
 | --- | --- | --- | --- |
-| `allow.allowed_n` | You allowed {what} {n} times. | Du tillät {what} {n} gånger. |  |
-| `allow.always_kind` | Copy the rule to always allow this kind | Kopiera regeln som alltid tillåter sådana |  |
 | `allow.ask_build` | Builds or checks the code. | Bygger eller kontrollerar koden. |  |
 | `allow.ask_changes` | Changes files in {dir}. | Ändrar filer i {dir}. |  |
 | `allow.ask_database` | Works on a database: {label}. | Arbetar mot en databas: {label}. |  |
@@ -2364,32 +2356,17 @@ Shown from the code. (Code: n/a.)
 | `allow.ask_runs` | Runs {label}. | Kör {label}. |  |
 | `allow.ask_test` | Runs the tests. | Kör testerna. |  |
 | `allow.ask_tool` | Uses {tool}. | Använder {tool}. |  |
-| `allow.copied` | Copied. Paste it into .claude/settings.json under "permissions" &gt; "allow". | Kopierad. Klistra in den i .claude/settings.json under "permissions" &gt; "allow". |  |
-| `allow.copy` | Copy the rule | Kopiera regeln |  |
 | `allow.denied_auto` | Auto mode stopped this step. | Autoläget stoppade steget. |  |
-| `allow.denied_copy` | Copy the allow rule | Kopiera tillåtelseregeln |  |
 | `allow.denied_dontask` | Don't ask mode stopped this step. | Läget Fråga inte stoppade steget. |  |
 | `allow.denied_other` | Claude Code stopped this step. | Claude Code stoppade steget. |  |
 | `allow.denied_rule` | A deny rule stopped this step. | En regel som nekar stoppade steget. |  |
-| `allow.dismissed` | Dismissed. Vaken does not offer this rule again for 30 days. | Stängd. Vaken erbjuder inte den här regeln igen på 30 dagar. |  |
-| `allow.file` | File: .claude/settings.json in the project, "permissions" &gt; "allow". | Fil: .claude/settings.json i projektet, "permissions" &gt; "allow". |  |
-| `allow.head` | Fewer questions | Färre frågor |  |
-| `allow.help_text` | When you say yes to the same kind of step 3 times in a week where Claude Code asks first, vaken shows the rule that stops that question once, such as Bash(npm test:\*). You add it yourself to .claude/settings.json under "permissions" &gt; "allow"; vaken never changes that file and never offers a rule for a risky step. /vaken-guard rules lists the rules offered so far; while Claude Code asks, the band says what the step does and whether Undo has a copy, and when it stops a step itself, why; vaken never answers for you. | När du säger ja till samma slags steg 3 gånger på en vecka där Claude Code frågar först visar vaken en gång regeln som stoppar frågan, till exempel Bash(npm test:\*). Du lägger själv till den i .claude/settings.json under "permissions" &gt; "allow"; vaken ändrar aldrig den filen och erbjuder aldrig en regel för ett riskabelt steg. /vaken-guard rules listar reglerna som erbjudits hittills; medan Claude Code frågar säger raden vad steget gör och om Ångra har en kopia, och när det självt stoppar ett steg, varför; vaken svarar aldrig åt dig. |  |
-| `allow.help_title` | What allow rules are | Vad tillåtelseregler är |  |
+| `allow.help_text` | When Claude Code itself stops a step (its auto mode, a deny rule, or don't ask mode), the band says why in one plain line for a few minutes. Vaken never answers Claude Code's Allow question and never changes your settings. | När Claude Code själv stoppar ett steg (dess autoläge, en nekaregel eller läget fråga inte) säger bandet varför på en enkel rad i några minuter. Vaken svarar aldrig på Claude Codes Tillåt-fråga och ändrar aldrig dina inställningar. |  |
+| `allow.help_title` | Why a step stopped | Varför ett steg stoppades |  |
 | `allow.keep_stopped` | Keep stopped | Håll stoppat |  |
 | `allow.kept_said` | Kept stopped. If Claude tries this exact step again in this session, it stays stopped. | Hålls stoppat. Om Claude försöker exakt samma steg igen i den här sessionen förblir det stoppat. |  |
-| `allow.label` | Allow rules | Tillåtelseregler |  |
-| `allow.next` | Press Copy the rule, then paste it into that file. Vaken never changes the file. | Tryck på Kopiera regeln och klistra sedan in den i filen. Vaken ändrar aldrig filen. |  |
-| `allow.not_copied` | Could not copy. The rule is {rule}. Add it to .claude/settings.json under "permissions" &gt; "allow". | Kunde inte kopiera. Regeln är {rule}. Lägg till den i .claude/settings.json under "permissions" &gt; "allow". |  |
-| `allow.note` | Explains each Allow question in the band, and shows its rule after 3 yeses. | Förklarar varje Tillåt-fråga i raden och visar regeln efter 3 ja. |  |
-| `allow.offer` | Offer | Erbjud |  |
-| `allow.offer_text` | You allowed {what} {n} times. To stop this question, add this rule to your settings: {rule} | Du tillät {what} {n} gånger. Lägg till den här regeln i dina inställningar för att slippa frågan: {rule} |  |
+| `allow.label` | Why a step stopped | Varför ett steg stoppades |  |
+| `allow.note` | Says in the band why Claude Code stopped a step. | Säger i bandet varför Claude Code stoppade ett steg. |  |
 | `allow.step_fact` | Step: {short} | Steg: {short} |  |
-| `allow.title` | Allow rule: {what} | Tillåtelseregel: {what} |  |
-| `allow.undo_copy` | Undo has a copy. | Ångra har en kopia. |  |
-| `allow.undo_none` | Undo has no copy. | Ångra har ingen kopia. |  |
-| `allow.what_edits` | edits in {dir} | ändringar i {dir} |  |
-| `allow.what_fetch` | fetches from {host} | hämtningar från {host} |  |
 
 ## shipstep
 
@@ -2554,8 +2531,6 @@ Settings: sections, rows, modes and layout names. (Code: n/a.)
 | `settings.notes_and_handoff` | Notes for the next session | Anteckningar till nästa session |  |
 | `settings.notes_to_claude` | Notes to Claude | Noteringar till Claude |  |
 | `settings.off` | Off | Av |  |
-| `settings.offer_helper_types_label` | Offer agent types | Erbjud agenttyper |  |
-| `settings.offer_helper_types_note` | Off: Claude is offered the four agent types only when a task run starts. | Av: Claude erbjuds de fyra agenttyperna först när en uppgiftskörning startar. |  |
 | `settings.on` | On | På |  |
 | `settings.on_of_total_on` | {on} of {total} on | {on} av {total} på | Settings, a section chip's short form when the long one does not fit beside the title |
 | `settings.on_of_total_settings_on` | {on} of {total} settings on | {on} av {total} inställningar på |  |
@@ -2602,7 +2577,7 @@ Settings: sections, rows, modes and layout names. (Code: n/a.)
 | `settings.when_a_card_has_a_problem` | When a card has a problem, it moves up; calm cards shrink to one line. | När ett kort har ett problem flyttas det upp; lugna kort krymper till en rad. |  |
 | `settings.when_a_command_deletes_force_pushes` | When a command deletes, it stops if Claude Code would not ask first, else warns. | När ett kommando raderar stoppar vaken det om Claude Code inte skulle fråga först, annars varnar den. |  |
 | `settings.when_a_database_migration_runs_it` | When a database migration runs, it warns or stops until you say yes. | När en databasmigrering körs varnar eller stoppar vaken tills du säger ja. |  |
-| `settings.when_a_lookup_helper_starts_it` | When a lookup agent starts, it tells you or uses the Researcher's model. | När en uppslagsagent startar berättar vaken det eller använder Utforskarens modell. |  |
+| `settings.when_a_lookup_helper_starts_it` | When a lookup agent starts, it tells you if the Researcher's model would do. | När en uppslagsagent startar berättar vaken om Utforskarens modell skulle räcka. |  |
 | `settings.when_a_new_package_looks_odd` | When a new package looks odd (very young, look-alike), it warns or stops. | När ett nytt paket ser konstigt ut (väldigt ungt, liknande namn) varnar eller stoppar vaken. |  |
 | `settings.when_a_new_topic_would_cost` | When a new topic would cost less in a new session, it tells you. | När ett nytt ämne blir billigare i en ny session säger vaken till. |  |
 | `settings.when_a_phone_joins_the_cockpit` | When a phone joins, vaken makes answers short and numbered. | När en telefon ansluter gör vaken svaren korta och numrerade. |  |
@@ -3724,7 +3699,7 @@ Words shared by many places: buttons, levels, states, menus, help. (Code: n/a.)
 | `common.8` | 8 | 8 |  |
 | `common.a_good_moment` | a good moment | ett bra läge |  |
 | `common.a_helper_made_no_progress_for` | An agent made no progress for 10 min | En agent gjorde inga framsteg på 10 min |  |
-| `common.a_helper_that_only_searches_or` | An agent that only searches or reads does not need the biggest model. Auto sends such an agent to a cheaper one. Suggest only tells you. Plan and review agents are never changed, nor an agent that an agent file of yours defines (it keeps the model its file chose), nor a model Claude chose. | En agent som bara söker eller läser behöver inte den största modellen. Auto skickar en sådan agenter till en billigare. Föreslå berättar bara för dig. Agenter för planering och granskning ändras aldrig, inte heller en agent som en agentfil av dig definierar (den behåller modellen som filen valde), inte heller en modell som Claude valde. |  |
+| `common.a_helper_that_only_searches_or` | An agent that only searches or reads does not need the biggest model. Suggest and Auto tell you when such an agent could run on a cheaper one; vaken never changes the agent. Plan and review agents are never flagged, nor an agent that an agent file of yours defines (it keeps the model its file chose), nor a model Claude chose. | En agent som bara söker eller läser behöver inte den största modellen. Föreslå och Auto berättar när en sådan agent kunde köras på en billigare; vaken ändrar aldrig agenten. Agenter för planering och granskning flaggas aldrig, inte heller en agent som en agentfil av dig definierar (den behåller modellen som filen valde), inte heller en modell som Claude valde. |  |
 | `common.a_helper_that_runs_longer_is` | An agent that runs longer is stopped. | En agent som kör längre stoppas. |  |
 | `common.a_layout_remembers_the_look_detail` | A layout remembers the look: detail levels, which cards show and the card order of each width. | En layout kommer ihåg utseendet: detaljnivåer, vilka kort som visas och kortens ordning för varje bredd. |  |
 | `common.a_run_that_ends_shows_here` | A run that ends shows here: what is done, what failed and what it cost. | En körning som slutar visas här: vad som är klart, vad som misslyckades och vad det kostade. |  |
@@ -4366,8 +4341,8 @@ Shown from the code. (Code: n/a.)
 | `cmd.sent_to_task_n` | Sent to task {n}. | Skickat till uppgift {n}. |  |
 | `cmd.some_folder_copies_are_still_there_task` | Some folder copies are still there: task {tasks}. First keep all (/vaken-tasks keep all: the work stays on its branches) or throw all (/vaken-tasks throw all yes: the work is deleted). | Några arbetsträd finns kvar: uppgift {tasks}. Behåll först alla (/vaken-tasks keep all: arbetet ligger kvar på sina grenar) eller kasta alla (/vaken-tasks throw all yes: arbetet raderas). |  |
 | `cmd.started` | Started: | Startad: |  |
-| `cmd.stopped_every_agent_of_the_run` | Stopped every agent of the run. | Stoppade varje agent i körningen. |  |
-| `cmd.stopped_task_n` | Stopped task {n}. | Stoppade uppgift {n}. |  |
+| `cmd.stopped_every_agent_of_the_run` | Stopped the run and asked Claude to stop its running agents. | Stoppade körningen och bad Claude stoppa dess agenter som körs. |  |
+| `cmd.stopped_task_n` | Stopped task {n} and asked Claude to stop its agent. | Stoppade uppgift {n} och bad Claude stoppa dess agent. |  |
 | `cmd.task_n_has_no_folder_copy` | Task {n} has no folder copy. | Uppgift {n} har inget arbetsträd. |  |
 | `cmd.task_n_has_not_ended` | Task {n} has not ended. | Uppgift {n} har inte tagit slut. |  |
 | `cmd.task_n_has_started_it_cannot_be` | Task {n} has started; it cannot be removed. Stop it instead. | Uppgift {n} har startat och kan inte tas bort. Stoppa den i stället. |  |
@@ -4844,12 +4819,9 @@ Shown from the code. (Code: n/a.)
 | name | en | sv | note |
 | --- | --- | --- | --- |
 | `cmdc.a_mod_cannot_switch_sessions_for_you` | A mod cannot switch sessions for you. Click the link, or find the session in the sidebar by its title. | En mod kan inte byta session åt dig. Klicka på länken, eller hitta sessionen i sidofältet på dess titel. |  |
-| `cmdc.add_one_to_claude_settings_json_in` | Add one to .claude/settings.json in the project, under "permissions" &gt; "allow". Vaken never changes that file. | Lägg till en i .claude/settings.json i projektet, under "permissions" &gt; "allow". vaken ändrar aldrig den filen. |  |
 | `cmdc.after_a_limit_mode` | After a limit: {mode}. | Efter en gräns: {mode}. |  |
 | `cmdc.allow_once_not_set_after_a_step` | Allow once: not set. After a step is stopped, /vaken-guard allow once lets the next one through. | Tillåt en gång: inte satt. När ett steg har stoppats släpper /vaken-guard allow once igenom nästa. |  |
 | `cmdc.allow_once_ready_the_next_stopped_step` | Allow once: ready. The next stopped step will go through. | Tillåt en gång: klart. Nästa stoppade steg släpps igenom. |  |
-| `cmdc.allow_rules_are_off_vaken_settings_allow` | Allow rules are off. /vaken-settings allow.rules offer turns them on. | Tillåtelseregler är av. /vaken-settings allow.rules offer slår på dem. |  |
-| `cmdc.allow_rules_when_you_allow_the_same` | Allow rules: when you allow the same kind of step 3 times in a week, vaken shows the rule once. | Tillåtelseregler: när du tillåter samma sorts steg 3 gånger på en vecka visar vaken regeln en gång. |  |
 | `cmdc.already_paused_resume_with_vaken_pause_off` | Already paused. Resume with /vaken-pause off. | Redan pausad. Återuppta med /vaken-pause off. |  |
 | `cmdc.and_n_more_names` | - and {n} more: {names} | - och {n} till: {names} |  |
 | `cmdc.answer_the_question_claude_asked` | answer the question Claude asked | svara på frågan som Claude ställde |  |
@@ -4925,7 +4897,6 @@ Shown from the code. (Code: n/a.)
 | `cmdc.no_folders_set_vaken_guard_scope_folders` | No folders set. /vaken-guard scope &lt;folders...&gt; sets them for this session. | Inga mappar valda. /vaken-guard scope &lt;mappar...&gt; väljer dem för den här sessionen. |  |
 | `cmdc.no_goal_set` | no goal set | inget mål satt |  |
 | `cmdc.no_named_checkpoint_yet_name_the_present` | No named checkpoint yet. Name the present state: /vaken-undo checkpoint &lt;name&gt;. | Ingen namngiven kontrollpunkt ännu. Namnge nuvarande tillstånd: /vaken-undo checkpoint &lt;namn&gt;. |  |
-| `cmdc.no_rule_offered_yet` | No rule offered yet. | Ingen regel har föreslagits ännu. |  |
 | `cmdc.no_session_found_for_words_in_source` | No session found for "{words}" in {source}. Try fewer words, or a word from its folder or branch. The session you are in now is not listed. | Ingen session hittades för "{words}" i {source}. Försök med färre ord, eller ett ord från dess mapp eller gren. Sessionen du är i nu finns inte med i listan. |  |
 | `cmdc.no_session_mentions_query_the_search_looks` | No session mentions "{query}". The search looks at the other sessions, not this one. | Ingen session nämner "{query}". Sökningen tittar i de andra sessionerna, inte i den här. |  |
 | `cmdc.no_shell_command_kept_yet` | No shell command kept yet. | Inget skalkommando sparat ännu. |  |
@@ -4943,7 +4914,6 @@ Shown from the code. (Code: n/a.)
 | `cmdc.nothing_was_waiting_for_a_reset` | Nothing was waiting for a reset. | Inget väntade på en återställning. |  |
 | `cmdc.nothing_was_written` | Nothing was written. | Inget skrevs. |  |
 | `cmdc.nothing_was_written_the_question_was_not` | Nothing was written: the question was not answered. | Inget skrevs: frågan besvarades inte. |  |
-| `cmdc.offered_so_far` | Offered so far: | Föreslagna hittills: |  |
 | `cmdc.ok` | ok | ok |  |
 | `cmdc.open_find_it_in_the_sidebar_by` | Open: find it in the sidebar by its title. | Öppna: hitta den i sidofältet på dess titel. |  |
 | `cmdc.open_link` | Open: {link} | Öppna: {link} |  |
@@ -5010,7 +4980,7 @@ Shown from the code. (Code: n/a.)
 | `cmdc.undo_is_off_so_no_new_copies` | Undo is off, so no new copies are kept. Turn it on in Settings &gt; Safety. Copies kept earlier can still be restored. | Ångra är av, så inga nya kopior sparas. Slå på det i Inställningar &gt; Säkerhet. Kopior som sparades tidigare kan fortfarande återställas. |  |
 | `cmdc.undo_preview_for_path` | Undo preview for {path}. | Förhandsvisning av att ångra {path}. |  |
 | `cmdc.use_vaken_guard_allow_once` | Use: /vaken-guard allow once | Använd: /vaken-guard allow once |  |
-| `cmdc.use_vaken_guard_vaken_guard_allow_once` | Use: /vaken-guard, /vaken-guard allow once, /vaken-guard rules, /vaken-guard scope &lt;folders...&gt; or /vaken-guard scope off | Använd: /vaken-guard, /vaken-guard allow once, /vaken-guard rules, /vaken-guard scope &lt;mappar...&gt; eller /vaken-guard scope off |  |
+| `cmdc.use_vaken_guard_vaken_guard_allow_once` | Use: /vaken-guard, /vaken-guard allow once, /vaken-guard scope &lt;folders...&gt; or /vaken-guard scope off | Använd: /vaken-guard, /vaken-guard allow once, /vaken-guard scope &lt;mappar...&gt; eller /vaken-guard scope off |  |
 | `cmdc.use_vaken_pause_to_stop_vaken_pause` | Use /vaken-pause to stop, /vaken-pause off to lift it, /vaken-pause status to look. | Använd /vaken-pause för att stoppa, /vaken-pause off för att häva det och /vaken-pause status för att titta. |  |
 | `cmdc.use_vaken_undo_vaken_undo_number_vaken` | Use: /vaken-undo, /vaken-undo &lt;number&gt;, /vaken-undo last, /vaken-undo name &lt;checkpoint&gt;. Add yes to restore. | Använd: /vaken-undo, /vaken-undo &lt;nummer&gt;, /vaken-undo last, /vaken-undo name &lt;kontrollpunkt&gt;. Lägg till yes för att återställa. |  |
 | `cmdc.vaken_acted_times` | , vaken acted {times} | , vaken agerade {times} |  |
@@ -5061,7 +5031,7 @@ Shown from the code. (Code: n/a.)
 | `cmdd.already_there` | Already there. | Finns redan. |  |
 | `cmdd.approvals` | approvals | godkännanden |  |
 | `cmdd.audit_n_actions_kept_newest_first_showing` | Audit: {n} actions kept (newest first). Showing {m}. | Granskningslista: {n} åtgärder sparade (nyaste först). Visar {m}. |  |
-| `cmdd.auto_a_lookup_agent_with_no_model` | auto. A lookup agent with no model of its own runs on the cheaper model. | auto. En uppslagsagent utan egen modell körs på den billigare modellen. |  |
+| `cmdd.auto_a_lookup_agent_with_no_model` | auto. Works as suggest: a lookup agent that could run cheaper is flagged, nothing is changed. | auto. Fungerar som föreslå: en uppslagsagent som kunde köras billigare flaggas, inget ändras. |  |
 | `cmdd.both_files_are_already_there_nothing_to` | Both files are already there. Nothing to write. | Båda filerna finns redan. Inget att skriva. |  |
 | `cmdd.change_environment_variables` | change environment variables | ändra miljövariabler |  |
 | `cmdd.chrome_wrote_no_picture` | Chrome wrote no picture | Chrome skrev ingen bild |  |
@@ -5325,7 +5295,7 @@ Shown from the code. (Code: n/a.)
 | `cmde.sent_a_message_to_name` | Sent a message to "{name}". | Skickade ett meddelande till "{name}". |  |
 | `cmde.session_budget_a_now_b_day_budget` | session budget +{a}, now {b}; day budget +{p}, now {k} (estimates). | Budgeten för sessionen +{a}, nu {b}; budgeten för dagen +{p}, nu {k} (uppskattningar). |  |
 | `cmde.session_budget_a_now_b_estimates` | session budget +{a}, now {b} (estimates). | Budgeten för sessionen +{a}, nu {b} (uppskattningar). |  |
-| `cmde.set_agent_models_to_auto_and_it` | Set Agent models to Auto and it runs on {model}. | Sätt Agentmodeller till Auto så körs den på {model}. |  |
+| `cmde.set_agent_models_to_auto_and_it` | Ask Claude to start it on {model} next time. | Be Claude starta den på {model} nästa gång. |  |
 | `cmde.stopped_a_tool_call_the_what_budget` | Stopped a {tool} call: the {what} budget of {limit} is used up (estimate). | Stoppade ett {tool}-anrop: budgeten för {what} på {limit} är slut (uppskattning). |  |
 | `cmde.stopped_another_tool_try_it_waits_for` | Stopped another {tool} try. It waits for your next message. | Stoppade ytterligare ett försök med {tool}. Det väntar på ditt nästa meddelande. |  |
 | `cmde.stopped_tool` | Stopped {tool}. | Stoppade {tool}. |  |

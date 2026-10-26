@@ -4,7 +4,7 @@ import { test } from './slow'
 
 import {
   DEFAULT_CHOICES, ORCH_KEY, TASKS_FILE, TEMPLATE, descriptionOf, endTask, isFinished, isRunRow, modelFor, newRun, nextToStart, overLimits, parseRun, reordersStart, parseTaskFile, parseTaskLine,
-  retryTask, runSummary, skipBlocked, stateWordOf, taskFacts, taskPrompt, withTask, taskForSpawn, isAutoModeRefusal,
+  retryTask, runSummary, skipBlocked, stateWordOf, taskFacts, taskPrompt, withTask, taskForSpawn, taskBrief, stopPrompt,
   afterCheck, endReview, nextReviews, reviewForSpawn, reviewPrompt, reviewCode, askPrompt,
   addTask, removeTask, editTask, editChoices, taskLine, templateOf, parseTemplates, TEMPLATES_KEY, PLAN_PROMPT, RUNNER_SETTINGS, editable, taskDetail, ranOn, templateFor,
   CHECK_HINT, STAGGER_MS, capRoom, staggerWait, tasksText, autoCeiling, kindOf, failedTasks, runCount, taskAge,
@@ -12,7 +12,7 @@ import {
 import { aboutMoney } from '../hooks/core/prices'
 import { reportHead, reportOf } from '../hooks/core/overnight'
 import type { Run } from '../hooks/core/orchestra'
-import { beat, checkSettled, forgetRoles, isRoleKey, loadRun, parseSteer, rolesChanged, runnerOpsOf, steer, tasksCommand, tick } from '../hooks/features/orchestra'
+import { beat as beat0, bindSpawn, checkSettled, loadRun, parseSteer, steer as steer0, tasksCommand as tasksCommand0, tick as tick0 } from '../hooks/features/orchestra'
 import type { RunnerOps } from '../hooks/features/orchestra'
 import type { Io } from '../hooks/core/io'
 import { forgetBundles, withToastGate } from '../hooks/core/io'
@@ -163,13 +163,9 @@ function world(files: Record<string, string> = {}, root = ROOT) {
     toast: () => undefined,
     invalidate: () => undefined,
   }
+  // Claude, faked: it reads each message vaken sends and starts or stops the helpers it names (startsFrom, stopsFrom). `deny` refuses each start; `deaf` starts none.
+  const claude: { asks: string[]; deny?: string; deaf?: boolean; next: () => string } = { asks: [], next: () => `ag${(nextId += 1)}` }
   const ops: RunnerOps = {
-    spawn: async a => {
-      nextId += 1
-      calls.push(`spawn ${a.description} ${a.subagentType} ${a.model}${a.cwd === undefined ? '' : ` in ${a.cwd}`}`)
-      return { agentId: `ag${nextId}` }
-    },
-    stop: async id => void calls.push(`stop ${id}`),
     send: async (id, text) => void calls.push(`send ${id} ${text}`),
     sh: async (argv, cwd) => {
       calls.push(`sh ${argv.join(' ')} @ ${cwd}`)
@@ -177,12 +173,68 @@ function world(files: Record<string, string> = {}, root = ROOT) {
     },
     root: async () => root,
     statuses: async () => [],
-    ask: async text => void calls.push(`ask ${text}`),
-    roles: async () => true,
-    offered: async () => false,
+    ask: async text => {
+      calls.push(`ask ${text}`)
+      for (const id of stopsFrom(text)) calls.push(`stop ${id}`)
+      claude.asks.push(text)
+    },
   }
   bindSafeFs(io, memSafeFs(() => disk.keys()))
-  return { io, ops, mem, disk, calls, sh, setNow: (t: number) => void (clock = t) }
+  claudes.set(io, { claude, calls })
+  return { io, ops, mem, disk, calls, sh, claude, setNow: (t: number) => void (clock = t) }
+}
+
+// The helpers a start message names: description, type, model, folder and the brief between the --- lines.
+type Ask = { description: string; type: string; model: string; cwd?: string; prompt: string }
+function startsFrom(text: string): Ask[] {
+  const out: Ask[] = []
+  for (const block of text.split(/\n(?=Agent \d+\n)/).slice(1)) {
+    const field = (name: string): string | undefined => new RegExp(`^- ${name}: (.*)$`, 'm').exec(block)?.[1]
+    const brief = /\n---\n([\s\S]*?)\n---(?:\n|$)/.exec(block)?.[1] ?? ''
+    const cwd = field('cwd \\(the folder it works in\\)')
+    out.push({ description: field('description') ?? '', type: field('subagent_type') ?? '', model: field('model') ?? '', ...(cwd === undefined ? {} : { cwd }), prompt: brief })
+  }
+  return out
+}
+const stopsFrom = (text: string): string[] => (/^Please stop /.test(text) ? [...text.matchAll(/agent id (\S+)$/gm)].map(m => m[1]) : [])
+
+// After each runner call, Claude starts what it was asked to (each start goes through the agent.spawn watch, bindSpawn).
+const claudes = new WeakMap<Io, { claude: { asks: string[]; deny?: string; deaf?: boolean; next: () => string }; calls: string[] }>()
+async function claudeActs(io: Io): Promise<void> {
+  const c = claudes.get(io)
+  if (c === undefined) return
+  for (const text of c.claude.asks.splice(0)) {
+    if (c.claude.deaf === true) continue
+    for (const a of startsFrom(text)) {
+      if (c.claude.deny !== undefined) {
+        await bindSpawn(io, a.description, a.prompt, a.model, { deny: c.claude.deny })
+        continue
+      }
+      const id = c.claude.next()
+      c.calls.push(`spawn ${a.description} ${a.type} ${a.model}${a.cwd === undefined ? '' : ` in ${a.cwd}`}`)
+      await bindSpawn(io, a.description, a.prompt, a.model, { agentId: id, model: a.model })
+    }
+  }
+}
+const tick = async (...a: Parameters<typeof tick0>): ReturnType<typeof tick0> => {
+  const r = await tick0(...a)
+  await claudeActs(a[0])
+  return claudes.has(a[0]) ? loadRun(a[0]) : r
+}
+const beat = async (...a: Parameters<typeof beat0>): ReturnType<typeof beat0> => {
+  const r = await beat0(...a)
+  await claudeActs(a[0])
+  return claudes.has(a[0]) ? loadRun(a[0]) : r
+}
+const tasksCommand = async (...a: Parameters<typeof tasksCommand0>): ReturnType<typeof tasksCommand0> => {
+  const r = await tasksCommand0(...a)
+  await claudeActs(a[0])
+  return r
+}
+const steer = async (...a: Parameters<typeof steer0>): ReturnType<typeof steer0> => {
+  const r = await steer0(...a)
+  await claudeActs(a[0])
+  return r
 }
 const FILE = `${ROOT}/${TASKS_FILE}`
 
@@ -205,9 +257,9 @@ test('start makes the folder copies and starts the helpers, at most N at once; t
   const said = await tasksCommand(w.io, w.ops, 'start')
   expect(said).toMatch(/^Started: 3 tasks, at most 3 at a time\./)
   expect(w.calls.filter(c => c.startsWith('spawn'))).toEqual([
-    `spawn Task 1: Fix the header cockpit:builder sonnet in ${ROOT}/.claude/worktrees/run-${NOW.toString(36)}-1`,
-    'spawn Task 2: Find prices cockpit:researcher haiku',
-    `spawn Task 3: Write tests cockpit:builder sonnet in ${ROOT}/.claude/worktrees/run-${NOW.toString(36)}-3`,
+    `spawn Task 1 vaken:builder sonnet in ${ROOT}/.claude/worktrees/run-${NOW.toString(36)}-1`,
+    'spawn Task 2 vaken:researcher haiku',
+    `spawn Task 3 vaken:builder sonnet in ${ROOT}/.claude/worktrees/run-${NOW.toString(36)}-3`,
   ])
   expect(w.calls).toContain(`sh git worktree add -b vaken-run/${NOW.toString(36)}-1 ${ROOT}/.claude/worktrees/run-${NOW.toString(36)}-1 HEAD @ ${ROOT}`)
   const run = (await loadRun(w.io))!
@@ -295,7 +347,8 @@ test('steering: pause, go on, stop one, say, retry, keep and throw away a folder
   expect(await tasksCommand(w.io, w.ops, 'go')).toMatch(/^Going on\./)
   expect(await tasksCommand(w.io, w.ops, 'say 2 use the other file')).toMatch(/^Sent to task 2\./)
   expect(w.calls).toContain('send ag2 use the other file')
-  expect(await tasksCommand(w.io, w.ops, 'stop 2')).toMatch(/^Stopped task 2\./)
+  expect(await tasksCommand(w.io, w.ops, 'stop 2')).toMatch(/^Stopped task 2 and asked Claude to stop its agent\./)
+  expect(w.calls).toContain('stop ag2')
   expect(await tasksCommand(w.io, w.ops, 'keep 1')).toMatch(/still runs/)
   await tick(w.io, w.ops, [{ id: 'ag1', status: 'completed' }])
   expect(await tasksCommand(w.io, w.ops, 'keep 1')).toMatch(/^Kept task 1: its work is on branch vaken-run\//)
@@ -348,45 +401,85 @@ test('Halt is on: the runner does not start, go on or throw away, and starts no 
 
 test('a refused start is no failure: the task waits a minute and tries again', async () => {
   const w = world({ [FILE]: '- A (researcher)\n' })
-  let refuse = true
-  const ops: RunnerOps = { ...w.ops, spawn: async a => (refuse ? { deny: 'agent cap reached' } : w.ops.spawn(a)) }
-  await tasksCommand(w.io, ops, 'start')
+  w.claude.deny = 'agent cap reached'
+  await tasksCommand(w.io, w.ops, 'start')
   let run = (await loadRun(w.io))!
   expect(run.tasks[0]).toMatchObject({ state: 'waiting', why: 'waits: agent cap reached', holdUntil: NOW + 60_000, tries: 0 })
-  refuse = false
-  await tick(w.io, ops)
+  delete w.claude.deny
+  await tick(w.io, w.ops)
   expect((await loadRun(w.io))!.tasks[0].state).toBe('waiting')
   w.setNow(NOW + 61_000)
-  run = (await tick(w.io, ops))!
+  run = (await tick(w.io, w.ops))!
   expect(run.tasks[0]).toMatchObject({ state: 'running', tries: 1 })
   expect(run.tasks[0].why).toBeUndefined()
 })
 
-test('when auto mode refuses vaken start, Claude is asked once in a message, and its helper is bound to the task', async () => {
+test('Claude is asked once in a message that carries the type, model, folder and full brief of each helper; its helper is bound to the task', async () => {
   const w = world({ [FILE]: '- Fix the header\n- Find prices (researcher)\n' })
-  const ops: RunnerOps = { ...w.ops, spawn: async () => ({ deny: 'The server-side auto mode classifier gave no verdict for Agent' }) }
-  await tasksCommand(w.io, ops, 'load')
-  await tasksCommand(w.io, ops, 'at 2')
-  await tasksCommand(w.io, ops, 'start')
+  w.claude.deaf = true
+  await tasksCommand(w.io, w.ops, 'load')
+  await tasksCommand(w.io, w.ops, 'at 2')
+  await tasksCommand(w.io, w.ops, 'start')
   let run = (await loadRun(w.io))!
-  expect(run.via).toBe('claude')
   const asks = w.calls.filter(c => c.startsWith('ask '))
   expect(asks).toHaveLength(1)
-  expect(asks[0]).toMatch(new RegExp(`- description "Task 1", prompt "vaken-task ${NOW.toString(36)}-1"\\n- description "Task 2", prompt "vaken-task ${NOW.toString(36)}-2"\\n`))
+  const dir = `${ROOT}/.claude/worktrees/run-${NOW.toString(36)}-1`
+  expect(startsFrom(asks[0])).toEqual([
+    { description: 'Task 1', type: 'vaken:builder', model: 'sonnet', cwd: dir, prompt: taskBrief(run, run.tasks[0]) },
+    { description: 'Task 2', type: 'vaken:researcher', model: 'haiku', prompt: taskBrief(run, run.tasks[1]) },
+  ])
+  expect(taskBrief(run, run.tasks[0])).toMatch(new RegExp(`^vaken-task ${NOW.toString(36)}-1\\nYou are the agent for task 1 of a task list\\.\\nThe task: Fix the header\\nWork only in this folder: ${dir}\\.`))
+  expect(asks[0]).toMatch(/^ask Please start these 2 agents for my task run now: one Agent call each, in the background, with exactly these values\./)
   expect(run.tasks.map(t => [t.state, t.askedAt])).toEqual([['waiting', NOW], ['waiting', NOW]])
-  expect(run.tasks[0].path).toBe(`${ROOT}/.claude/worktrees/run-${NOW.toString(36)}-1`)
-  await tick(w.io, ops)
+  expect(run.tasks[0].path).toBe(dir)
+  await tick(w.io, w.ops)
   expect(w.calls.filter(c => c.startsWith('ask '))).toHaveLength(1)
-  expect(taskForSpawn(run, 'Task 2: Find prices')?.n).toBe(2)
+  // A name alone never binds: only the code on the brief's first line
+  expect(taskForSpawn(run, 'Task 2: Find prices')).toBeUndefined()
   expect(taskForSpawn(run, 'Find prices', `vaken-task ${NOW.toString(36)}-2`)?.n).toBe(2)
   expect(taskForSpawn(run, 'Task 2', 'vaken-task otherrun-2')).toBeUndefined()
   expect(taskForSpawn(run, 'Search the code')).toBeUndefined()
   w.setNow(NOW + 3 * MIN)
-  await tick(w.io, ops)
+  await tick(w.io, w.ops)
   expect(w.calls.filter(c => c.startsWith('ask '))).toHaveLength(2)
+  // Claude starts task 2: the watch binds it, with the model it ran on.
+  expect(await bindSpawn(w.io, 'Task 2', taskBrief(run, run.tasks[1]), 'haiku', { agentId: 'cl1', model: 'claude-haiku-4-5' })).toBe(true)
+  run = (await loadRun(w.io))!
+  expect(run.tasks[1]).toMatchObject({ state: 'running', agentId: 'cl1', ran: 'haiku', tries: 1 })
+  expect(run.tasks[1].askedAt).toBeUndefined()
+  expect(await bindSpawn(w.io, 'Search the code', 'look around', undefined, { agentId: 'cl2', model: 'haiku' })).toBe(false)
   run = withTask(run, 1, { state: 'running', agentId: 'x' })
   expect(taskForSpawn(run, 'Task 1: Fix the header')).toBeUndefined()
-  expect(isAutoModeRefusal('agent cap reached')).toBe(false)
+})
+
+test('helpers Claude starts from one message bind together: no save drops another', async () => {
+  const w = world({ [FILE]: '- Fix the header\n- Find prices (researcher)\n' })
+  w.claude.deaf = true
+  await tasksCommand(w.io, w.ops, 'load')
+  await tasksCommand(w.io, w.ops, 'at 2')
+  await tasksCommand(w.io, w.ops, 'start')
+  const run = (await loadRun(w.io))!
+  const both = await Promise.all([
+    bindSpawn(w.io, 'Task 1', taskBrief(run, run.tasks[0]), 'sonnet', { agentId: 'a1', model: 'sonnet' }),
+    bindSpawn(w.io, 'Task 2', taskBrief(run, run.tasks[1]), 'haiku', { agentId: 'a2', model: 'haiku' }),
+  ])
+  expect(both).toEqual([true, true])
+  const after = (await loadRun(w.io))!
+  expect(after.tasks.map(t => [t.state, t.agentId])).toEqual([['running', 'a1'], ['running', 'a2']])
+
+  // A bind that lands while the 10 s update runs is kept too
+  const w2 = world({ [FILE]: '- Fix the header\n' })
+  w2.claude.deaf = true
+  await tasksCommand(w2.io, w2.ops, 'load')
+  await tasksCommand(w2.io, w2.ops, 'start')
+  const run2 = (await loadRun(w2.io))!
+  await Promise.all([beat(w2.io, w2.ops), bindSpawn(w2.io, 'Task 1', taskBrief(run2, run2.tasks[0]), 'sonnet', { agentId: 'b1', model: 'sonnet' })])
+  expect((await loadRun(w2.io))!.tasks[0]).toMatchObject({ state: 'running', agentId: 'b1' })
+})
+
+test('a stop goes to Claude as a message with each helper id; nothing is stopped by vaken itself', () => {
+  expect(stopPrompt([{ n: 2, agentId: 'ag2' }], 'I stopped it')).toBe('Please stop this agent of my task run now (I stopped it): stop each background agent by its id.\n- Task 2: agent id ag2')
+  expect(stopPrompt([{ n: 1, agentId: 'a' }, { n: 1, agentId: 'r', review: true }], 'I stopped the run')).toMatch(/^Please stop these 2 agents .*\n- Task 1: agent id a\n- Review 1: agent id r$/)
 })
 
 test('the command: words, mistakes, new, and no run', async () => {
@@ -488,10 +581,13 @@ test('the review prompt shows the change from its start, and Claude-started revi
   expect(reviewPrompt({ ...run.tasks[0], path: undefined })).toMatch(/project folder/)
   expect(reviewForSpawn(run, reviewCode(run, run.tasks[0]))?.n).toBe(1)
   expect(reviewForSpawn(run, 'vaken-review other-1')).toBeUndefined()
-  expect(askPrompt(run, [], [run.tasks[0]])).toMatch(new RegExp(`- description "Review 1", prompt "vaken-review ${NOW.toString(36)}-1"`))
+  const ask = askPrompt(run, [], [run.tasks[0]])
+  expect(ask).toMatch(/\nAgent 1\n- description: Review 1\n- subagent_type: vaken:reviewer\n- model: haiku\n- cwd \(the folder it works in\): \/w\/c\n/)
+  expect(ask).toContain(`---\nvaken-review ${NOW.toString(36)}-1\nYou review the work of task 1`)
+  expect(reviewForSpawn(run, ask)?.n).toBe(1)
 })
 
-test('the runner starts the reviewer itself, with the reviewer role, in the task folder copy', async () => {
+test('Claude is asked for the reviewer, with the reviewer role, in the task folder copy', async () => {
   const w = world({ [FILE]: '- A\n' })
   await tasksCommand(w.io, w.ops, 'load')
   expect(await tasksCommand(w.io, w.ops, 'reviewer on')).toMatch(/^A reviewer reads/)
@@ -499,7 +595,7 @@ test('the runner starts the reviewer itself, with the reviewer role, in the task
   await tick(w.io, w.ops, [{ id: 'ag1', status: 'completed' }])
   const run = (await loadRun(w.io))!
   expect(run.tasks[0]).toMatchObject({ review: 'running', reviewAgent: 'ag2' })
-  expect(w.calls.filter(c => c.startsWith('spawn'))[1]).toBe(`spawn Review 1: A cockpit:reviewer haiku in ${ROOT}/.claude/worktrees/run-${NOW.toString(36)}-1`)
+  expect(w.calls.filter(c => c.startsWith('spawn'))[1]).toBe(`spawn Review 1 vaken:reviewer haiku in ${ROOT}/.claude/worktrees/run-${NOW.toString(36)}-1`)
   expect(run.status).toBe('running')
   w.mem.set(ORCH_KEY(SID), endReview(run, 'ag2', true, 'Good.\nNo risk.\nNothing.'))
   expect((await tick(w.io, w.ops))!.status).toBe('done')
@@ -518,7 +614,7 @@ test('the runner starts no new helper while the computer is full, and as many as
   w.setNow(NOW + 1000)
   w.mem.set('cockpit:laptop:v2', { ...sample, at: NOW + 1000, pressure: 'normal', freeShare: 0.1 })
   await tick(w.io, w.ops)
-  expect(w.calls.filter(c => c.startsWith('spawn'))).toEqual(['spawn Task 1: A cockpit:researcher haiku'])
+  expect(w.calls.filter(c => c.startsWith('spawn'))).toEqual(['spawn Task 1 vaken:researcher haiku'])
   w.mem.set('cockpit:setting:laptop.mode', 'off')
   await tick(w.io, w.ops)
   expect(w.calls.filter(c => c.startsWith('spawn'))).toHaveLength(1)
@@ -537,7 +633,7 @@ test('the plan window is short (under 45 minutes at this pace): the smaller task
   await tasksCommand(w.io, w.ops, 'load')
   await steer(w.io, w.ops, { kind: 'atOnce', n: 1 })
   await tasksCommand(w.io, w.ops, 'start')
-  expect(w.calls.filter(c => c.startsWith('spawn'))).toEqual(['spawn Task 3: Check prices cockpit:researcher haiku'])
+  expect(w.calls.filter(c => c.startsWith('spawn'))).toEqual(['spawn Task 3 vaken:researcher haiku'])
   let run = (await loadRun(w.io))!
   expect(run.smallFirst).toBe(true)
   expect(runSummary(run)).toMatch(/ · Smaller tasks first: the plan window is short$/)
@@ -546,7 +642,7 @@ test('the plan window is short (under 45 minutes at this pace): the smaller task
   await tick(w.io, w.ops, [{ id: 'ag1', status: 'completed' }])
   w.setNow(NOW + 2 * MIN)
   await tick(w.io, w.ops, [{ id: 'ag2', status: 'completed' }])
-  expect(w.calls.filter(c => c.startsWith('spawn')).map(c => c.slice(0, 13))).toEqual(['spawn Task 3:', 'spawn Task 2:', 'spawn Task 1:'])
+  expect(w.calls.filter(c => c.startsWith('spawn')).map(c => c.slice(0, 12))).toEqual(['spawn Task 3', 'spawn Task 2', 'spawn Task 1'])
   run = (await loadRun(w.io))!
   expect(runSummary(run).split('Smaller tasks first').length).toBe(2)
 })
@@ -559,7 +655,7 @@ test('with time enough, an old reading or no reading, the tasks start in the ord
     await tasksCommand(w.io, w.ops, 'load')
     await steer(w.io, w.ops, { kind: 'atOnce', n: 1 })
     await tasksCommand(w.io, w.ops, 'start')
-    expect(w.calls.filter(c => c.startsWith('spawn')), name).toEqual(['spawn Task 1: Fix the whole layout of the shop header… cockpit:researcher haiku'])
+    expect(w.calls.filter(c => c.startsWith('spawn')), name).toEqual(['spawn Task 1 vaken:researcher haiku'])
     const run = (await loadRun(w.io))!
     expect(run.smallFirst, name).toBeUndefined()
     expect(runSummary(run), name).not.toMatch(/Smaller/)
@@ -572,7 +668,7 @@ test('a short window changes nothing when the tasks are already in order of size
   await tasksCommand(w.io, w.ops, 'load')
   await steer(w.io, w.ops, { kind: 'atOnce', n: 1 })
   await tasksCommand(w.io, w.ops, 'start')
-  expect(w.calls.filter(c => c.startsWith('spawn'))).toEqual(['spawn Task 1: Aa cockpit:researcher haiku'])
+  expect(w.calls.filter(c => c.startsWith('spawn'))).toEqual(['spawn Task 1 vaken:researcher haiku'])
   expect((await loadRun(w.io))!.smallFirst).toBeUndefined()
 })
 
@@ -670,7 +766,7 @@ test('a started task keeps the model it ran on, and retry 1 after a failure star
   expect((await loadRun(w.io))!.tasks[0].ran).toBe('haiku')
   await tick(w.io, w.ops, [{ id: 'ag1', status: 'failed' }])
   expect(await tasksCommand(w.io, w.ops, 'retry 1')).toMatch(/^Task 1 waits for its turn again\./)
-  expect(w.calls.filter(c => c.startsWith('spawn'))).toEqual(['spawn Task 1: Find prices cockpit:researcher haiku', 'spawn Task 1: Find prices cockpit:researcher sonnet'])
+  expect(w.calls.filter(c => c.startsWith('spawn'))).toEqual(['spawn Task 1 vaken:researcher haiku', 'spawn Task 1 vaken:researcher sonnet'])
 })
 
 test('the roles follow the model map: This session over All projects', async () => {
@@ -680,33 +776,8 @@ test('the roles follow the model map: This session over All projects', async () 
   forgetBundles()
   // A builder on Fable may cost more than the helper limit, so the first start only shows the cost check; "start anyway" goes on.
   await tasksCommand(withToastGate(w.io), w.ops, 'start anyway')
-  expect(w.calls.filter(c => c.startsWith('spawn'))[0]).toMatch(/cockpit:builder fable in /)
-})
-
-test('the roles are registered on the chosen models, and again when one changes', async () => {
-  const mem = new Map<string, unknown>()
-  const registered: string[] = []
-  const io = { now: async () => NOW, sessionId: async () => SID, get: async (k: string) => mem.get(k), set: async (k: string, v: unknown) => void mem.set(k, v), del: async (k: string) => void mem.delete(k), keys: async () => [...mem.keys()], toast: () => undefined, invalidate: () => undefined } as unknown as Io
-  const ops = runnerOpsOf({
-    spawn: async () => ({ agentId: 'x' }),
-    stop: async () => undefined,
-    send: async () => undefined,
-    run: async () => ({ exitCode: 0, stdout: '', stderr: '' }),
-    root: async () => ROOT,
-    cwd: async () => ROOT,
-    list: async () => [],
-    submit: async () => undefined,
-    after: () => undefined,
-    register: async (r, m) => void registered.push(`${r} ${m}`),
-    io,
-  })
-  forgetRoles()
-  expect(await ops.roles()).toBe(true)
-  expect(await ops.roles()).toBe(true)
-  expect(registered).toEqual(['researcher haiku', 'builder sonnet', 'reviewer haiku', 'fixer opus'])
-  mem.set('cockpit:setting:runner.builder', 'opus')
-  expect(await ops.roles()).toBe(true)
-  expect(registered.slice(4)).toEqual(['researcher haiku', 'builder opus', 'reviewer haiku', 'fixer opus'])
+  await claudeActs(w.io)
+  expect(w.calls.filter(c => c.startsWith('spawn'))[0]).toMatch(/vaken:builder fable in /)
 })
 
 const SPAWNS = (w: ReturnType<typeof world>): number => w.calls.filter(c => c.startsWith('spawn')).length
@@ -765,121 +836,12 @@ test('with the agent cap off the run follows its own "at once"', async () => {
   expect(SPAWNS(w)).toBe(3)
 })
 
-test('helpers start one at a time: the next waits for the first tool call of the one before, or 20 seconds', async () => {
-  const w = world({ [FILE]: THREE })
-  const seen = new Set<string>()
-  w.ops.seen = id => seen.has(id)
-  await tasksCommand(w.io, w.ops, 'load')
-  await tasksCommand(w.io, w.ops, 'at 3')
-  await tasksCommand(w.io, w.ops, 'start')
-  expect(SPAWNS(w)).toBe(1)
-  w.setNow(NOW + 10_000)
-  await tick(w.io, w.ops)
-  expect(SPAWNS(w)).toBe(1)
-  seen.add('ag1')
-  await tick(w.io, w.ops)
-  expect(SPAWNS(w)).toBe(2)
-  await tick(w.io, w.ops)
-  expect(SPAWNS(w)).toBe(2)
-  w.setNow(NOW + 10_000 + STAGGER_MS)
-  await tick(w.io, w.ops)
-  expect(SPAWNS(w)).toBe(3)
-})
-
 test('the text of the run shows the check hint', async () => {
   const run: Run = { ...newRun(['A'], NOW), status: 'setup' }
   const text = tasksText(run, undefined, NOW, () => '1 min')
   expect(text).toContain(`Check hint: ${CHECK_HINT}`)
   expect(text).toMatch(/never more than your own limit/)
   expect(CHECK_HINT).toBe('Run only the tests of files touched.')
-})
-
-test('the roles are registered by a forgetting re-register when the map changes', async () => {
-  const registered: string[] = []
-  const w = world()
-  const ops = runnerOpsOf({
-    spawn: async () => ({ agentId: 'x' }),
-    stop: async () => undefined,
-    send: async () => undefined,
-    run: async () => ({ exitCode: 0, stdout: '', stderr: '' }),
-    root: async () => ROOT,
-    cwd: async () => ROOT,
-    list: async () => [],
-    submit: async () => undefined,
-    after: () => undefined,
-    register: async (r, m) => void registered.push(`${r} ${m}`),
-    io: w.io,
-  })
-  forgetRoles()
-  w.mem.set('cockpit:setting:agents.offer', 'on')
-  await rolesChanged(ops)
-  expect(registered).toEqual(['researcher haiku', 'builder sonnet', 'reviewer haiku', 'fixer opus'])
-  w.mem.set('cockpit:setting:runner.reviewer', 'sonnet')
-  await rolesChanged(ops)
-  expect(registered.slice(4)).toEqual(['researcher haiku', 'builder sonnet', 'reviewer sonnet', 'fixer opus'])
-  await rolesChanged(ops)
-  expect(registered).toHaveLength(12)
-  expect(isRoleKey('runner.fixer')).toBe(true)
-  expect(isRoleKey('cap.max')).toBe(false)
-  forgetRoles()
-})
-
-function offerWorld(registered: string[]): { ops: RunnerOps; w: ReturnType<typeof world> } {
-  const w = world({ [FILE]: '- Fix the header\n' })
-  const ops = runnerOpsOf({
-    spawn: async () => ({ agentId: 'x' }),
-    stop: async () => undefined,
-    send: async () => undefined,
-    run: async () => ({ exitCode: 0, stdout: '', stderr: '' }),
-    root: async () => ROOT,
-    cwd: async () => ROOT,
-    list: async () => [],
-    submit: async () => undefined,
-    after: () => undefined,
-    register: async (r, m) => void registered.push(`${r} ${m}`),
-    io: w.io,
-  })
-  return { ops, w }
-}
-
-test('Offer agent types is off by default: a fresh session registers nothing, a model change before any run registers nothing', async () => {
-  const registered: string[] = []
-  const { ops, w } = offerWorld(registered)
-  forgetRoles()
-  expect(await ops.offered()).toBe(false)
-  await rolesChanged(ops)
-  w.mem.set('cockpit:setting:runner.builder', 'opus')
-  await rolesChanged(ops)
-  expect(registered).toEqual([])
-  forgetRoles()
-})
-
-test('with Offer agent types off, Start registers the four types, once; a later model change updates them', async () => {
-  const registered: string[] = []
-  const { ops, w } = offerWorld(registered)
-  forgetRoles()
-  await rolesChanged(ops)
-  expect(registered).toEqual([])
-  await tasksCommand(w.io, ops, 'start')
-  expect(registered).toEqual(['researcher haiku', 'builder sonnet', 'reviewer haiku', 'fixer opus'])
-  await tasksCommand(w.io, ops, 'pause')
-  await ops.roles()
-  expect(registered).toHaveLength(4)
-  w.mem.set('cockpit:setting:runner.builder', 'opus')
-  await rolesChanged(ops)
-  expect(registered.slice(4)).toEqual(['researcher haiku', 'builder opus', 'reviewer haiku', 'fixer opus'])
-  forgetRoles()
-})
-
-test('with Offer agent types on, the types are registered at session start as before; the key is a role key', async () => {
-  const registered: string[] = []
-  const { ops, w } = offerWorld(registered)
-  forgetRoles()
-  w.mem.set('cockpit:setting:agents.offer', 'on')
-  await rolesChanged(ops)
-  expect(registered).toEqual(['researcher haiku', 'builder sonnet', 'reviewer haiku', 'fixer opus'])
-  expect(isRoleKey('agents.offer')).toBe(true)
-  forgetRoles()
 })
 
 const ledgerOf = (w: ReturnType<typeof world>): { what: string; detail?: string; did?: boolean }[] => (w.mem.get('cockpit:ledger:compact') as { what: string; detail?: string; did?: boolean }[] | undefined) ?? []
@@ -986,20 +948,7 @@ test('Auto with room for 12 starts 12; with no room reading it starts one, never
   expect(SPAWNS(o)).toBe(1)
 })
 
-test('Auto still starts one helper at a time, and a number the person chose is kept', async () => {
-  const w = world({ [FILE]: EIGHT })
-  const seen = new Set<string>()
-  w.ops.seen = id => seen.has(id)
-  w.mem.set('cockpit:setting:cap.max', '8')
-  w.mem.set('cockpit:setting:laptop.mode', 'on')
-  w.mem.set('cockpit:laptop:v2', ROOMY)
-  await tasksCommand(w.io, w.ops, 'load')
-  await tasksCommand(w.io, w.ops, 'start')
-  expect(SPAWNS(w)).toBe(1)
-  w.setNow(NOW + 5000)
-  w.mem.set('cockpit:laptop:v2', { ...ROOMY, at: NOW + 5000 })
-  await tick(w.io, w.ops)
-  expect(SPAWNS(w)).toBe(1)
+test('a number the person chose is kept', async () => {
   const f = world({ [FILE]: EIGHT })
   f.mem.set('cockpit:setting:cap.max', '8')
   f.mem.set('cockpit:setting:laptop.mode', 'on')
@@ -1121,7 +1070,8 @@ test('Stop all stops the reviewers too', async () => {
 
 test('Claude is asked to start a helper at most 3 times; then the task waits for Go on, which asks again', async () => {
   const w = world({ [FILE]: '- A (researcher)\n' })
-  const ops: RunnerOps = { ...w.ops, spawn: async () => ({ deny: 'The server-side auto mode classifier gave no verdict for Agent' }) }
+  w.claude.deaf = true
+  const ops = w.ops
   await tasksCommand(w.io, ops, 'start')
   const asks = (): number => w.calls.filter(c => c.startsWith('ask ')).length
   expect(asks()).toBe(1)

@@ -139,20 +139,19 @@ export function scopeFrom(words: string[], home: string, cwd: string): string[] 
 }
 
 
-type GuardAsk = { kind: 'status' } | { kind: 'allow' } | { kind: 'rules' } | { kind: 'scope-show' } | { kind: 'scope-off' } | { kind: 'scope-set'; words: string[] } | { kind: 'bad'; why: string }
+type GuardAsk = { kind: 'status' } | { kind: 'allow' } | { kind: 'scope-show' } | { kind: 'scope-off' } | { kind: 'scope-set'; words: string[] } | { kind: 'bad'; why: string }
 
 export function parseGuardAsk(args: string): GuardAsk {
   const words = args.trim().split(/\s+/).filter(w => w !== '')
   const first = words[0]?.toLowerCase()
   if (first === undefined) return { kind: 'status' }
-  if (first === 'rules' && words.length === 1) return { kind: 'rules' }
   if (first === 'allow') return words.length === 2 && words[1].toLowerCase() === 'once' ? { kind: 'allow' } : { kind: 'bad', why: tr('Use: /vaken-guard allow once') }
   if (first === 'scope') {
     if (words.length === 1) return { kind: 'scope-show' }
     if (words.length === 2 && words[1].toLowerCase() === 'off') return { kind: 'scope-off' }
     return { kind: 'scope-set', words: words.slice(1) }
   }
-  return { kind: 'bad', why: tr('Use: /vaken-guard, /vaken-guard allow once, /vaken-guard rules, /vaken-guard scope <folders...> or /vaken-guard scope off') }
+  return { kind: 'bad', why: tr('Use: /vaken-guard, /vaken-guard allow once, /vaken-guard scope <folders...> or /vaken-guard scope off') }
 }
 
 export const MODE_WORDS: Record<Mode, string> = { off: 'off', warn: 'warn (the step runs and Claude is told)', hold: 'stop (the step is stopped until you allow it)' }

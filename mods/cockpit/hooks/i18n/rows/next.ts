@@ -31,11 +31,5 @@ export const ROWS: Rows = {
   "next.quick_taken": {"en":"That name is taken. Pick another one.","sv":"Namnet är upptaget. Välj ett annat."},
   "next.quick_yours": {"en":"Yours: {list}","sv":"Dina: {list}"},
   "next.run_tests": {"en":"Run tests","sv":"Kör testerna"},
-  "next.type_changed": {"en":"Changed, not committed","sv":"Ändrad, inte committad"},
-  "next.type_help_text": {"en":"With Next step buttons set to Buttons and hint, typing in the chat box offers rows under the app's own: a quick action after / or its name, a saved task set after /, an open pull request after #, and a file changed and not committed after @. Tab takes one, and vaken stores nothing new.","sv":"Med Knappar för nästa steg på Knappar och tips visar chattrutan rader under appens egna när du skriver: ett snabbval efter / eller dess namn, en sparad uppgiftsuppsättning efter /, en öppen pull request efter # och en ändrad fil som inte är committad efter @. Tab tar en, och vaken sparar inget nytt."},
-  "next.type_help_title": {"en":"What the rows under the chat box are","sv":"Vad raderna under chattrutan är"},
-  "next.type_own": {"en":"Your quick action: {text}","sv":"Ditt snabbval: {text}"},
-  "next.type_pr": {"en":"Open pull request","sv":"Öppen pull request"},
-  "next.type_template": {"en":"Loads your saved task set","sv":"Laddar din sparade uppgiftsuppsättning"},
   "next.what_changed": {"en":"What changed","sv":"Vad har ändrats"},
 }

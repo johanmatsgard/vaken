@@ -20,7 +20,7 @@ export const ROWS: Rows = {
   "cmdd.already_there": {"en":"Already there.","sv":"Finns redan."},
   "cmdd.approvals": {"en":"approvals","sv":"godkännanden"},
   "cmdd.audit_n_actions_kept_newest_first_showing": {"en":"Audit: {n} actions kept (newest first). Showing {m}.","sv":"Granskningslista: {n} åtgärder sparade (nyaste först). Visar {m}."},
-  "cmdd.auto_a_lookup_agent_with_no_model": {"en":"auto. A lookup agent with no model of its own runs on the cheaper model.","sv":"auto. En uppslagsagent utan egen modell körs på den billigare modellen."},
+  "cmdd.auto_a_lookup_agent_with_no_model": {"en":"auto. Works as suggest: a lookup agent that could run cheaper is flagged, nothing is changed.","sv":"auto. Fungerar som föreslå: en uppslagsagent som kunde köras billigare flaggas, inget ändras."},
   "cmdd.both_files_are_already_there_nothing_to": {"en":"Both files are already there. Nothing to write.","sv":"Båda filerna finns redan. Inget att skriva."},
   "cmdd.change_environment_variables": {"en":"change environment variables","sv":"ändra miljövariabler"},
   "cmdd.chrome_wrote_no_picture": {"en":"Chrome wrote no picture","sv":"Chrome skrev ingen bild"},

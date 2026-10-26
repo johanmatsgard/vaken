@@ -11,8 +11,6 @@ import { findSetting } from '../core/settings'
 import { keepUndo } from '../core/settingsundo'
 import { applySteps, projectName, projectOf, readGlobalSettings, readProjectSet } from '../core/projects'
 import { LEDGER_KEY, pushLog } from './compaction'
-import { ROLES, ROLE_PROMPT, roleDescription } from '../core/orchestra'
-import { isRoleKey, rolesChangedWith } from './orchestra'
 import { subArgs } from '../core/menu'
 import { BY_PERSON_ONLY, byPerson } from '../core/origin'
 import { TIPS_KEPT_WHAT, upgradeTipDefaults } from '../core/tipsupgrade'
@@ -89,13 +87,6 @@ export function registerPresets(on: On): void {
     // Settings > Mode offers Undo for the rows a typed preset writes, as for a mode press
     if (changes.length > 0) await keepUndo(i, ask.preset.name, presetSteps(ask.preset).map(st => st.key), root)
     await applySteps(i, presetSteps(ask.preset), root)
-    if (Object.keys(ask.preset.values).some(isRoleKey)) await rolesChangedWith({
-      register: (r, m) => {
-        if (ROLES[r].tools === undefined) return $.agent.register({ name: r, description: roleDescription(r), prompt: ROLE_PROMPT(r), model: m })
-        return $.agent.register({ name: r, description: roleDescription(r), prompt: ROLE_PROMPT(r), model: m, tools: ROLES[r].tools })
-      },
-      io: i,
-    })
     await i.set('cockpit:firstrun', 'done')
     await pushLog(i, LEDGER_KEY, { at: await i.now(), session: await i.sessionId(), what: presetWhat(title), detail: `${tEn('words.choice', { n: changes.length })} changed.`, how: 'typed', did: true })
     await postBand(i, 'info', 'preset', tLine('band.preset_name', { preset: title }), 5 * 60_000)

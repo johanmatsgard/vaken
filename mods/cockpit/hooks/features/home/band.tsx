@@ -13,7 +13,7 @@ import type { Detail, LimitBlock, View } from './logic'
 import { fmt } from '../../core/fmt'
 import { fillIn } from '../../core/fillin'
 import { NEXT_WORD } from '../../core/actions'
-import { ALWAYS_KIND, DENIED_COPY, askWords } from '../../core/allowrules'
+import { askWords } from '../../core/allowrules'
 import { RUNAWAY_BAND_ID, RUNAWAY_STOP, RUNAWAY_WAIT } from '../../core/attention'
 import type { AskView } from '../../core/allowrules'
 import type { Action } from '../../core/actions'
@@ -98,11 +98,11 @@ function usedUpWords(view: View): string | undefined {
 // A question a tool asks in another session waits on the person: it counts in Needs you here, unless that session is already counted there
 const relayWaits = (view: View): number => (view.relay !== undefined && !view.needs.some(r => r.rec.sessionId === view.relay?.sid) ? 1 : 0)
 
-type Open = { label: string; kind: 'focus' | 'fresh' | 'details' | 'rule' | 'session' | 'stop' | 'wait' }
+type Open = { label: string; kind: 'focus' | 'fresh' | 'details' | 'session' | 'stop' | 'wait' }
 export type BandPlan =
   | { mode: 'none' }
   | { mode: 'next'; fit: ChipFit; shown: number }
-  | { mode: 'line'; fit: ChipFit; needs: number; text?: string; info: boolean; fail?: true; minPt: number; open?: Open; second?: Open; rule?: string; needsOpensSession?: true }
+  | { mode: 'line'; fit: ChipFit; needs: number; text?: string; info: boolean; fail?: true; minPt: number; open?: Open; second?: Open; needsOpensSession?: true }
 
 // What the band draws at this width: pure, so the status line can ask whether the plan chip is on screen.
 // `step`: the presses the runaway step line can offer now (Stop the answer needs the running answer's id; Keep waiting always)
@@ -184,24 +184,18 @@ export function bandPlan(view: View, detail: Detail, columns: number | undefined
   return { mode: 'line', fit, needs, ...(text === undefined ? {} : { text }), info: top?.level === 'info', ...(top?.level === 'fail' && needs === 0 ? { fail: true as const } : {}), minPt, ...(open === undefined ? {} : { open }), ...(open === undefined || second === undefined ? {} : { second }) }
 }
 
-// Claude Code's own "Allow?" question waits (or a third yes was just given): its plain line comes before every posted line, beside Needs you.
-// It says what the step does and whether Undo has a copy; a narrow band keeps the step's words alone. The one press, "Copy the rule to always allow this kind",
-// shows only for a safe kind whose rule is offered (core/allowrules.ts askShown) and copies that rule. Amber only when the guard rates the step risky.
+// Claude Code itself stopped a step: its plain line comes before every posted line, beside Needs you, for a few minutes (core/allowrules.ts askShown).
+// It says why and what the step was; a narrow band keeps the why alone. It has no press: vaken never retries or allows a step.
 function askPlan(ask: AskView, needs: number, chip: Chip | undefined, columns: number | undefined): BandPlan {
   const room = roomOf(columns)
   const said = askWords(ask)
-  const mark = ask.risky ? '▲' : ''
-  const markPt = mark === '' ? 0 : BAND_MARK_PT
   const needsPt = needs > 0 ? buttonPt(`◆ ${needsChip(needs, tr)}`) : 0
-  const leftOf = (o: Open | undefined, linePt: number): number => [needsPt, linePt, o === undefined ? 0 : buttonPt(o.label)].filter(x => x > 0).reduce((sum, x, i) => sum + x + (i > 0 ? BAND_GAP : 0), 0)
-  let open: Open | undefined = ask.rule === undefined ? undefined : { label: tr(ask.denied === true ? DENIED_COPY : ALWAYS_KIND), kind: 'rule' }
-  const words = leftOf(open, markPt + textPt(said.text)) > room ? said.step : said.text
-  const fullPt = markPt + textPt(words)
-  const minPt = Math.min(fullPt, markPt + BAND_LINE_MIN_PT)
-  // The sentence is never cut for the press: a press that does not fit beside the whole words is not drawn (the Fewer questions row in Needs you keeps it)
-  if (open !== undefined && leftOf(open, fullPt) > room) open = undefined
-  const fit = chipFit(chip, leftOf(open, fullPt), columns)
-  return { mode: 'line', fit, needs, text: marked(mark, words), info: !ask.risky, minPt, ...(open === undefined ? {} : { open }), ...(open === undefined || ask.rule === undefined ? {} : { rule: ask.rule }) }
+  const leftOf = (linePt: number): number => [needsPt, linePt].filter(x => x > 0).reduce((sum, x, i) => sum + x + (i > 0 ? BAND_GAP : 0), 0)
+  const words = leftOf(textPt(said.text)) > room ? said.step : said.text
+  const fullPt = textPt(words)
+  const minPt = Math.min(fullPt, BAND_LINE_MIN_PT)
+  const fit = chipFit(chip, leftOf(fullPt), columns)
+  return { mode: 'line', fit, needs, text: words, info: true, minPt }
 }
 
 // A tool server asks the person something in another session: one line that names the session, beside Needs you (which counts it, relayWaits). It is a real
@@ -248,7 +242,7 @@ function bandButton(el: El, key: string, label: string, onPress: () => void, amb
 
 // `step`: the runaway step line's presses; `stop` only while the running answer is known
 export type BandStep = { stop?: () => void; wait: () => void }
-export function HomeBand(el: El, view: View, detail: Detail, openPane: () => void, endFocus?: () => void, openNeeds: () => void = openPane, columns?: number, next?: BandNext, startFresh?: () => void, copyRule?: (rule: string) => void, openSession?: (r: RelayView) => void, step?: BandStep) {
+export function HomeBand(el: El, view: View, detail: Detail, openPane: () => void, endFocus?: () => void, openNeeds: () => void = openPane, columns?: number, next?: BandNext, startFresh?: () => void, openSession?: (r: RelayView) => void, step?: BandStep) {
   const { Box, Text } = el
   const actions = next?.actions ?? []
   const plan = bandPlan(view, detail, columns, actions.map(a => tr(a.label)), endFocus !== undefined, startFresh !== undefined, el.Svg !== undefined, { stop: step?.stop !== undefined, wait: step !== undefined })
@@ -266,12 +260,11 @@ export function HomeBand(el: El, view: View, detail: Detail, openPane: () => voi
     )
   }
   if (plan.mode !== 'line') return null
-  // The rule press needs its copy action, the session press its open action; without it no button is drawn
+  // The session press needs its open action; without it no button is drawn
   const relay = view.relay
-  const open = (plan.open?.kind === 'rule' && copyRule === undefined) || (plan.open?.kind === 'session' && (openSession === undefined || relay === undefined)) ? undefined : plan.open
-  const rule = plan.rule
+  const open = (plan.open?.kind === 'session' && (openSession === undefined || relay === undefined)) ? undefined : plan.open
   const stepPress = (o: Open | undefined): (() => void) | undefined => (o?.kind === 'stop' ? step?.stop : o?.kind === 'wait' ? step?.wait : undefined)
-  const press = open?.kind === 'focus' && endFocus !== undefined ? endFocus : open?.kind === 'fresh' && startFresh !== undefined ? startFresh : open?.kind === 'rule' && rule !== undefined && copyRule !== undefined ? () => copyRule(rule) : open?.kind === 'session' && relay !== undefined && openSession !== undefined ? () => openSession(relay) : (stepPress(open) ?? openPane)
+  const press = open?.kind === 'focus' && endFocus !== undefined ? endFocus : open?.kind === 'fresh' && startFresh !== undefined ? startFresh : open?.kind === 'session' && relay !== undefined && openSession !== undefined ? () => openSession(relay) : (stepPress(open) ?? openPane)
   // On the desktop a session the app listed opens by its own link (the host's Link); elsewhere the press asks the app's window tool
   const Link = open?.kind === 'session' && relay?.link !== undefined && el.drag ? el.host?.Link : undefined
   const second = plan.second
@@ -293,7 +286,7 @@ export function HomeBand(el: El, view: View, detail: Detail, openPane: () => voi
       )}
       {open === undefined ? null : (
         <Box flexShrink={0}>
-          {Link !== undefined && relay?.link !== undefined ? <Link key="band-open-session" href={relay.link} label={padded(open.label)} /> : bandButton(el, open.kind === 'focus' ? 'band-focus-end' : open.kind === 'fresh' ? 'band-fresh' : open.kind === 'rule' ? 'band-allow-kind' : open.kind === 'session' ? 'band-open-session' : open.kind === 'stop' ? 'band-step-stop' : open.kind === 'wait' ? 'band-step-wait' : 'band-details', open.label, press)}
+          {Link !== undefined && relay?.link !== undefined ? <Link key="band-open-session" href={relay.link} label={padded(open.label)} /> : bandButton(el, open.kind === 'focus' ? 'band-focus-end' : open.kind === 'fresh' ? 'band-fresh' : open.kind === 'session' ? 'band-open-session' : open.kind === 'stop' ? 'band-step-stop' : open.kind === 'wait' ? 'band-step-wait' : 'band-details', open.label, press)}
         </Box>
       )}
       {open === undefined || second === undefined || secondPress === undefined ? null : <Box flexShrink={0}>{bandButton(el, 'band-step-wait', second.label, secondPress)}</Box>}
