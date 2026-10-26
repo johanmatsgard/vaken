@@ -67,8 +67,8 @@ export const bandText = (count: number): string => `Claude assumed ${tEn('words.
 // Said in the language of this draw: only the text twin reads it
 const ago = (ms: number): string => fmt.ago(ms, 'plain', langNow())
 
-export function assumptionsText(stored: Stored | undefined, on: boolean, now: number): string {
-  if (stored === undefined || stored.count === 0) return on ? tr('No assumptions listed yet in this session.') : tr('No assumptions listed. The assumption review is off. Turn it on: Settings > Prompts and memory.')
+export function assumptionsText(stored: Stored | undefined, isOn: boolean, now: number): string {
+  if (stored === undefined || stored.count === 0) return isOn ? tr('No assumptions listed yet in this session.') : tr('No assumptions listed. The assumption review is off. Turn it on: Settings > Prompts and memory.')
   const more = stored.count > stored.lines.length ? [fillIn(tr('({n} more not kept.)'), { n: stored.count - stored.lines.length })] : []
   return [fillIn(tr('Claude listed {what} {ago}:'), { what: t('words.assumption', { n: stored.count }), ago: ago(now - stored.at) }), ...stored.lines, ...more].join('\n')
 }

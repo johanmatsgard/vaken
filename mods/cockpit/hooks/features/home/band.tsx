@@ -242,18 +242,18 @@ function bandButton(el: El, key: string, label: string, onPress: () => void, amb
 
 // `step`: the runaway step line's presses; `stop` only while the running answer is known
 export type BandStep = { stop?: () => void; wait: () => void }
-export function HomeBand(el: El, view: View, detail: Detail, openPane: () => void, endFocus?: () => void, openNeeds: () => void = openPane, columns?: number, next?: BandNext, startFresh?: () => void, openSession?: (r: RelayView) => void, step?: BandStep) {
+export function HomeBand(el: El, view: View, detail: Detail, openPane: () => void, endFocus?: () => void, openNeeds: () => void = openPane, columns?: number, bandNext?: BandNext, startFresh?: () => void, openSession?: (r: RelayView) => void, step?: BandStep) {
   const { Box, Text } = el
-  const actions = next?.actions ?? []
+  const actions = bandNext?.actions ?? []
   const plan = bandPlan(view, detail, columns, actions.map(a => tr(a.label)), endFocus !== undefined, startFresh !== undefined, el.Svg !== undefined, { stop: step?.stop !== undefined, wait: step !== undefined })
   if (plan.mode === 'none') return null
   const chip = drawChip(el, bandChip(view, el.Svg !== undefined), plan.fit)
-  if (plan.mode === 'next' && next !== undefined) {
+  if (plan.mode === 'next' && bandNext !== undefined) {
     return (
       <Box paddingX={cols(BAND_PAD_X)} flexDirection="row" alignItems="center" columnGap={cols(BAND_GAP)}>
         <Box flexShrink={1} overflow="hidden" flexDirection="row" alignItems="center" columnGap={cols(BAND_GAP / 2)}>
           <Text dimColor>{tr(NEXT_WORD)}</Text>
-          {actions.slice(0, plan.shown).map(a => bandButton(el, `band-next-${a.id}`, tr(a.label), () => next.press(a)))}
+          {actions.slice(0, plan.shown).map(a => bandButton(el, `band-next-${a.id}`, tr(a.label), () => bandNext.press(a)))}
         </Box>
         {chip}
       </Box>

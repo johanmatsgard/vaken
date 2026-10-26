@@ -99,16 +99,16 @@ const took = (c: CheckRow): number | undefined => {
 }
 
 export function learnDurations(old: Durations, checks: CheckRow[]): Durations {
-  const next: Durations = { ...old }
+  const updated: Durations = { ...old }
   for (const c of checks) {
     const ms = took(c)
     if (ms === undefined) continue
-    delete next[c.name]
-    next[c.name] = ms
+    delete updated[c.name]
+    updated[c.name] = ms
   }
-  const names = Object.keys(next)
-  for (const n of names.slice(0, Math.max(0, names.length - KEEP_NAMES))) delete next[n]
-  return next
+  const names = Object.keys(updated)
+  for (const n of names.slice(0, Math.max(0, names.length - KEEP_NAMES))) delete updated[n]
+  return updated
 }
 
 export function timeLeftMs(checks: CheckRow[], durations: Durations, now: number): number | undefined {
@@ -266,8 +266,8 @@ export function withSharedPr(raw: unknown, repo: string, branch: string | undefi
   const old = typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {}
   const keep = Object.entries(old).filter((e): e is [string, PrFacts] => isFacts(e[1]) && now - e[1].at >= 0 && now - e[1].at < PR_IDLE_EVERY_MS)
   const { at, view, none, error } = f
-  const next = [[sharedId(repo, branch), { at, branch, ...(view === undefined ? {} : { view }), ...(none === undefined ? {} : { none }), ...(error === undefined ? {} : { error }) }] as [string, PrFacts], ...keep.filter(e => e[0] !== sharedId(repo, branch))]
-  return Object.fromEntries(next.sort((a, b) => b[1].at - a[1].at).slice(0, PR_SHARED_MAX))
+  const updated = [[sharedId(repo, branch), { at, branch, ...(view === undefined ? {} : { view }), ...(none === undefined ? {} : { none }), ...(error === undefined ? {} : { error }) }] as [string, PrFacts], ...keep.filter(e => e[0] !== sharedId(repo, branch))]
+  return Object.fromEntries(updated.sort((a, b) => b[1].at - a[1].at).slice(0, PR_SHARED_MAX))
 }
 
 export function prText(mode: string, f: PrFacts | undefined, durations: Durations, now: number, canAsk: string | undefined): string {

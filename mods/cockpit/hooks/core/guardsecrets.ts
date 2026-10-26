@@ -317,20 +317,20 @@ function psReadPaths(c: Cmd): string[] {
 
 const narrowWord = (w: string): boolean => /[A-Za-z]{2,}/.test(w) && !SECRET_NAME.test(w)
 
-function narrowedGrep(next: Cmd | undefined): boolean {
-  if (next === undefined) return false
-  if (next.prog === 'wc') return true
-  if (!['grep', 'egrep', 'fgrep', 'rg'].includes(next.prog)) return false
-  const f = flagsOf(next.args)
+function narrowedGrep(following: Cmd | undefined): boolean {
+  if (following === undefined) return false
+  if (following.prog === 'wc') return true
+  if (!['grep', 'egrep', 'fgrep', 'rg'].includes(following.prog)) return false
+  const f = flagsOf(following.args)
   if (f.short.has('c') || f.short.has('q') || f.long.has('--count') || f.long.has('--quiet')) return true
-  const p = searchParts(next, SEARCH_SYNTAX[next.prog] ?? GREP)
+  const p = searchParts(following, SEARCH_SYNTAX[following.prog] ?? GREP)
   return !p.invert && p.patterns.length > 0 && p.patterns.every(narrowWord)
 }
 
-function narrowedPs(next: Cmd | undefined): boolean {
-  if (next === undefined || !['where-object', 'where', '?', 'select-string', 'sls'].includes(next.prog.toLowerCase())) return false
-  if (next.args.some(a => !a.quoted && /^-not/i.test(a.t))) return false
-  const words = next.args
+function narrowedPs(following: Cmd | undefined): boolean {
+  if (following === undefined || !['where-object', 'where', '?', 'select-string', 'sls'].includes(following.prog.toLowerCase())) return false
+  if (following.args.some(a => !a.quoted && /^-not/i.test(a.t))) return false
+  const words = following.args
     .filter(a => a.op !== true && (a.quoted || !a.t.startsWith('-')))
     .map(a => a.t.replace(/[{}()]/g, '').replace(/^\$_\./, '').replace(/^\$psitem\./i, ''))
     .filter(w => w !== '' && !/^(?:name|value|key)$/i.test(w))
@@ -461,11 +461,11 @@ function pipedAway(c: Cmd): { file: string; prog: string } | undefined {
   if (!PACKERS.has(c.prog) || c.into === undefined) return undefined
   const file = [...c.args.filter(t => t.op !== true).map(t => t.t), ...c.redirects.filter(r => r.op === '<').map(r => r.target)].find(t => !t.startsWith('-') && secretPathKind(t) !== undefined)
   if (file === undefined) return undefined
-  let next: Cmd | undefined = c.into
-  for (let hops = 0; next !== undefined && hops < 4; hops++) {
-    if (readsPipe(next)) return { file, prog: next.prog }
-    if (!PASS_ON.has(next.prog)) return undefined
-    next = next.into
+  let following: Cmd | undefined = c.into
+  for (let hops = 0; following !== undefined && hops < 4; hops++) {
+    if (readsPipe(following)) return { file, prog: following.prog }
+    if (!PASS_ON.has(following.prog)) return undefined
+    following = following.into
   }
   return undefined
 }
@@ -514,10 +514,10 @@ export function secretsBefore(tool: string, a: Record<string, unknown>): SecretF
     return out
   }
   if (tool === 'Write' || tool === 'Edit' || tool === 'MultiEdit') {
-    const next = tool === 'Write' ? str(a.content) : tool === 'Edit' ? str(a.new_string) : (Array.isArray(a.edits) ? (a.edits as Record<string, unknown>[]).map(x => str(x.new_string)).join('\n') : '')
+    const newText = tool === 'Write' ? str(a.content) : tool === 'Edit' ? str(a.new_string) : (Array.isArray(a.edits) ? (a.edits as Record<string, unknown>[]).map(x => str(x.new_string)).join('\n') : '')
     const old = tool === 'Edit' ? str(a.old_string) : tool === 'MultiEdit' && Array.isArray(a.edits) ? (a.edits as Record<string, unknown>[]).map(x => str(x.old_string)).join('\n') : ''
     if (secretFileKind(str(a.file_path)) !== undefined) return out
-    const hits = scanSecrets(next, old)
+    const hits = scanSecrets(newText, old)
     if (hits.length > 0) out.push({ key: `text|${tool}|${kindsWords(hits)}`, words: `This edit puts ${kindsWords(hits)} into a file that is not a secret file. It could end up in version control. Vaken does not show it.` })
     return out
   }

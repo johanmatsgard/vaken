@@ -2,7 +2,7 @@
 
 <!-- GENERATED from hooks/i18n/rows/*.ts by scripts/strings-md.sh. Do not edit by hand. -->
 
-**Generated, never edit by hand.** This page is the one text table (`mods/cockpit/hooks/i18n/rows`) written out to read: 5101 texts in 66 areas, languages en, sv. To change a text, edit the table (or export the sheet with `sh scripts/strings-export.sh sheet.csv`, change it, and import it with `sh scripts/strings-import.sh sheet.csv`), then regenerate this page with `sh scripts/strings-md.sh`. `sh scripts/check-strings.sh` fails when this page is out of date.
+**Generated, never edit by hand.** This page is the one text table (`mods/cockpit/hooks/i18n/rows`) written out to read: 5094 texts in 65 areas, languages en, sv. To change a text, edit the table (or export the sheet with `sh scripts/strings-export.sh sheet.csv`, change it, and import it with `sh scripts/strings-import.sh sheet.csv`), then regenerate this page with `sh scripts/strings-md.sh`. `sh scripts/check-strings.sh` fails when this page is out of date.
 
 A text with a count has two lines, `one` and `other`. `{n}` and the like are filled in when the text is shown.
 
@@ -40,7 +40,6 @@ A text with a count has two lines, `one` and `other`. `{n}` and the like are fil
 - [night](#night) (25): Shown from the code.
 - [tell](#tell) (16): Shown from the code.
 - [lean](#lean) (9): Shown from the code.
-- [big](#big) (7): Shown from the code.
 - [selected](#selected) (13): Shown from the code.
 - [teach](#teach) (47): Shown from the code.
 - [allow](#allow) (34): Shown from the code.
@@ -2238,20 +2237,6 @@ Shown from the code. (Code: n/a.)
 | `lean.logs_only` | Logs only | Bara loggar |  |
 | `lean.note` | Cuts long logs to the errors and last lines. A new chat starts with git facts. | Kortar långa loggar till felen och sista raderna. En ny chatt börjar med fakta från git. |  |
 | `lean.repeat_line` | one: Left out 1 unchanged reminder today (about {m} characters Claude did not read).<br>other: Left out {n} unchanged reminders today (about {m} characters Claude did not read). | one: Utelämnade 1 oförändrad påminnelse i dag (ungefär {m} tecken som Claude inte läste).<br>other: Utelämnade {n} oförändrade påminnelser i dag (ungefär {m} tecken som Claude inte läste). |  |
-
-## big
-
-Shown from the code. (Code: n/a.)
-
-| name | en | sv | note |
-| --- | --- | --- | --- |
-| `big.ask` | {name} is big: {lines} lines, {size}. Send Claude only the last {tail} lines? | {name} är stor: {lines} rader, {size}. Skicka bara de sista {tail} raderna till Claude? |  |
-| `big.big_file` | Big file | Stor fil |  |
-| `big.failed` | Could not send part of {name}. Type @{mention}#L{from}-{to} to send its last {tail} lines. | Kunde inte skicka en del av {name}. Skriv @{mention}#L{from}-{to} för att skicka de sista {tail} raderna. |  |
-| `big.help_text` | When you name a file after @ that has more than 2000 lines or 200 KB, such as a lock file or a log, vaken asks once: Send the last 200 lines instead, or Send the whole file. Only your press changes what Claude reads; with no answer the file goes whole, and you can type the lines yourself (@app.log#L800-1000). Lean session Off turns the question off. | När du nämner en fil efter @ som har fler än 2000 rader eller 200 KB, till exempel en låsfil eller en logg, frågar vaken en gång: Skicka de sista 200 raderna i stället, eller Skicka hela filen. Bara ditt tryck ändrar vad Claude läser; utan svar går hela filen, och du kan skriva raderna själv (@app.log#L800-1000). Smal session Av stänger av frågan. |  |
-| `big.help_title` | Why vaken asks about a big file | Varför vaken frågar om en stor fil |  |
-| `big.send_the_last_lines_instead` | Send the last {tail} lines instead | Skicka de sista {tail} raderna i stället |  |
-| `big.send_the_whole_file` | Send the whole file | Skicka hela filen |  |
 
 ## selected
 

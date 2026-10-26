@@ -33,7 +33,6 @@ import { ROWS as welcomeRows } from './rows/welcome'
 import { ROWS as nightRows } from './rows/night'
 import { ROWS as tellRows } from './rows/tell'
 import { ROWS as leanRows } from './rows/lean'
-import { ROWS as bigRows } from './rows/big'
 import { ROWS as selectedRows } from './rows/selected'
 import { ROWS as teachRows } from './rows/teach'
 import { ROWS as allowRows } from './rows/allow'
@@ -102,7 +101,6 @@ export const AREAS: ReadonlyArray<readonly [string, Rows]> = [
   ['night', nightRows],
   ['tell', tellRows],
   ['lean', leanRows],
-  ['big', bigRows],
   ['selected', selectedRows],
   ['teach', teachRows],
   ['allow', allowRows],

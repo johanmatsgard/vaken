@@ -61,9 +61,9 @@ export async function announceNew(i: Io, view: View, prefs: Prefs, autoOff: read
   const lists = prefs.lists
   try {
     const appearing = CARD_IDS.filter(id => APPEARS[id] !== undefined && (prefs.values[`cards.${id}`] ?? cardsDefault(id)) === 'auto' && !autoOff.includes(id))
-    const { next, announce } = arrivals(appearing, lists.seen)
-    if (next === undefined) return lists
-    const kept: ListPrefs = { ...lists, seen: next }
+    const { next: arrived, announce } = arrivals(appearing, lists.seen)
+    if (arrived === undefined) return lists
+    const kept: ListPrefs = { ...lists, seen: arrived }
     await i.set(PREF_LISTS, kept)
     if (announce.length > 0) i.toast(newToast(announce.map(id => tr(cardTitle(id, view, prefs))), tr))
     return kept

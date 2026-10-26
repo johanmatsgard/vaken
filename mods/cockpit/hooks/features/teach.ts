@@ -75,8 +75,8 @@ async function change(i: Io, fs: SafeFs | undefined, root: string, how: (disk: s
   if (path === undefined) return { ok: false, why: 'place' }
   const disk = await readOne(i, path)
   if (disk === false) return { ok: false, why: 'unreadable' }
-  const next = how(disk)
-  if (!('text' in next)) return { ok: false, why: next.why }
+  const howNow = how(disk)
+  if (!('text' in howNow)) return { ok: false, why: howNow.why }
   if (fs === undefined || !(await checkWrite(fs, root, path)).ok) return { ok: false, why: 'link' }
   try {
     const probe: Probe = async p => {
@@ -87,7 +87,7 @@ async function change(i: Io, fs: SafeFs | undefined, root: string, how: (disk: s
       }
     }
     await saveBefore(i, probe, await i.sessionId(), [{ path, create: disk === null }], 'vaken-teach')
-    await i.write(path, next.text)
+    await i.write(path, howNow.text)
     try {
       await pushLog(i, LEDGER_KEY, { at: await i.now(), session: await i.sessionId(), what, detail, how: 'button', did: true })
     } catch {

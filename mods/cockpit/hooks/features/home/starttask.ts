@@ -85,8 +85,8 @@ export function startActsOf(eng: HomeEngine): StartActs {
         const i = eng.io()
         try {
           const proof = readState(await readNote(i, stateKey(await i.sessionId())))
-          const next = proof.done.includes(kind) ? proof.done.filter(k => k !== kind) : [...proof.done, kind]
-          await setDoneKinds(i, PROOF_KINDS.filter(k => next.includes(k)) as ProofKind[])
+          const doneKinds = proof.done.includes(kind) ? proof.done.filter(k => k !== kind) : [...proof.done, kind]
+          await setDoneKinds(i, PROOF_KINDS.filter(k => doneKinds.includes(k)) as ProofKind[])
         } catch {
         }
         i.invalidate()

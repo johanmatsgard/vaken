@@ -96,8 +96,8 @@ export function NeedsCard(c0: PaneCtx, cap?: number, built: LineGroup[] = needsG
 export const needsShut = (c: PaneCtx): boolean => c.glanceOf !== undefined && needsRows(c, needsGroupsOf(c)) > 0 && needsIsShut(c.prefs.openSections, needsTotal(c))
 function needsFold(c: PaneCtx, total: number): void {
   const now = c.prefs.openSections
-  const next = needsToggled(now, total)
-  for (const k of [...now.filter(k => !next.includes(k)), ...next.filter(k => !now.includes(k))]) c.act.toggleSection(k)
+  const toggled = needsToggled(now, total)
+  for (const k of [...now.filter(k => !toggled.includes(k)), ...toggled.filter(k => !now.includes(k))]) c.act.toggleSection(k)
 }
 
 // The age is one whole value at the end of the dim line (where every row of the card has it): at the right of the reason when both fit, else after the reason, its spaces kept from breaking

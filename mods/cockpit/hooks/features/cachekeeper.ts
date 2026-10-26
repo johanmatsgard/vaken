@@ -92,10 +92,10 @@ async function pingOnce($: EngineInterface, sessionId: string, n: number): Promi
 }
 
 // Writes what the reads since your last answer came to, once. Never throws.
-async function settle(i: Io, sessionId: string, price: ReturnType<typeof priceOf>, next: { read: number; write: number; fresh: number }, held: boolean, now: number): Promise<void> {
+async function settle(i: Io, sessionId: string, price: ReturnType<typeof priceOf>, nextFacts: { read: number; write: number; fresh: number }, held: boolean, now: number): Promise<void> {
   const reads = keptReads
   keptReads = []
-  const net = keptNet(price, reads, next, held)
+  const net = keptNet(price, reads, nextFacts, held)
   if (net === undefined) return
   try {
     await pushLog(i, LEDGER_KEY, { at: now, session: sessionId, what: net.usd > 0 ? KEPT_PAID_WHAT : KEPT_LOST_WHAT, detail: keptNetDetail(net, reads.length), how: 'auto', usd: net.usd })

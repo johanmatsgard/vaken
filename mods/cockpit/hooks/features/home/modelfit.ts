@@ -80,11 +80,11 @@ export function askEffort(effort: unknown): 'low' | undefined {
 }
 
 export type AskHint = { kind: 'fits' } | { kind: 'low'; old: Effort }
-export function askHint(on: boolean): AskHint | undefined {
-  askMem.on = on
-  if (!on) return undefined
+export function askHint(isOn: boolean): AskHint | undefined {
+  askMem.on = isOn
+  if (!isOn) return undefined
   if (askMem.low !== undefined) return { kind: 'low', old: askMem.low }
-  return askFits({ on, run: askMem.run, effort: fitMem.effort, low: false }) ? { kind: 'fits' } : undefined
+  return askFits({ on: isOn, run: askMem.run, effort: fitMem.effort, low: false }) ? { kind: 'fits' } : undefined
 }
 const askSignature = (values: Values): string => {
   const h = askHint(fitOn(values[FIT_KEY]))

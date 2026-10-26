@@ -115,9 +115,9 @@ export function checkText(v: PrNow, now: number, t: Say, shipLine?: string): str
   const reasons = mergeReasons(v, t)
   const failed = tally(v.checks).failed > 0
   const pending = tally(v.checks).running + tally(v.checks).queued > 0
-  const next = reasons.length === 0 ? SS_T_CHECK_NEXT_MERGE : failed ? SS_T_CHECK_NEXT_FIX : pending ? SS_T_CHECK_NEXT_WAIT : SS_T_CHECK_NEXT_OTHER
+  const nextStep = reasons.length === 0 ? SS_T_CHECK_NEXT_MERGE : failed ? SS_T_CHECK_NEXT_FIX : pending ? SS_T_CHECK_NEXT_WAIT : SS_T_CHECK_NEXT_OTHER
   const commit = isSha(v.head) ? [fill(t(SS_T_CHECK_COMMIT), { sha: shortSha(v.head) })] : []
-  return [...(shipLine === undefined || shipLine === '' ? [] : [shipLine]), prWords(v, {}, now), ...commit, t(reasons.length === 0 ? SS_T_MERGE_OK : SS_T_MERGE_NOT), ...reasons.map(r => `  - ${r}`), t(next)].join('\n')
+  return [...(shipLine === undefined || shipLine === '' ? [] : [shipLine]), prWords(v, {}, now), ...commit, t(reasons.length === 0 ? SS_T_MERGE_OK : SS_T_MERGE_NOT), ...reasons.map(r => `  - ${r}`), t(nextStep)].join('\n')
 }
 
 export const fixNothingText = (t: Say): string => t(SS_T_FIX_NOFAIL)

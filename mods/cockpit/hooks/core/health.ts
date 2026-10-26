@@ -88,8 +88,8 @@ export function withFailure(c: Counts, now: number, area: string, kind: string):
   const old = c[day]?.[a] ?? emptyArea()
   const k = clean(kind, 24)
   const kinds = k in old.kinds || Object.keys(old.kinds).length < MAX_KINDS ? { ...old.kinds, [k]: (old.kinds[k] ?? 0) + 1 } : old.kinds
-  const next: AreaDay = { ...old, failed: old.failed + 1, kinds }
-  return { counts: trimDays({ ...c, [day]: { ...(c[day] ?? {}), [a]: next } }), failed: next.failed }
+  const updated: AreaDay = { ...old, failed: old.failed + 1, kinds }
+  return { counts: trimDays({ ...c, [day]: { ...(c[day] ?? {}), [a]: updated } }), failed: updated.failed }
 }
 
 export function withSlow(c: Counts, now: number, area: string, ms: number): Counts {
@@ -97,8 +97,8 @@ export function withSlow(c: Counts, now: number, area: string, ms: number): Coun
   const day = dayOf(now)
   const a = clean(area, 24)
   const old = c[day]?.[a] ?? emptyArea()
-  const next: AreaDay = { ...old, slow: old.slow + 1, slowMs: old.slowMs + Math.round(ms), maxMs: Math.max(old.maxMs, Math.round(ms)) }
-  return trimDays({ ...c, [day]: { ...(c[day] ?? {}), [a]: next } })
+  const updated: AreaDay = { ...old, slow: old.slow + 1, slowMs: old.slowMs + Math.round(ms), maxMs: Math.max(old.maxMs, Math.round(ms)) }
+  return trimDays({ ...c, [day]: { ...(c[day] ?? {}), [a]: updated } })
 }
 
 

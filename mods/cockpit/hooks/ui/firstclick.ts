@@ -80,6 +80,6 @@ export function runPress(key: string, now: number): 'ran' | 'repeat' | 'none' {
 // While on, every Client is drawn with `log` and posts its pointer events with its region's size
 let logOn = false
 export const pressLogOn = (): boolean => logOn
-export function setPressLog(on: boolean): void {
-  logOn = on
+export function setPressLog(isOn: boolean): void {
+  logOn = isOn
 }

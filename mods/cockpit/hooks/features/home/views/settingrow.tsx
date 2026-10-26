@@ -60,8 +60,8 @@ export function settingRowOf(el: El, prefs: Prefs, act: Acts, innerPt: number): 
       const tone = toneOf(r, cur)
       const word = tr(chipWord(r, cur, true))
       const chip = { word: moved ? `${word} \u00b7 ${t(CHANGED_WORD)}` : word, on: tone === 'on' || tone === 'suggest' }
-      const next = cur === sw.on ? sw.off : sw.on
-      return SwitchRow(el, r.key, r.label, noteOf(r), cur === sw.on, next, () => act.setSetting(r.key, next), innerPt, chip)
+      const flipped = cur === sw.on ? sw.off : sw.on
+      return SwitchRow(el, r.key, r.label, noteOf(r), cur === sw.on, flipped, () => act.setSetting(r.key, flipped), innerPt, chip)
     }
     // A choice's figure ("60%", "$25") in the reader's language ("60 %", "25 USD")
     const options = optionsOf(r, prefs)

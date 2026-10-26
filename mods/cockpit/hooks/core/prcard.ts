@@ -54,8 +54,8 @@ export function mergeOf(v: PrView): PrMerge {
 // No Fix press: the Desktop app's PR monitor shows CI and offers Auto-fix
 export const pressOf = (r: PrRow): PrPress | undefined => (r.mine && r.checks !== 'failing' && r.checks !== 'running' && r.merge === 'ready' ? 'ship' : undefined)
 
-export function prsFacts(raw: unknown, me: { id: string; branch?: string; noGit?: NoGit }, sessions: PrSession[], now: number, on: boolean): PrsFacts {
-  if (!on) return { on, rows: [], look: false }
+export function prsFacts(raw: unknown, me: { id: string; branch?: string; noGit?: NoGit }, sessions: PrSession[], now: number, isOn: boolean): PrsFacts {
+  if (!isOn) return { on: isOn, rows: [], look: false }
   const entries = typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? Object.entries(raw as Record<string, unknown>) : []
   const found = new Map<string, PrRow>()
   let mineKnown = false
@@ -100,7 +100,7 @@ export function prsFacts(raw: unknown, me: { id: string; branch?: string; noGit?
   }
   const recent = merged.filter(m => !rows.some(r => r.repoName === m.repoName && r.number === m.number)).sort((a, b) => b.at - a.at)
   const look = me.branch !== undefined && me.branch !== '' && !mineKnown
-  return { on, rows: rows.slice(0, PRS_MAX), look, ...(recent.length === 0 ? {} : { merged: recent.slice(0, PRS_MAX) }), ...(look && fail !== undefined ? { fail: fail.kind } : {}), ...(!look && me.noGit !== undefined ? { noGit: me.noGit } : {}) }
+  return { on: isOn, rows: rows.slice(0, PRS_MAX), look, ...(recent.length === 0 ? {} : { merged: recent.slice(0, PRS_MAX) }), ...(look && fail !== undefined ? { fail: fail.kind } : {}), ...(!look && me.noGit !== undefined ? { noGit: me.noGit } : {}) }
 }
 
 // This card stays calm on a failing check; the app's PR monitor handles CI
@@ -177,12 +177,12 @@ export function prWhat(r: PrRow, now: number, ship?: string[], t: (s: string) =>
     `${fi('Asked GitHub {ago}.', { ago: fmt.ago(Math.max(0, now - r.at), 'days', langNow()) })} ${r.mine ? t('From this session.') : r.session !== undefined ? fi('From the session {name}.', { name: r.session }) : t('From a session that is not open now.')}`,
     ...plainVerdict(ship ?? [], [], true),
   ]
-  const next = !r.mine
+  const flipped = !r.mine
     ? `${fi('Fix it in that session{who}.', { who: r.session === undefined ? '' : ` (${r.session})` })} ${t('Vaken does not act in another session.')}`
     : press === 'ship'
         ? t('Press to see if the work looks ready, as /vaken-ship says. Merging stays your press.')
         : t('Type /vaken-ship pr for the checks, or /vaken-ship merge-order for the order.')
-  return { means: PRS_MEANS, facts, next, setting: 'crew.pr' }
+  return { means: PRS_MEANS, facts, next: flipped, setting: 'crew.pr' }
 }
 
 // `press` says what a row does; the pane turns it into a typed row action.

@@ -99,22 +99,22 @@ export function startAgent(list: AgentEntry[], s: Start, now: number): AgentEntr
 // Returns the same list when nothing matched, so the caller can tell.
 export function endAgent(list: AgentEntry[], key: string, state: 'done' | 'failed', now: number): AgentEntry[] {
   let changed = false
-  const next = list.map(e => {
+  const updated = list.map(e => {
     if ((e.id !== key && e.agentId !== key) || (e.state !== 'running' && e.state !== 'unknown')) return e
     changed = true
     return { ...e, state, endedAt: now }
   })
-  return changed ? next : list
+  return changed ? updated : list
 }
 
 export function addAgentCost(list: AgentEntry[], key: string, usd: number | undefined, model?: string): AgentEntry[] {
   let changed = false
-  const next = list.map(e => {
+  const updated = list.map(e => {
     if (e.id !== key && e.agentId !== key) return e
     changed = true
     return { ...e, ...(usd === undefined ? {} : { usd: (e.usd ?? 0) + usd }), ...(e.model === undefined && model !== undefined ? { model } : {}) }
   })
-  return changed ? next : list
+  return changed ? updated : list
 }
 
 export const watchNeeded = (list: AgentEntry[], session: string, now: number): boolean =>
@@ -123,19 +123,19 @@ export const watchNeeded = (list: AgentEntry[], session: string, now: number): b
 export function markSessionUnknown(list: AgentEntry[], session: string): AgentEntry[] {
   const s = session.slice(0, 8)
   let changed = false
-  const next = list.map(e => {
+  const updated = list.map(e => {
     if (e.session !== s || e.state !== 'running') return e
     changed = true
     return { ...e, state: 'unknown' as const }
   })
-  return changed ? next : list
+  return changed ? updated : list
 }
 
 export type Status = { id: string; status: string }
 export function syncStatus(list: AgentEntry[], infos: Status[], now: number): AgentEntry[] {
   const byId = new Map(infos.map(x => [x.id, x.status]))
   let changed = false
-  const next = list.map(e => {
+  const updated = list.map(e => {
     if (e.agentId === undefined || (e.state !== 'running' && e.state !== 'unknown')) return e
     const st = byId.get(e.agentId)
     if (st === 'completed') {
@@ -148,7 +148,7 @@ export function syncStatus(list: AgentEntry[], infos: Status[], now: number): Ag
     }
     return e
   })
-  return changed ? next : list
+  return changed ? updated : list
 }
 
 // The engine's list has no activity time, so progress is the helper's own tool calls and turn ends.
@@ -162,7 +162,7 @@ export function flagStuck(list: AgentEntry[], seen: ReadonlyMap<string, number>,
   const mine = session.slice(0, 8)
   let fresh = 0
   let changed = false
-  const next = list.map(e => {
+  const updated = list.map(e => {
     if (e.session !== mine || e.state !== 'running' || e.agentId === undefined || now - e.startedAt >= BACKGROUND_LIMIT_MS) return e
     const last = Math.max(e.startedAt, seen.get(e.agentId) ?? 0)
     if (now - last >= STUCK_MS) {
@@ -176,7 +176,7 @@ export function flagStuck(list: AgentEntry[], seen: ReadonlyMap<string, number>,
     const { quietAt: _gone, ...rest } = e
     return rest
   })
-  return { list: changed ? next : list, fresh }
+  return { list: changed ? updated : list, fresh }
 }
 
 
@@ -196,8 +196,8 @@ export function boardRows(list: AgentEntry[], now: number): BoardRow[] {
 // Foreground helpers are counted by the limit itself while their Agent call runs. With the engine's list of this session's agents (`live`), a row of this session the list no longer holds, or holds as ended, is over, even when no end was seen.
 export function runningCount(list: AgentEntry[], now: number, live?: { session: string; statuses: Status[] }): number {
   const mine = live?.session.slice(0, 8)
-  const on = new Set((live?.statuses ?? []).filter(s => s.status !== 'completed' && s.status !== 'failed' && s.status !== 'killed').map(s => s.id))
-  return list.filter(e => e.state === 'running' && e.background && now - e.startedAt < BACKGROUND_LIMIT_MS && (live === undefined || e.session !== mine || e.agentId === undefined || on.has(e.agentId))).length
+  const liveIds = new Set((live?.statuses ?? []).filter(s => s.status !== 'completed' && s.status !== 'failed' && s.status !== 'killed').map(s => s.id))
+  return list.filter(e => e.state === 'running' && e.background && now - e.startedAt < BACKGROUND_LIMIT_MS && (live === undefined || e.session !== mine || e.agentId === undefined || liveIds.has(e.agentId))).length
 }
 
 

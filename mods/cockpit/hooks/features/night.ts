@@ -52,10 +52,10 @@ export async function notePrompt(i: Io, text: string): Promise<void> {
 export async function noteAnswer(i: Io, answer: string): Promise<void> {
   const found = findPromises(answer)
   if (found.length === 0 || (await readSetting(i, 'recap.mode')) === 'off') return
-  const next = addPromises(nightMem.promises, found)
-  if (next.length === nightMem.promises.length && next.every((p, k) => p === nightMem.promises[k])) return
-  nightMem.promises = next
-  await savePromises(i, next)
+  const withFound = addPromises(nightMem.promises, found)
+  if (withFound.length === nightMem.promises.length && withFound.every((p, k) => p === nightMem.promises[k])) return
+  nightMem.promises = withFound
+  await savePromises(i, withFound)
 }
 
 export function registerNight(on: On): void {

@@ -1,9 +1,7 @@
 // The Skills card's engine: counts the skills used, keeps the list of skills Claude has in memory, and prints both as text.
-import type { EngineInterface, On } from 'claude-code'
-import { noteWrite } from '../core/selfcost'
+// Its hooks are written in register.tsx, where the plugin directory reads them; nothing here is handed $ or on.
+import type { SessionUsage } from 'claude-code'
 
-import { withToastGate } from '../core/io'
-import { homeFrom } from '../core/platform'
 import type { Io } from '../core/io'
 import { serialUpdate } from '../core/serial'
 import { LISTING_TRIES, SKILLS_COUNTS_KEY, SKILLS_FLUSH_MS, SKILLS_LISTING_KEY, addSkillCounts, holdsCounts, listingFrom, noteSkill, parseListing, pendingSize, skillsText } from '../core/skills'
@@ -12,34 +10,13 @@ import { subArgs } from '../core/menu'
 import { tr } from '../core/lang'
 import { sayIn } from './saylang'
 
-// IO-BLOCK-START
-function io($: EngineInterface): Io {
-  return withToastGate({
-    now: () => $.clock.now(),
-    home: () => homeFrom({ HOME: () => $.env.get('HOME'), USERPROFILE: () => $.env.get('USERPROFILE'), HOMEDRIVE: () => $.env.get('HOMEDRIVE'), HOMEPATH: () => $.env.get('HOMEPATH') }),
-    sessionId: () => $.session.id(),
-    get: key => $.store.get(key),
-    set: (key, value) => $.store.set(key, value),
-    del: key => $.store.delete(key),
-    keys: () => $.store.keys(),
-    read: path => $.fs.read(path),
-    write: (path, text) => $.fs.write(path, text),
-    run: (argv, init) => $.process.run(argv, init),
-    ask: (question, options) => $.ui.ask(question, options),
-    complete: req => $.model.complete(req),
-    toast: text => $.ui.toast(text),
-    invalidate: () => $.ui.invalidate('ui.render'),
-  })
-}
-// IO-BLOCK-END
-
 let pending: SkillCounts = {}
 let lastFlush = 0
 let listed = false
 let tries = 0
 
 // Never throws.
-async function flush(i: Io): Promise<void> {
+export async function flushSkills(i: Io): Promise<void> {
   if (pendingSize(pending) === 0) return
   const delta = pending
   pending = {}
@@ -61,16 +38,30 @@ async function flush(i: Io): Promise<void> {
   }
 }
 
-// Reads the skill list the engine gave this session (a local estimate, no network) and keeps it for the card.
-async function readListing($: EngineInterface): Promise<boolean> {
+// Counts one use of a skill, and writes the counts when the last write is old enough. Never throws.
+export async function noteSkillUse(i: Io, skill: string): Promise<void> {
+  try {
+    const now = await i.now()
+    if (noteSkill(pending, skill, now) && (now - lastFlush >= SKILLS_FLUSH_MS || now < lastFlush)) await flushSkills(i)
+  } catch {
+  }
+}
+
+// True while counts wait to be written.
+export const skillsPending = (): boolean => pendingSize(pending) > 0
+
+// True while the skill list is not kept yet and tries are left; a helper agent's turn never reads it.
+export const wantsListing = (agentId: string | undefined): boolean => !listed && tries < LISTING_TRIES && agentId === undefined
+
+// Keeps the skill list from the session's usage (a local estimate, no network) for the card. Undefined usage is a failed read. Never throws.
+export async function keepListing(i: Io, usage: SessionUsage | undefined): Promise<boolean> {
   tries += 1
   try {
-    const usage = await $.session.usage({ breakdown: 'summary' })
-    const nowMs = await $.clock.now()
-    const listing = listingFrom(usage.context.breakdown?.skills, nowMs)
+    if (usage === undefined) return false
+    const listing = listingFrom(usage.context.breakdown?.skills, await i.now())
     if (listing === undefined) return false
-    noteWrite()
-    await $.store.set(SKILLS_LISTING_KEY, listing)
+    // The Io's set counts the write for the self-cost figure
+    await i.set(SKILLS_LISTING_KEY, listing)
     listed = true
     return true
   } catch {
@@ -78,57 +69,30 @@ async function readListing($: EngineInterface): Promise<boolean> {
   }
 }
 
-export function registerSkills(on: On): void {
-  on('session.start', { cwd: /(?<skills>)/ }, async ($, e, next) => {
-    try {
-    } catch {
-      // the command is optional: a failure shows less, never breaks the session
-    }
-    const result = await next(e)
-    // After next: the engine has finished starting, so its skill list is there.
-    await readListing($)
-    return result
-  }).catch(($, e, next) => next(e))
+// True when /vaken-help run skills is asked.
+export const isSkillsRun = (args: string): boolean => subArgs(args, 'run', 'skills') !== undefined
 
-  on('skill.prompt', { skill: /(?<skills>)/ }, async ($, e, next) => {
-    try {
-      const now = await $.clock.now()
-      if (noteSkill(pending, e.skill, now) && (now - lastFlush >= SKILLS_FLUSH_MS || now < lastFlush)) await flush(io($))
-    } catch {
-    }
-    return next(e)
-  }).catch(($, e, next) => next(e))
+// The answer when the skills cannot be read.
+export const skillsFailed = (): { text: string } => ({ text: tr('The skills could not be read. Try again in a moment.') })
 
-  on('turn.complete', { turnId: /(?<skills>)/ }, async ($, e, next) => {
-    try {
-      if (pendingSize(pending) > 0) await flush(io($))
-      if (!listed && tries < LISTING_TRIES && e.agentId === undefined) await readListing($)
-    } catch {
-    }
-    return next(e)
-  }).catch(($, e, next) => next(e))
+// Before /vaken-help run skills reads the skill list: the person's language, and the waiting counts written. False on a failure.
+export async function skillsReady(i: Io): Promise<boolean> {
+  try {
+    await sayIn(i)
+    await flushSkills(i)
+    return true
+  } catch {
+    return false
+  }
+}
 
-  on('session.end', { sessionId: /(?<skills>)/ }, async ($, e, next) => {
-    try {
-      await flush(io($))
-    } catch {
-      // the last counts are lost, nothing else
-    }
-    return next(e)
-  }).catch(($, e, next) => next(e))
-
-  on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
-    const rest0 = subArgs(e.args, 'run', 'skills')
-    if (rest0 === undefined) return next(e)
-    try {
-      const i = io($)
-      await sayIn(i)
-      await flush(i)
-      await readListing($)
-      const now = await i.now()
-      return { text: skillsText({ counts: await i.get(SKILLS_COUNTS_KEY), listing: parseListing(await i.get(SKILLS_LISTING_KEY)), now }, tr).join('\n') }
-    } catch {
-      return { text: tr('The skills could not be read. Try again in a moment.') }
-    }
-  })
+// The answer to /vaken-help run skills: the counts and the list, in the person's language. skillsReady runs first.
+export async function skillsAnswer(i: Io, usage: SessionUsage | undefined): Promise<{ text: string }> {
+  try {
+    await keepListing(i, usage)
+    const now = await i.now()
+    return { text: skillsText({ counts: await i.get(SKILLS_COUNTS_KEY), listing: parseListing(await i.get(SKILLS_LISTING_KEY)), now }, tr).join('\n') }
+  } catch {
+    return skillsFailed()
+  }
 }

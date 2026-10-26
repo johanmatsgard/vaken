@@ -48,9 +48,9 @@ let lastNote: string | undefined
 export async function noteHostView(i: Io, view: HostView): Promise<void> {
   try {
     const sid = await i.sessionId()
-    const next = `${sid}|${view}`
-    if (lastNote === next) return
-    lastNote = next
+    const nextKey = `${sid}|${view}`
+    if (lastNote === nextKey) return
+    lastNote = nextKey
     const kept = parseHostNote(await i.get(HOST_NOTE_KEY))
     if (kept?.sid === sid && kept.view === view) return
     await i.set(HOST_NOTE_KEY, { sid, view })

@@ -40,7 +40,7 @@ export const RISKY_VALUES: Record<Risky, Record<string, string>> = {
 
 // Every row the questions after the first one write, by the answers. Tell me when is Watch only: it shows the moment and sends Claude nothing
 export function setupValues(a: SetupAnswers): Record<string, string> {
-  const onOff = (on: boolean): string => (on ? 'on' : 'off')
+  const onOff = (isOn: boolean): string => (isOn ? 'on' : 'off')
   return { ...RISKY_VALUES[a.risky], 'cost.budget': a.spend, ...each(HABIT_KEYS, onOff(a.habits)), 'plain.mode': onOff(a.plain), 'compact.mode': a.long }
 }
 const SETUP_KEYS = new Set(Object.keys(setupValues(RECOMMENDED)))
@@ -95,14 +95,14 @@ export function setupPress(s: SetupState, p: SetupPress): SetupState {
   if (p.kind === 'next') return { ...s, step: Math.min(SUMMARY_STEP, s.step + 1) }
   if (p.kind === 'back') return { ...s, step: Math.max(1, s.step - 1) }
   const a = s.answers
-  const next: SetupAnswers =
+  const updated: SetupAnswers =
     p.field === 'tell' ? { ...a, tell: MODES.find(m => m === p.value) ?? a.tell }
     : p.field === 'risky' ? { ...a, risky: RISKIES.find(m => m === p.value) ?? a.risky }
     : p.field === 'spend' ? { ...a, spend: SPENDS.find(m => m === p.value) ?? a.spend }
     : p.field === 'long' ? { ...a, long: LONGS.find(m => m === p.value) ?? a.long }
     : p.value === 'on' || p.value === 'off' ? { ...a, [p.field]: p.value === 'on' }
     : a
-  return { ...s, answers: next }
+  return { ...s, answers: updated }
 }
 
 // THE QUESTIONS, in the person's language: a radio question (its answers, each with one line of meaning) or the on/off question
@@ -164,7 +164,7 @@ export function summaryLines(a: SetupAnswers, budget: { session: string; day: st
     const q = qs.find(x => x.step === step)
     return q?.kind === 'radio' ? (q.answers.find(x => x.value === value)?.label ?? value) : value
   }
-  const onOff = (on: boolean): string => t(on ? 'settings.on' : 'settings.off')
+  const onOff = (isOn: boolean): string => t(isOn ? 'settings.on' : 'settings.off')
   const line = (name: string, value: string): string => t('firstsetup.summary_line', { name, value })
   return [
     line(t('firstsetup.sum_tell'), chosen(1, a.tell)),

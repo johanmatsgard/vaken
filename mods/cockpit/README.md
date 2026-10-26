@@ -29,7 +29,6 @@ vaken never answers "yes" for you, and it never writes permission rules into you
 ### Output it makes shorter
 
 - **Lean session.** On by default. Long install and test logs are cut short, and an unchanged file read again becomes one line. Errors and the last 40 lines are always kept. Settings > Money and plan > Lean session.
-- **Big file mention.** When you @-mention a huge file, it asks first, and reads only the end if you say yes. It follows Lean session.
 
 ### Files it writes only on your press
 
@@ -165,8 +164,6 @@ Where vaken changes an event before it passes it on, it does so on purpose. This
 - 5: no prompt; the person gets the short status the phone hello gives, as a notice.
 
 The first prompt from the phone in a stint also adds the phone hello (a `system` row Claude never reads). vaken keeps which origin kinds it has seen, with the time, under `cockpit:phone:origins` (no text).
-
-**Big files** (`bigfile.ts`, `prompt.mention`). When a prompt names a file with `@` and it is very long, vaken asks you once whether to read the whole file or only its last lines. If you pick the last lines, the mention is passed on with a line range, so Claude reads that tail. Without an answer the whole file is read. Nothing is asked when `lean.mode` is Off.
 
 **Effort for quick asks** (`home.tsx`, `turn.step`). Only after you press the low-effort button the model-fit card offers for quick asks (setting `hints.model`), the main session's steps are sent with low effort while your asks stay quick; it ends when you stop pressing or an ask is not quick. Nothing else about the step changes, and helper agents are never touched.
 

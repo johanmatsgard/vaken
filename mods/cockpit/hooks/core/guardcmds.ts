@@ -229,9 +229,9 @@ export const addEntry = (list: CmdEntry[], e: CmdEntry): CmdEntry[] => [...list,
 
 const endWord = (e: CmdEntry): string => (e.status === 'ok' ? tr('ok') : e.status === 'denied' ? tr('stopped by the guard') : e.status === 'interrupted' ? tr('stopped') : e.exit === undefined ? tr('failed') : fillIn(tr('failed (exit {n})'), { n: e.exit }))
 
-export function commandsText(list: CmdEntry[], on: boolean): string {
+export function commandsText(list: CmdEntry[], isOn: boolean): string {
   const lines = [fillIn(tr('Shell commands in this session, in order (the last {n} at most; kind, time, how it ended, a label of the program and the kind, never the arguments).'), { n: KEEP_COMMANDS })]
-  if (!on) lines.push(tr('The list is off now, so new commands are not added. Turn it on: Settings > Safety.'))
+  if (!isOn) lines.push(tr('The list is off now, so new commands are not added. Turn it on: Settings > Safety.'))
   if (list.length === 0) lines.push('', tr('No shell command kept yet.'))
   else {
     lines.push('')

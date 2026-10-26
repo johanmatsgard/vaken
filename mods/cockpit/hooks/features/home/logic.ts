@@ -782,8 +782,8 @@ export const parseMarks = (v: unknown): Marks => {
 export const allOthers = (view: View): Row[] => [...view.waiting, ...view.working, ...view.idle]
 export function withoutHidden(view: View, marks: Marks): { view: View; hiddenCount: number } {
   const keep = (rows: Row[]): Row[] => rows.filter(r => marks[r.rec.sessionId] !== 'hide')
-  const next: View = { ...view, working: keep(view.working), waiting: keep(view.waiting), idle: keep(view.idle) }
-  return { view: next, hiddenCount: allOthers(view).length - allOthers(next).length }
+  const updated: View = { ...view, working: keep(view.working), waiting: keep(view.waiting), idle: keep(view.idle) }
+  return { view: updated, hiddenCount: allOthers(view).length - allOthers(updated).length }
 }
 // A session pinned in the app's own sidebar counts as pinned here too
 export const isPinned = (r: Row, marks: Marks): boolean => marks[r.rec.sessionId] === 'pin' || (r.pinned === true && marks[r.rec.sessionId] === undefined)

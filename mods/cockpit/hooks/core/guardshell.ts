@@ -229,15 +229,15 @@ function stripHeredocs(cmd: string, win: boolean): { main: string; scripts: stri
   if (docs === undefined) return { main: cmd, scripts: lines.length > 1 ? lines : [] }
   const main: string[] = []
   const scripts: string[] = []
-  let next = 0
+  let following = 0
   for (const h of docs) {
-    if (h.start >= next) main.push(...lines.slice(next, h.start + 1))
+    if (h.start >= following) main.push(...lines.slice(following, h.start + 1))
     if (feedsHere(h, win)) scripts.push(h.body.join('\n'))
     // bash runs $(...) and backticks in an unquoted body; quotes there are plain text.
     else if (!h.quoted) scripts.push(...substitutions(h.body.join('\n'), win, false).map(x => x.body))
-    next = h.end + 1
+    following = h.end + 1
   }
-  main.push(...lines.slice(next))
+  main.push(...lines.slice(following))
   return { main: main.join('\n'), scripts }
 }
 
@@ -249,16 +249,16 @@ export function withoutDataHeredocs(cmd: string): string {
   const docs = heredocsOf(lines)
   if (docs === undefined) return cmd
   const keep: string[] = []
-  let next = 0
+  let following = 0
   for (const h of docs) {
     const joined = h.start > 0 && /\\$/.test(lines[h.start - 1] ?? '')
     const runs = h.quoted ? false : h.body.some(l => l.includes('$(') || l.includes('`'))
     const data = !joined && !runs && !RUNS_INPUT.test(openerOf(h))
-    if (h.start >= next) keep.push(...lines.slice(next, h.start + 1))
+    if (h.start >= following) keep.push(...lines.slice(following, h.start + 1))
     if (!data) keep.push(...lines.slice(h.bodyStart, h.end + 1))
-    next = h.end + 1
+    following = h.end + 1
   }
-  keep.push(...lines.slice(next))
+  keep.push(...lines.slice(following))
   return keep.join('\n')
 }
 

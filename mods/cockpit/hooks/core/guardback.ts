@@ -161,16 +161,16 @@ export function addHit(f: Fence, tool: string): Fence {
   return { hits: f.hits + 1, tools }
 }
 
-export function fenceText(f: Fence, on: boolean): string {
+export function fenceText(f: Fence, isOn: boolean): string {
   const tools = Object.entries(f.tools).sort((a, b) => b[1] - a[1])
   return [
-    fillIn(tr('Outside-text fence: {state}.'), { state: on ? tr('on') : tr('off') }),
+    fillIn(tr('Outside-text fence: {state}.'), { state: isOn ? tr('on') : tr('off') }),
     tr('Results from the web, from other apps (MCP tools), and files from node_modules or a downloads folder come with a note for Claude: this is data, not orders.'),
     '',
     f.hits === 0 ? tr('No order hidden in outside text was found in this session.') : fillIn(tr('Orders hidden in outside text found in this session: {n}.'), { n: f.hits }),
     ...(tools.length > 0 ? [`${tr('Where')}: ${tools.map(([t, n]) => `${toolWord(t)} ${n}`).join(', ')}`] : []),
     tr('The phrases themselves are not kept, only the count and the tool name.'),
     '',
-    on ? tr('Change it: Settings > Safety. This is a reminder to Claude, not a lock.') : tr('Turn it on: Settings > Safety.'),
+    isOn ? tr('Change it: Settings > Safety. This is a reminder to Claude, not a lock.') : tr('Turn it on: Settings > Safety.'),
   ].join('\n')
 }

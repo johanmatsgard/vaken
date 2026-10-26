@@ -1,7 +1,7 @@
 #!/bin/bash
 # Local mirror of the plugin directory's pre-submission rules, so a finding shows up here before the portal says it.
 # Blocking rules (exit 1): `$` used other than as a plain call (scripts/check-plain-capability.mjs), agent.register not written as an object in the call,
-#   a hook event the engine does not know, a Client with a computed module path, system files, a README under 40 words, no licence, a bad plugin.json,
+#   a hook event not in the directory's event list (scripts/directory-events.txt), an invisible character, a Client with a computed module path, system files, a README under 40 words, no licence, a bad plugin.json,
 #   file names that fail on Windows or macOS or differ only by case, .gitattributes that rewrite or leave out files.
 # Policy holds (listed and counted; exit 0 unless --strict): hooks that may change their event before next, a credential read from the environment,
 #   files over 256 KiB, over 512 files, binary files, accessors, Proxy and then.

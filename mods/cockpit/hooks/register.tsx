@@ -1,5 +1,8 @@
 // Vaken: one plugin, one module
-import type { Register } from 'claude-code'
+import type { EngineInterface, Register } from 'claude-code'
+import { withToastGate } from './core/io'
+import type { Io } from './core/io'
+import { homeFrom } from './core/platform'
 
 import { registerAgentCap } from './features/agentcap'
 import { registerAway } from './features/away'
@@ -58,14 +61,34 @@ import { registerSteer } from './features/steer'
 import { registerTrust } from './features/trust'
 import { registerUndo } from './features/undo'
 import { registerShip } from './features/ship'
-import { registerSkills } from './features/skills'
+import { flushSkills, isSkillsRun, keepListing, noteSkillUse, skillsAnswer, skillsFailed, skillsPending, skillsReady, wantsListing } from './features/skills'
 import { registerStability } from './features/stability'
 import { registerPressLog } from './features/presslog'
 import { registerNextSteps } from './features/nextsteps'
 import { registerLean } from './features/lean'
-import { registerBigFile } from './features/bigfile'
 import { registerAllowRules } from './features/allowrules'
 import { registerRelay } from './features/relay'
+
+// IO-BLOCK-START
+function io($: EngineInterface): Io {
+  return withToastGate({
+    now: () => $.clock.now(),
+    home: () => homeFrom({ HOME: () => $.env.get('HOME'), USERPROFILE: () => $.env.get('USERPROFILE'), HOMEDRIVE: () => $.env.get('HOMEDRIVE'), HOMEPATH: () => $.env.get('HOMEPATH') }),
+    sessionId: () => $.session.id(),
+    get: key => $.store.get(key),
+    set: (key, value) => $.store.set(key, value),
+    del: key => $.store.delete(key),
+    keys: () => $.store.keys(),
+    read: path => $.fs.read(path),
+    write: (path, text) => $.fs.write(path, text),
+    run: (argv, init) => $.process.run(argv, init),
+    ask: (question, options) => $.ui.ask(question, options),
+    complete: req => $.model.complete(req),
+    toast: text => $.ui.toast(text),
+    invalidate: () => $.ui.invalidate('ui.render'),
+  })
+}
+// IO-BLOCK-END
 
 export const register: Register = on => {
   // Its word after /vaken-help run must reach it before the help page answers
@@ -73,8 +96,6 @@ export const register: Register = on => {
   // Its next steps are picked before Home's turn hook checks the band for a redraw
   registerNextSteps(on)
   registerLean(on)
-  // The big-file question on an @ mention follows Lean session
-  registerBigFile(on)
   registerHome(on)
   registerCompaction(on)
   registerCacheKeeper(on)
@@ -139,5 +160,58 @@ export const register: Register = on => {
   registerTrust(on)
   registerContinuity(on)
   registerKeeper(on)
-  registerSkills(on)
+
+  // The Skills card: its hooks are written here, so the plugin directory reads each one where it is registered
+  on('session.start', { cwd: /(?<skills>)/ }, async ($, e, next) => {
+    const result = await next(e)
+    // After next: the engine has finished starting, so its skill list is there. A failed read is tried again after a turn.
+    try {
+      const usage = await $.session.usage({ breakdown: 'summary' })
+      await keepListing(io($), usage)
+    } catch {
+      await keepListing(io($), undefined)
+    }
+    return result
+  }).catch(($, e, next) => next(e))
+
+  on('skill.prompt', { skill: /(?<skills>)/ }, async ($, e, next) => {
+    await noteSkillUse(io($), e.skill)
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  on('turn.complete', { turnId: /(?<skills>)/ }, async ($, e, next) => {
+    try {
+      if (skillsPending()) await flushSkills(io($))
+      if (wantsListing(e.agentId)) {
+        // A failed read counts as a try too, so a broken read stops after LISTING_TRIES turns
+        try {
+          const usage = await $.session.usage({ breakdown: 'summary' })
+          await keepListing(io($), usage)
+        } catch {
+          await keepListing(io($), undefined)
+        }
+      }
+    } catch {
+    }
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  on('session.end', { sessionId: /(?<skills>)/ }, async ($, e, next) => {
+    // The last counts are lost on a failure, nothing else
+    await flushSkills(io($))
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  on('command.run', { command: 'vaken-help' }, async ($, e, next) => {
+    if (!isSkillsRun(e.args)) return next(e)
+    const i = io($)
+    // The language and the waiting counts first, then the skill list is read
+    if (!(await skillsReady(i))) return skillsFailed()
+    try {
+      const usage = await $.session.usage({ breakdown: 'summary' })
+      return skillsAnswer(i, usage)
+    } catch {
+      return skillsAnswer(i, undefined)
+    }
+  })
 }

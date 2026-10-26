@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.170.0
+
+Fixes the two items the plugin directory blocked in 1.169.0.
+
+- Removed: the big-file question. It asked before Claude read a huge file you named after @. It used a Claude Code event the plugin directory does not know yet. Lean session still cuts long logs and skips double reads.
+- The Skills card works as before. Its code is now written in the way the directory can read.
+- vaken now names its privacy policy in the plugin's own settings file.
+- Inside the code, no local name is `$`, `on` or `next` any more, where the directory keeps those names. Nothing changes in what vaken does.
+
 ## 1.169.0
 
 Ready for the plugin directory's policy check. vaken now has no hook on Claude Code's permission check, and it starts or stops no agent itself.

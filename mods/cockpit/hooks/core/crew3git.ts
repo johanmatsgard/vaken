@@ -342,17 +342,17 @@ export function parseTries(raw: unknown): Tries {
 type TryDecision = { allowed: boolean; repeat: boolean; count: number; next: Tries; freeAt?: number }
 
 export function decideTry(old: Tries, branch: string, run: string, now: number): TryDecision {
-  const next: Tries = {}
+  const tries: Tries = {}
   for (const [b, list] of Object.entries(old)) {
     const live = list.filter(x => now - x.at < CI_WINDOW_MS)
-    if (live.length > 0) next[b] = live
+    if (live.length > 0) tries[b] = live
   }
-  const mine = next[branch] ?? []
-  if (mine.some(x => x.run === run)) return { allowed: true, repeat: true, count: mine.length, next }
-  if (mine.length >= CI_MAX_TRIES) return { allowed: false, repeat: false, count: mine.length, next, freeAt: Math.min(...mine.map(x => x.at)) + CI_WINDOW_MS }
-  const kept = Object.keys(next).filter(b => b !== branch).slice(-19)
+  const mine = tries[branch] ?? []
+  if (mine.some(x => x.run === run)) return { allowed: true, repeat: true, count: mine.length, next: tries }
+  if (mine.length >= CI_MAX_TRIES) return { allowed: false, repeat: false, count: mine.length, next: tries, freeAt: Math.min(...mine.map(x => x.at)) + CI_WINDOW_MS }
+  const kept = Object.keys(tries).filter(b => b !== branch).slice(-19)
   const out: Tries = {}
-  for (const b of kept) out[b] = next[b] as { at: number; run: string }[]
+  for (const b of kept) out[b] = tries[b] as { at: number; run: string }[]
   out[branch] = [...mine, { at: now, run }]
   return { allowed: true, repeat: false, count: mine.length + 1, next: out }
 }

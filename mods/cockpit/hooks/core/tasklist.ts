@@ -61,8 +61,8 @@ export const TASKS_HELP: HelpEntry[] = [
 
 // en-only: a note to Claude
 const NOTE_START = 'Vaken note:'
-export const habitsNote = (on: readonly string[]): string | undefined => {
-  const parts = HABITS.filter(h => on.includes(h.key)).map(h => h.ask)
+export const habitsNote = (habitsOn: readonly string[]): string | undefined => {
+  const parts = HABITS.filter(h => habitsOn.includes(h.key)).map(h => h.ask)
   return parts.length === 0 ? undefined : [NOTE_START, ...parts].join(' ')
 }
 

@@ -24,10 +24,10 @@ export function parseWatches(raw: unknown): Watches {
 }
 
 // A new watch past WATCH_MAX pushes out the oldest.
-export function withWatch(w: Watches, id: string, on: boolean, name: string, at: number, isWorking: boolean): Watches {
+export function withWatch(w: Watches, id: string, isOn: boolean, name: string, at: number, isWorking: boolean): Watches {
   const out: Watches = { ...w }
   delete out[id]
-  if (!on) return out
+  if (!isOn) return out
   out[id] = { name, at, sawWorking: isWorking }
   const ids = Object.keys(out).sort((a, b) => out[a].at - out[b].at)
   while (ids.length > WATCH_MAX) delete out[ids.shift() as string]
@@ -39,7 +39,7 @@ export type Fired = { id: string; text: string }
 
 export function watchStep(w: Watches, rows: readonly WatchRow[], now: number): { fired: Fired[]; next: Watches } {
   const fired: Fired[] = []
-  const next: Watches = {}
+  const updated: Watches = {}
   for (const [id, watch] of Object.entries(w)) {
     const row = rows.find(r => r.id === id)
     if (row === undefined) {
@@ -56,9 +56,9 @@ export function watchStep(w: Watches, rows: readonly WatchRow[], now: number): {
       fired.push({ id, text: tLine('needs.name_tests_passed', { name: row.name }) })
       continue
     }
-    next[id] = { ...watch, name: row.name, sawWorking: watch.sawWorking || row.kind === 'working' }
+    updated[id] = { ...watch, name: row.name, sawWorking: watch.sawWorking || row.kind === 'working' }
   }
-  return { fired, next }
+  return { fired, next: updated }
 }
 
 let mem: { sid: string; watches: Watches } | undefined
@@ -78,9 +78,9 @@ export async function readWatches(i: Io): Promise<Watches> {
   return { ...(await load(i)).watches }
 }
 
-export async function setWatch(i: Io, id: string, on: boolean, name: string, isWorking: boolean): Promise<void> {
+export async function setWatch(i: Io, id: string, isOn: boolean, name: string, isWorking: boolean): Promise<void> {
   const m = await load(i)
-  m.watches = withWatch(m.watches, id, on, name, await i.now(), isWorking)
+  m.watches = withWatch(m.watches, id, isOn, name, await i.now(), isWorking)
   await save(i, m)
 }
 

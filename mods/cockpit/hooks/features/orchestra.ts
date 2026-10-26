@@ -508,9 +508,9 @@ export const keepWatching = (run: Run | undefined): boolean =>
 let chain: Promise<unknown> = Promise.resolve()
 export function beat(i: Io, ops: RunnerOps, statuses?: { id: string; status: string }[]): Promise<Run | undefined> {
   // The 10 s update waits its turn with the binds and ends, so its save never drops a helper Claude just started
-  const next = chain.then(() => runLocked(() => tick(i, ops, statuses))).catch(() => undefined)
-  chain = next
-  return next
+  const queued = chain.then(() => runLocked(() => tick(i, ops, statuses))).catch(() => undefined)
+  chain = queued
+  return queued
 }
 
 let timer: Timer | undefined
@@ -645,10 +645,10 @@ export async function steer(i: Io, ops: RunnerOps, s: Steer): Promise<string> {
       ], 'I stopped the run') // en-only: a prompt for Claude, sent in English
       {
         const now = await i.now()
-        let next: Run = { ...run, status: 'stopped' }
-        for (const t of running(run)) next = withTask(next, t.n, { state: 'stopped', endedAt: now, why: 'you stopped the run' })
-        for (const t of run.tasks) if (t.review === 'running') next = withTask(next, t.n, { review: 'failed', reviewLines: ['You stopped the run before the review ended.'] })
-        const { resumeAt: _r, ...stopped } = next
+        let stoppedRun: Run = { ...run, status: 'stopped' }
+        for (const t of running(run)) stoppedRun = withTask(stoppedRun, t.n, { state: 'stopped', endedAt: now, why: 'you stopped the run' })
+        for (const t of run.tasks) if (t.review === 'running') stoppedRun = withTask(stoppedRun, t.n, { review: 'failed', reviewLines: ['You stopped the run before the review ended.'] })
+        const { resumeAt: _r, ...stopped } = stoppedRun
         await keepReport(i, stopped, now)
         await saveRun(i, await nightEnd(i, stopped))
         await runRow(i, RUN_STOPPED_WHAT, stopped, now)
@@ -713,29 +713,29 @@ export async function steer(i: Io, ops: RunnerOps, s: Steer): Promise<string> {
       await saveRun(i, { ...run, choices: { ...run.choices, check: s.command.slice(0, 200) } })
       return s.command === '' ? tr('No check after each task.') : fillIn(tr('After each task: {command}'), { command: s.command })
     case 'add': {
-      const next = addTask(run, s.text)
-      if (next === run) return fillIn(tr('A run holds at most {n} tasks.'), { n: TASKS_MAX })
-      await saveRun(i, next)
-      return fillIn(tr('Added task {n}.'), { n: next.tasks.length })
+      const updated = addTask(run, s.text)
+      if (updated === run) return fillIn(tr('A run holds at most {n} tasks.'), { n: TASKS_MAX })
+      await saveRun(i, updated)
+      return fillIn(tr('Added task {n}.'), { n: updated.tasks.length })
     }
     case 'remove': {
-      const next = removeTask(run, s.n)
-      if (next === run) return fillIn(tr('Task {n} has started; it cannot be removed. Stop it instead.'), { n: s.n })
-      await saveRun(i, next.tasks.length === 0 ? undefined : next)
+      const updated = removeTask(run, s.n)
+      if (updated === run) return fillIn(tr('Task {n} has started; it cannot be removed. Stop it instead.'), { n: s.n })
+      await saveRun(i, updated.tasks.length === 0 ? undefined : updated)
       return fillIn(tr('Removed task {n}.'), { n: s.n })
     }
     case 'edit': {
-      const next = editTask(run, s.n, s.edit)
-      if (next === run) return fillIn(tr('Task {n} has started; it cannot be changed now.'), { n: s.n })
-      await saveRun(i, next)
+      const updated = editTask(run, s.n, s.edit)
+      if (updated === run) return fillIn(tr('Task {n} has started; it cannot be changed now.'), { n: s.n })
+      await saveRun(i, updated)
       return fillIn(tr('Changed task {n}.'), { n: s.n })
     }
     case 'limit': {
       const key = s.which === 'min' ? 'helperMin' : s.which === 'helper' ? 'helperUsd' : s.which === 'night' ? 'nightUsd' : 'runUsd'
-      const next = editChoices(run, { [key]: s.value })
-      await saveRun(i, next)
-      if (s.which === 'night') return next.choices.nightUsd > 0 ? fillIn(NIGHT_LIMIT_SET, { usd: money(next.choices.nightUsd) }) : NIGHT_LIMIT_SAME
-      return s.which === 'min' ? fillIn(tr('An agent stops after {n} min.'), { n: next.choices.helperMin }) : s.which === 'helper' ? fillIn(tr('An agent stops past {usd}.'), { usd: money(next.choices.helperUsd) }) : fillIn(tr('The run pauses past {usd}.'), { usd: money(next.choices.runUsd) })
+      const updated = editChoices(run, { [key]: s.value })
+      await saveRun(i, updated)
+      if (s.which === 'night') return updated.choices.nightUsd > 0 ? fillIn(NIGHT_LIMIT_SET, { usd: money(updated.choices.nightUsd) }) : NIGHT_LIMIT_SAME
+      return s.which === 'min' ? fillIn(tr('An agent stops after {n} min.'), { n: updated.choices.helperMin }) : s.which === 'helper' ? fillIn(tr('An agent stops past {usd}.'), { usd: money(updated.choices.helperUsd) }) : fillIn(tr('The run pauses past {usd}.'), { usd: money(updated.choices.runUsd) })
     }
     case 'reviewer':
       await saveRun(i, editChoices(run, { reviewer: s.isOn }))

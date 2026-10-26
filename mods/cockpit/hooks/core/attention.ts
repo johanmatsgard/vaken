@@ -156,10 +156,10 @@ export function isQuiet(setting: string, hour: number): boolean {
 
 // A row is told once per episode: `marker` names the episode, `told` holds the markers already told.
 export function notices(prev: Record<string, Seen>, rows: NoticeRow[], told: Record<string, string>, mode: string, now: number): { notices: Notice[]; next: Record<string, Seen> } {
-  const next: Record<string, Seen> = {}
+  const updated: Record<string, Seen> = {}
   const out: Notice[] = []
   for (const r of rows) {
-    next[r.id] = { kind: r.kind, since: r.since }
+    updated[r.id] = { kind: r.kind, since: r.since }
     if (mode === 'off') continue
     if (r.kind === 'needs') {
       const marker = `needs:${r.since}`
@@ -170,19 +170,19 @@ export function notices(prev: Record<string, Seen>, rows: NoticeRow[], told: Rec
       if (was !== undefined && was.kind === 'working' && now - was.since >= LONG_JOB_MS && told[r.id] !== marker) out.push({ id: r.id, marker, text: tLine('needs.name_finished', { name: r.name }) })
     }
   }
-  return { notices: out, next }
+  return { notices: out, next: updated }
 }
 
 // Quiet hours hold notices back instead of using them up: nothing is marked told, and a finished job keeps its working sighting so it is told when the hours end.
 // A session that needs you is urgent, so the hourly toast gate never eats it.
 export function noticePlan(prev: Record<string, Seen>, r: { notices: Notice[]; next: Record<string, Seen> }, quiet: boolean): { next: Record<string, Seen>; tell: Notice[]; urgent: boolean } {
   if (!quiet) return { next: r.next, tell: r.notices, urgent: r.notices.some(n => n.marker.startsWith('needs:')) }
-  const next = { ...r.next }
+  const updated = { ...r.next }
   for (const n of r.notices) {
     const was = prev[n.id]
-    if (n.marker.startsWith('done:') && was !== undefined) next[n.id] = was
+    if (n.marker.startsWith('done:') && was !== undefined) updated[n.id] = was
   }
-  return { next, tell: [], urgent: false }
+  return { next: updated, tell: [], urgent: false }
 }
 
 // The fill-in is {sessions}, not {names}, so a session name stays as typed.

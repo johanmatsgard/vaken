@@ -180,7 +180,7 @@ export function previewHead(p: { state: 'none' | 'silent' | 'error' | 'up'; chan
   return p.state === 'error' ? t('Error') : p.state === 'silent' ? t('Silent') : p.state === 'up' ? (p.changed ? t('Changed') : t('Up')) : t('None')
 }
 
-export const setupHead = (loud: 'conflict' | 'drift' | 'none', t: T = same, on = true): string => (!on ? t('Off') : loud === 'conflict' ? t('Conflict') : loud === 'drift' ? t('Out of date') : t('Up to date'))
+export const setupHead = (loud: 'conflict' | 'drift' | 'none', t: T = same, isOn = true): string => (!isOn ? t('Off') : loud === 'conflict' ? t('Conflict') : loud === 'drift' ? t('Out of date') : t('Up to date'))
 
 export function doHead(d: { on: boolean; blocks: number }, t: T = same): string {
   return !d.on ? t('Off') : d.blocks > 0 ? fill(t('{n} to run'), d.blocks) : t('None')

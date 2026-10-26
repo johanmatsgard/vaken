@@ -35,9 +35,9 @@ export function appendLog(old: unknown, key: string, posted: PostedEvent[], seen
   return { log: [...log, ...fresh].slice(-max), seen: top }
 }
 
-export function pressLogText(on: boolean, log: unknown, last = 40): string {
+export function pressLogText(isOn: boolean, log: unknown, last = 40): string {
   const rows = Array.isArray(log) ? (log as PressLogEvent[]) : []
-  const head = `Press log: ${on ? 'on' : 'off'}. ${rows.length} events kept (the last ${PRESSLOG_MAX}). On, off or clear: /vaken-help run presslog on.` // en-only: a hidden probe's answer, for the builders
+  const head = `Press log: ${isOn ? 'on' : 'off'}. ${rows.length} events kept (the last ${PRESSLOG_MAX}). On, off or clear: /vaken-help run presslog on.` // en-only: a hidden probe's answer, for the builders
   const lines = rows.slice(-last).map(e => `${new Date(e.at).toISOString().slice(11, 23)} ${e.key} ${e.type} at ${e.x},${e.y} in ${e.columns}x${e.rows}`) // en-only: a hidden probe's answer, for the builders
   return [head, ...lines].join('\n')
 }

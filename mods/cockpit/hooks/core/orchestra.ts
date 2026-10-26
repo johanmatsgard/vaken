@@ -416,8 +416,8 @@ export function retryTask(run: Run, n: number): Run {
   const rest = t.kept === 'thrown' ? noBranch : t.kept === 'kept' ? noFolder : kept
   const up = stepUpOf(t)
   const again: Task = { ...rest, state: 'waiting', check: 'none', ...(up === undefined ? {} : { model: up.pick, upFrom: up.from }) }
-  const next = { ...run, tasks: run.tasks.map(x => (x.n === n ? again : x)) }
-  return run.status === 'done' || run.status === 'stopped' ? { ...next, status: 'running', told: false } : next
+  const updated = { ...run, tasks: run.tasks.map(x => (x.n === n ? again : x)) }
+  return run.status === 'done' || run.status === 'stopped' ? { ...updated, status: 'running', told: false } : updated
 }
 
 export function stepUpOf(t: Task): { pick: ModelPick; from: string } | undefined {
@@ -613,8 +613,8 @@ export function removeTask(run: Run, n: number): Run {
     .filter(x => x.n !== n)
     .map(x => {
       const { after, ...rest } = x
-      const next = { ...rest, n: x.n > n ? x.n - 1 : x.n }
-      return after === undefined || after === n ? next : { ...next, after: after > n ? after - 1 : after }
+      const updated = { ...rest, n: x.n > n ? x.n - 1 : x.n }
+      return after === undefined || after === n ? updated : { ...updated, after: after > n ? after - 1 : after }
     })
   return { ...run, tasks }
 }
@@ -627,7 +627,7 @@ export function editTask(run: Run, n: number, e: TaskEdit): Run {
   const { after: _old, ...rest } = t
   const asked = e.after === null ? undefined : (e.after ?? t.after)
   const after = asked !== undefined && (asked < 1 || asked >= n) ? t.after : asked
-  const next: Task = {
+  const updated: Task = {
     ...rest,
     role,
     model: e.model ?? t.model,
@@ -635,7 +635,7 @@ export function editTask(run: Run, n: number, e: TaskEdit): Run {
     text: e.text === undefined || e.text.trim() === '' ? t.text : cut(e.text.trim(), TASK_WORDS_MAX),
     ...(after === undefined || after < 1 || after >= n ? {} : { after }),
   }
-  return { ...run, tasks: run.tasks.map(x => (x.n === n ? next : x)) }
+  return { ...run, tasks: run.tasks.map(x => (x.n === n ? updated : x)) }
 }
 
 export function editChoices(run: Run, c: Partial<Choices>): Run {

@@ -259,16 +259,16 @@ export function storyLines(f: StoryFacts): string[] {
   out.push(bad.length === 0 ? tr('Vaken saw nothing fail.') : fillIn(tr('What went wrong: {list}.'), { list: plainList(bad) }))
   const relevant = relevantKinds(s)
   out.push(s.edits === 0 && s.receipts.length === 0 ? tr('It stands at the start: no work is counted yet.') : fillIn(tr('Where it stands: {list}.'), { list: relevant.map(k => `${tr(kindWord(k))} ${stateWord(k, statusOf(s, k), tr)}`).join('; ') }))
-  const next: string[] = []
-  if (f.askingSince !== undefined) next.push(tr('answer the question Claude asked'))
+  const kept: string[] = []
+  if (f.askingSince !== undefined) kept.push(tr('answer the question Claude asked'))
   const unmet = (s.done.length > 0 ? s.done : []).filter(k => statusOf(s, k) !== 'ok')
-  if (s.done.length > 0 && unmet.length > 0) next.push(fillIn(tr('make {kinds} pass, as the definition of done asks'), { kinds: pluralKinds(unmet) }))
+  if (s.done.length > 0 && unmet.length > 0) kept.push(fillIn(tr('make {kinds} pass, as the definition of done asks'), { kinds: pluralKinds(unmet) }))
   else if (s.done.length === 0 && s.edits > 0) {
     const open = relevant.filter(k => statusOf(s, k) !== 'ok')
-    if (open.length > 0) next.push(fillIn(tr('run {kinds}'), { kinds: pluralKinds(open) }))
+    if (open.length > 0) kept.push(fillIn(tr('run {kinds}'), { kinds: pluralKinds(open) }))
   }
-  if (s.debt > 0 && next.length < 2) next.push(tr('look at the finished work'))
-  out.push(next.length === 0 ? tr('Next: nothing waits that vaken can see.') : fillIn(tr('Next: {list}.'), { list: next.slice(0, 2).join(tr(', then ')) }))
+  if (s.debt > 0 && kept.length < 2) kept.push(tr('look at the finished work'))
+  out.push(kept.length === 0 ? tr('Next: nothing waits that vaken can see.') : fillIn(tr('Next: {list}.'), { list: kept.slice(0, 2).join(tr(', then ')) }))
   return out
 }
 

@@ -40,8 +40,8 @@ const Arrange: ClientModule<Props, State> = (props, s) => {
       live.x = e.x - live.grabX
       live.y = e.y - live.grabY
       if (lifted !== undefined) {
-        const next = dropAt(live.lists, live.id, live.x + lifted.w / 2, e.y, board)
-        if (textOf(next) !== textOf(live.lists)) live.lists = next
+        const dropped = dropAt(live.lists, live.id, live.x + lifted.w / 2, e.y, board)
+        if (textOf(dropped) !== textOf(live.lists)) live.lists = dropped
       }
       redraw()
     } else if (e.type === 'up' && live.id !== undefined) {

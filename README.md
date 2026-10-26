@@ -248,7 +248,6 @@ Every group below opens to its full list. The [feature list page](docs/features.
 
 - Long test, build and install logs reach Claude cut to the errors and the last lines.
 - An unchanged file is not read again.
-- A huge @ file can send only its last 200 lines.
 - Repeated reminders are skipped.
 - Suggests a cheaper model or lower effort when the ask is small.
 - A tip when a lookup helper could use a cheaper model.
@@ -454,7 +453,7 @@ vaken is a Claude Code plugin. Its hooks run inside Claude Code on your computer
 | **Runs** | `git`, `gh` (if you have it), and system tools such as `ps` and `netstat`, to read facts. They only read. |
 | **Sends** | Nothing to its authors. Two small web reads: a package name to the npm registry, and the public Claude status page. |
 | **Never** | Says yes for you, writes your `settings.json`, or edits your source files. Undo restores a file only on your yes. |
-| **Version** | 1.169.0. See the [releases](https://github.com/johanmatsgard/vaken/releases). |
+| **Version** | 1.170.0. See the [releases](https://github.com/johanmatsgard/vaken/releases). |
 
 The safety stop is a seat belt, not a sandbox: [SECURITY.md](SECURITY.md) says what it does and does not promise.
 
@@ -476,7 +475,6 @@ vaken never answers "yes" for you, and it never writes permission rules into you
 ### Output it makes shorter
 
 - **Lean session.** On by default. Long install and test logs are cut short, and an unchanged file read again becomes one line. Errors and the last 40 lines are always kept. Settings > Money and plan > Lean session.
-- **Big file mention.** When you @-mention a huge file, it asks first, and reads only the end if you say yes. It follows Lean session.
 
 ### Files it writes only on your press
 

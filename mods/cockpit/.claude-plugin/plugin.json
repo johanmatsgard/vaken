@@ -1,6 +1,6 @@
 {
   "name": "vaken",
-  "version": "1.169.0",
+  "version": "1.170.0",
   "description": "Mission control for Claude Code Desktop: what needs you, plan limits, context, agents and a safety stop.",
   "author": {
     "name": "Johan Matsgard"
@@ -8,5 +8,6 @@
   "license": "MIT",
   "homepage": "https://github.com/johanmatsgard/vaken",
   "repository": "https://github.com/johanmatsgard/vaken",
+  "privacyPolicyUrl": "https://github.com/johanmatsgard/vaken/blob/main/PRIVACY.md",
   "keywords": ["side pane", "usage", "plan limits", "context", "agents", "sessions", "safety", "notes"]
 }

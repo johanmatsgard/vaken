@@ -409,30 +409,30 @@ const roundPath = (x: number, y: number, w: number, tall: number, r: number): st
   `M${x + r} ${y}H${x + w - r}A${r} ${r} 0 0 1 ${x + w} ${y + r}V${y + tall - r}A${r} ${r} 0 0 1 ${x + w - r} ${y + tall}H${x + r}A${r} ${r} 0 0 1 ${x} ${y + tall - r}V${y + r}A${r} ${r} 0 0 1 ${x + r} ${y}Z`
 const boxPath = (w: number, tall: number): string => `M0 0H${w}V${tall}H0Z`
 // Layered as the pane draws it: the ground, the card's grey, the track's grey, so the masks match at rest in either theme
-function maskLayers(w: number, tall: number, hole: string, on: Backdrop, track?: string): string {
+function maskLayers(w: number, tall: number, hole: string, backdrop: Backdrop, track?: string): string {
   const out = `${boxPath(w, tall)}${hole}`
   const ground = `<style>${themed('mg', 'fill', seen(GROUND_LIGHT), seen(GROUND_DARK))}</style><path class="mg" fill-rule="evenodd" d="${out}"/>`
-  const card = on === 'card' ? `<path fill="${PRESS_WASH_GREY}" fill-opacity="${CARD_FILL_SHARE}" fill-rule="evenodd" d="${out}"/>` : ''
+  const card = backdrop === 'card' ? `<path fill="${PRESS_WASH_GREY}" fill-opacity="${CARD_FILL_SHARE}" fill-rule="evenodd" d="${out}"/>` : ''
   const lane = track === undefined ? '' : `<path fill="${PRESS_WASH_GREY}" fill-opacity="${PRESS_WASH_OPACITY}" fill-rule="evenodd" d="${track}${hole}"/>`
   return `${ground}${card}${lane}`
 }
 // The frame and its masks in one picture, so a mask costs no element
-export function maskedFrameSvg(widthPt: number, kind: 'rest' | 'chosen', tall: number, boxH: number, on: Backdrop): string {
-  const id = `masked|${kind}|${widthPt}|${tall}|${boxH}|${on}|${kind === 'chosen' ? look.accent : ''}`
+export function maskedFrameSvg(widthPt: number, kind: 'rest' | 'chosen', tall: number, boxH: number, backdrop: Backdrop): string {
+  const id = `masked|${kind}|${widthPt}|${tall}|${boxH}|${backdrop}|${kind === 'chosen' ? look.accent : ''}`
   const kept = framePics.get(id)
   if (kept !== undefined) return kept
   const frame = kind === 'chosen' ? roundRect(0, 0, widthPt, tall, PRESS_WASH_R, accentRgb(), CHOSEN_FILL_SHARE) : roundRect(0, 0, widthPt, tall, PRESS_WASH_R, PRESS_WASH_GREY, PRESS_WASH_OPACITY)
-  const source = svgOf(widthPt, boxH, `${maskLayers(widthPt, boxH, roundPath(0, 0, widthPt, tall, PRESS_WASH_R), on)}${frame}`)
+  const source = svgOf(widthPt, boxH, `${maskLayers(widthPt, boxH, roundPath(0, 0, widthPt, tall, PRESS_WASH_R), backdrop)}${frame}`)
   framePics.set(id, source)
   return source
 }
 // A Pick option's masks leave the chosen pill's shape, so its hover matches the chosen look
-export function segMaskSvg(total: number, x: number, w: number, tall: number, on: Backdrop): string {
-  const id = `segmask|${total}|${x}|${w}|${tall}|${on}`
+export function segMaskSvg(total: number, x: number, w: number, tall: number, backdrop: Backdrop): string {
+  const id = `segmask|${total}|${x}|${w}|${tall}|${backdrop}`
   const kept = framePics.get(id)
   if (kept !== undefined) return kept
   const pill = roundPath(SEG_INSET_PT, SEG_INSET_PT, w - 2 * SEG_INSET_PT, tall - 2 * SEG_INSET_PT, PRESS_WASH_R - SEG_INSET_PT)
-  const source = svgOf(w, tall, maskLayers(w, tall, pill, on, roundPath(-x, 0, total, tall, PRESS_WASH_R)))
+  const source = svgOf(w, tall, maskLayers(w, tall, pill, backdrop, roundPath(-x, 0, total, tall, PRESS_WASH_R)))
   framePics.set(id, source)
   return source
 }
@@ -476,10 +476,10 @@ export function FrameLine(el: El, key: string, items: { key: string; label: stri
 // A compact framed word: the rounded frame of FramePress
 export function FramedWord(el: El, key: string, label: string, onPress: () => void, o: { edge?: boolean; inRow?: boolean; gap?: number; dim?: boolean; reachPt?: number; lit?: string; highPt?: number; on?: Backdrop; hotkey?: string } = {}) {
   const { Button } = el
-  const { dim, edge, reachPt, lit, highPt, on, hotkey, ...place } = o
+  const { dim, edge, reachPt, lit, highPt, on: isOn, hotkey, ...place } = o
   const hot = hotkey === undefined ? {} : { hotkey }
   if (!framedHere(el)) return Pressable(el, key, <Button key={key} label={tr(label)} {...hot} onPress={onPress} />, onPress, true, { ...place, ...(edge === undefined ? {} : { edge }) })
-  return FramePress(el, key, tr(label), onPress, { ...(dim === true ? { dim } : {}), ...(reachPt === undefined ? {} : { reachPt }), ...(lit === undefined ? {} : { lit }), ...(highPt === undefined ? {} : { highPt }), ...(on === undefined ? {} : { on }), ...hot })
+  return FramePress(el, key, tr(label), onPress, { ...(dim === true ? { dim } : {}), ...(reachPt === undefined ? {} : { reachPt }), ...(lit === undefined ? {} : { lit }), ...(highPt === undefined ? {} : { highPt }), ...(isOn === undefined ? {} : { on: isOn }), ...hot })
 }
 // A COMMIT BUTTON
 export function ActionButton(el: El, key: string, label: string, onPress: () => void, o: { primary?: boolean; gap?: number } = {}) {
@@ -950,7 +950,7 @@ export function ViewHeader(el: El, headKey: string, back: { key: string; label: 
   )
 }
 // A small choice of two to four short options: ONE SEGMENTED CONTROL
-export function Pick(el: El, key: string, options: { value: string; label: string; short?: string; hotkey?: string }[], value: string, onPick: (value: string) => void, _flush = false, boxKey = key, highPt: number = PRESS_FRAME_H, on: Backdrop = 'card') {
+export function Pick(el: El, key: string, options: { value: string; label: string; short?: string; hotkey?: string }[], value: string, onPick: (value: string) => void, _flush = false, boxKey = key, highPt: number = PRESS_FRAME_H, isOn: Backdrop = 'card') {
   const { Box, Button, Svg } = el
   if (framedHere(el) && Svg) {
     const words = options.map(o => tr(o.label))
@@ -972,7 +972,7 @@ export function Pick(el: El, key: string, options: { value: string; label: strin
           return (
             // An option not chosen lights the way a row does
             <Box key={`fcw-${id}`} flexShrink={0} flexDirection="row" alignItems="center" justifyContent="center" width={cols(w)} minWidth={cols(w)} height={rows(highPt)} {...(chosen ? {} : litBy(el, id))}>
-              {chosen ? null : FramePic(el, id, segMaskSvg(total, ox, w, highPt, on), w, false, words[n] ?? '', highPt)}
+              {chosen ? null : FramePic(el, id, segMaskSvg(total, ox, w, highPt, isOn), w, false, words[n] ?? '', highPt)}
               <Button key={id} label={words[n] ?? ''} plain hover={{ backgroundColor: HOVER_CLEAR }} {...(chosen ? {} : { dimColor: true })} {...(o.hotkey === undefined ? {} : { hotkey: o.hotkey })} onPress={pick} />
               {/* The chosen option has no first-click press and no hover */}
               {chosen ? null : FirstClick(el, id, pick, 'button', highPt)}

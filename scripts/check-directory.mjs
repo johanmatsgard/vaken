@@ -22,7 +22,7 @@ const PLUGIN = 'mods/cockpit'
 
 const BLOCKING = new Set([
   'MOD_CAPABILITY_USE_NOT_PLAIN', 'MOD_PERMISSION_ANSWER_UNREAD', 'HOOK_EVENT_UNKNOWN', 'MOD_IMPORT_DYNAMIC_COMPUTED', 'PACKAGE_SYSTEM_FILE', 'README_TOO_SHORT',
-  'LICENSE_MISSING', 'PLUGIN_JSON_INVALID', 'FILE_NAME_INVALID', 'FILE_NAME_CASE_CLASH', 'GITATTRIBUTES_REWRITE',
+  'LICENSE_MISSING', 'PLUGIN_JSON_INVALID', 'INVISIBLE_CHARACTER', 'RESERVED_NAME', 'FILE_NAME_INVALID', 'FILE_NAME_CASE_CLASH', 'GITATTRIBUTES_REWRITE',
 ])
 
 const fileOf = (sf, n) => sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1
@@ -62,7 +62,7 @@ function ruleAgentRegister(file, text) {
   return out
 }
 
-// Rule "unknown hook event": an on('event', ..., hook) call whose event is not in the engine type file.
+// Rule "unknown hook event": an on('event', ..., hook) call whose event is not in the directory's event list (see eventsOf).
 function ruleUnknownEvent(file, text, ctx) {
   if (ctx.events === undefined) return []
   const sf = parse(file, text)
@@ -71,7 +71,7 @@ function ruleUnknownEvent(file, text, ctx) {
     if (ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === 'on' && n.arguments.length >= 2) {
       const a = n.arguments[0]
       if ((ts.isStringLiteral(a) || ts.isNoSubstitutionTemplateLiteral(a)) && !ctx.events.has(a.text) && !a.text.includes('*')) {
-        out.push({ rule: 'HOOK_EVENT_UNKNOWN', line: fileOf(sf, a), why: `hook event "${a.text}" is not in the engine type file` })
+        out.push({ rule: 'HOOK_EVENT_UNKNOWN', line: fileOf(sf, a), why: `hook event "${a.text}" is not in the directory's event list (scripts/directory-events.txt) or the engine type file` })
       }
     }
     ts.forEachChild(n, visit)
@@ -255,7 +255,43 @@ function ruleAccessor(file, text) {
   return out
 }
 
-const CODE_RULES = [ruleAgentRegister, ruleUnknownEvent, ruleClientModule, ruleAnswersPermission, ruleCredentialEnv, ruleAccessor]
+// Rule RESERVED_NAME: the directory kept the names `$`, `on` and `next` for the engine and refused a file that declares one ("declares a name the directory keeps for $, on, or a hook's third parameter").
+// So no variable, function, pattern or parameter may carry one of them, except the three shapes the engine itself writes: the parameters (`$`, e, `next`) of a function handed to `on(...)` or `.catch(...)`,
+// a `$` parameter of a function written at the top of a file, and the `on` parameter of `registerX(on: On)` or of `export const register: Register = on => ...`.
+const RESERVED = new Set(['$', 'on', 'next'])
+function ruleReservedName(file, text) {
+  const sf = parse(file, text)
+  const out = []
+  const isHookFn = fn => {
+    const c = fn.parent
+    return ts.isCallExpression(c) && c.arguments.includes(fn) && ((ts.isIdentifier(c.expression) && c.expression.text === 'on') || (ts.isPropertyAccessExpression(c.expression) && c.expression.name.text === 'catch'))
+  }
+  const visit = n => {
+    let id
+    let kind
+    if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name)) { id = n.name; kind = 'variable' }
+    else if ((ts.isFunctionDeclaration(n) || ts.isFunctionExpression(n)) && n.name !== undefined) { id = n.name; kind = 'function' }
+    else if (ts.isBindingElement(n) && ts.isIdentifier(n.name)) { id = n.name; kind = 'pattern' }
+    else if (ts.isParameter(n) && ts.isIdentifier(n.name)) {
+      id = n.name; kind = 'parameter'
+      const fn = n.parent
+      if (RESERVED.has(id.text)) {
+        if (isHookFn(fn)) id = undefined
+        else if (id.text === '$' && fn.parent !== undefined && ts.isSourceFile(fn.parent)) id = undefined
+        else if (id.text === 'on' && ((ts.isFunctionDeclaration(fn) && ts.isSourceFile(fn.parent)) || (ts.isArrowFunction(fn) && ts.isVariableDeclaration(fn.parent)))) {
+          const t = n.type?.getText(sf)
+          if (t === 'On' || (ts.isArrowFunction(fn) && fn.parent.type?.getText(sf) === 'Register')) id = undefined
+        }
+      }
+    }
+    if (id !== undefined && RESERVED.has(id.text)) out.push({ rule: 'RESERVED_NAME', line: fileOf(sf, id), why: `${kind} named ${id.text}, a name the directory keeps: ${snip(sf, n)}` })
+    ts.forEachChild(n, visit)
+  }
+  visit(sf)
+  return out
+}
+
+const CODE_RULES = [ruleAgentRegister, ruleUnknownEvent, ruleClientModule, ruleAnswersPermission, ruleCredentialEnv, ruleAccessor, ruleReservedName]
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------------
 // Folder rules. Each takes (pluginDir, files, rootDir) and returns [{ rule, file, line, why }].
@@ -385,8 +421,15 @@ const walkFiles = (base, rel = '') => fs.readdirSync(path.join(base, rel)).sort(
   return fs.statSync(path.join(base, r)).isDirectory() ? (n === '.git' || n === 'node_modules' ? [] : walkFiles(base, r)) : [r]
 })
 
-// The events a hook may name: every 'noun.verb' key of the engine's call and event maps (a call name is also an event), and classic.<Name> for each classic hook event.
+// The events a hook may name. First the directory's own list, scripts/directory-events.txt: the directory checks against an older engine type file than
+// the one on this machine, so a newer event passes the engine's file and is still blocked there. Without that list: every 'noun.verb' key of the
+// engine's call and event maps (a call name is also an event), and classic.<Name> for each classic hook event.
 function eventsOf(rootDir) {
+  const list = path.join(rootDir, 'scripts/directory-events.txt')
+  if (fs.existsSync(list)) {
+    const names = fs.readFileSync(list, 'utf8').split(/\r?\n/).map(l => l.trim()).filter(l => l !== '' && !l.startsWith('#'))
+    if (names.length > 0) return new Set(names)
+  }
   const p = path.join(rootDir, 'scripts/types/claude-code.d.ts')
   if (!fs.existsSync(p)) return undefined
   const text = fs.readFileSync(p, 'utf8')
@@ -408,6 +451,19 @@ function runPlain(rootDir) {
   return out
 }
 
+// Rule INVISIBLE_CHARACTER: a zero-width, direction or other invisible character in a text file. The directory blocked one (overlap.tsx, 1.168.7);
+// write it as \uXXXX instead. It is stricter than the directory: an emoji joiner (U+200D) counts too.
+const INVISIBLE = /[\u00ad\u061c\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff]/
+function ruleInvisible(dir, files) {
+  const out = []
+  for (const f of files) {
+    if (!/\.(tsx?|mjs|js|json|md|txt)$/.test(f)) continue
+    const lines = fs.readFileSync(path.join(dir, f), 'utf8').split('\n')
+    lines.forEach((l, i) => { const m = INVISIBLE.exec(l); if (m !== null) out.push({ rule: 'INVISIBLE_CHARACTER', file: f, line: i + 1, why: `invisible character U+${m[0].codePointAt(0).toString(16).toUpperCase().padStart(4, '0')}: write it as \\u${m[0].codePointAt(0).toString(16).padStart(4, '0')}` }) })
+  }
+  return out
+}
+
 function scanRoot(rootDir, { withPlain }) {
   const dir = path.join(rootDir, PLUGIN)
   const found = []
@@ -423,7 +479,7 @@ function scanRoot(rootDir, { withPlain }) {
     }
   }
   const named = fs => fs.map(f => ({ ...f, file: f.file.startsWith(PLUGIN) || f.file.startsWith('.') ? f.file : `${PLUGIN}/${f.file}` }))
-  found.push(...named(ruleSystemFiles(dir, files)), ...ruleReadme(dir), ...rulePluginJson(dir), ...named(ruleFileNames(dir, files)), ...ruleGitattributes(rootDir), ...named(rulePackage(dir, files)))
+  found.push(...named(ruleSystemFiles(dir, files)), ...ruleReadme(dir), ...rulePluginJson(dir), ...named(ruleFileNames(dir, files)), ...named(ruleInvisible(dir, files)), ...ruleGitattributes(rootDir), ...named(rulePackage(dir, files)))
   if (withPlain) found.push(...runPlain(rootDir))
   return dedupe(found.map(f => ({ ...f, line: f.line ?? 0 })).map(f => ({ ...f, why: f.why })))
 }
@@ -444,7 +500,7 @@ function selftest() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'check-directory-'))
   let failed = 0
   const fail = msg => { failed++; console.error('selftest failed: ' + msg) }
-  const types = `export interface X {\n      'tool.call': ToolCallInput;\n      'command.run': CommandRunInput;\n      'session.start': SessionStartInput;\n}\n`
+  const types = `export interface X {\n      'tool.call': ToolCallInput;\n      'command.run': CommandRunInput;\n      'session.start': SessionStartInput;\n      'prompt.mention': PromptMentionInput;\n}\n`
   const readme = 'This fixture plugin shows a quiet pane beside the chat. '.repeat(8)
   const goodHook = `on('command.run', { name: /(?<a>)/ }, async ($, e, next) => {\n  const t = e.args\n  return next(e)\n}).catch(($, e, next) => next(e))\n`
   const make = (name, edit) => {
@@ -479,7 +535,24 @@ function selftest() {
   expect('agent-hooks', ['MOD_PERMISSION_ANSWER_UNREAD'], code('function f($: X) { return $.agent.register({ name: "a", hooks: {} }) }'))
   // events
   expect('event-unknown', ['HOOK_EVENT_UNKNOWN'], code("on('tool.cal', async ($, e, next) => next(e))"))
-  expect('event-local-on', [], code("function g(on: (n: string) => boolean) { return on('working') }"))
+  expect('invisible-character', ['INVISIBLE_CHARACTER'], code('const s = "a\u200bb"'))
+  expect('escaped-invisible', [], code('const s = "a\\u200bb"'))
+  // An event the engine knows but the directory's older list does not: blocked, as the directory blocked prompt.mention in 1.169.0
+  const listed = names => (root, plug) => fs.writeFileSync(path.join(root, 'scripts/directory-events.txt'), '# list\n' + names.join('\n') + '\n')
+  expect('event-newer-than-directory', ['HOOK_EVENT_UNKNOWN'], (root, plug) => { listed(['tool.call', 'command.run'])(root, plug); code("on('prompt.mention', async ($, e, next) => next(e))")(root, plug) })
+  expect('event-in-directory-list', [], (root, plug) => { listed(['tool.call', 'command.run', 'prompt.mention'])(root, plug); code("on('prompt.mention', async ($, e, next) => next(e))")(root, plug) })
+  expect('event-local-on', [], code("export function registerG(on: On) { return on('working') }"))
+  // RESERVED_NAME: a local called `on`, `$` or `next` is blocked; the engine's own shapes are not
+  expect('name-const-on', ['RESERVED_NAME'], code('const on = true'))
+  expect('name-const-on-hooks', ['RESERVED_NAME'], code("on('command.run', async ($, e, next) => {\n  const on = true\n  return next(e)\n})"))
+  expect('name-param-next', ['RESERVED_NAME'], code('function helper(a: number, next: number) { return a + next }'))
+  expect('name-let-next', ['RESERVED_NAME'], code('function helper() { let next = 0; return next }'))
+  expect('name-pattern-on', ['RESERVED_NAME'], code('const { on } = o'))
+  expect('name-param-dollar-inner', ['RESERVED_NAME'], code('function f() { const g = ($: X) => $; return g }'))
+  expect('name-function-on', ['RESERVED_NAME'], code('function on() { return 1 }'))
+  expect('name-hook-params', [], code("on('command.run', async ($, e, next) => next(e)).catch(($, e, next) => next(e))"))
+  expect('name-top-dollar', [], code('function io($: X) { return $.agent }'))
+  expect('name-register-on', [], code('export function registerX(on: On) { on("command.run", async ($, e, next) => next(e)) }\nexport const register: Register = on => { on("command.run", async ($, e, next) => next(e)) }'))
   // Client
   expect('client-ok', [], code('const a = <el.host.Client module="./p.tsx" />; const b = <Client module={"./p.tsx"} />'))
   expect('client-computed', ['MOD_IMPORT_DYNAMIC_COMPUTED'], code('const a = <el.Client module={m} />'))

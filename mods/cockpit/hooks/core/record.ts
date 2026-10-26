@@ -82,13 +82,13 @@ export async function putRecord(io: Io, patch: Partial<SessionRecord> & { sessio
   const now = await io.now()
   const base = { cwd: '', model: 'unknown', state: 'idle' as State, startedAt: now, lastEventAt: now, stateSince: now, ...old }
   const stateSince = patch.state !== undefined && patch.state !== base.state ? now : base.stateSince
-  const next: SessionRecord = { ...base, ...patch, stateSince, lastEventAt: isEvent ? now : base.lastEventAt, updatedAt: now }
-  mine.set(patch.sessionId, copyOf(next))
-  const moved = old === undefined || BAND_FIELDS.some(f => JSON.stringify(old[f]) !== JSON.stringify(next[f]))
-  const renamed = old !== undefined && NAME_FIELDS.some(f => old[f] !== next[f])
-  await holdNote(io, key, next, kept === undefined || moved || renamed ? 'now' : isBeat || !onlyTimes(kept, next) ? 'soon' : 'ride')
-  await noteRecord(io, next, moved, now)
-  return next
+  const updated: SessionRecord = { ...base, ...patch, stateSince, lastEventAt: isEvent ? now : base.lastEventAt, updatedAt: now }
+  mine.set(patch.sessionId, copyOf(updated))
+  const moved = old === undefined || BAND_FIELDS.some(f => JSON.stringify(old[f]) !== JSON.stringify(updated[f]))
+  const renamed = old !== undefined && NAME_FIELDS.some(f => old[f] !== updated[f])
+  await holdNote(io, key, updated, kept === undefined || moved || renamed ? 'now' : isBeat || !onlyTimes(kept, updated) ? 'soon' : 'ride')
+  await noteRecord(io, updated, moved, now)
+  return updated
 }
 
 // The band's redraw check reads one stamp and reads every record again only when it moved or after RECORDS_LIGHT_MS. A copy that old can only make a live session look older, never past DROP_MS, and the process check runs fresh.

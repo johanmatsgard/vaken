@@ -442,8 +442,8 @@ const OFF_VALUES = ['off', 'hide']
 export function switchOf(s: Setting): { off: string; on: string } | undefined {
   if (s.options.length !== 2) return undefined
   const off = s.options.find(o => OFF_VALUES.includes(o.value))
-  const on = s.options.find(o => !OFF_VALUES.includes(o.value))
-  return off === undefined || on === undefined ? undefined : { off: off.value, on: on.value }
+  const onOption = s.options.find(o => !OFF_VALUES.includes(o.value))
+  return off === undefined || onOption === undefined ? undefined : { off: off.value, on: onOption.value }
 }
 export const orderedOptions = (s: Setting): Choice[] => [...s.options.filter(o => OFF_VALUES.includes(o.value)), ...s.options.filter(o => !OFF_VALUES.includes(o.value))]
 

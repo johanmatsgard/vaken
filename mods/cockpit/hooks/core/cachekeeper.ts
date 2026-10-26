@@ -57,10 +57,10 @@ export const cacheHeld = (c: Facts3): boolean => c.read + c.write + c.fresh > 0 
 
 // List prices in dollars a million tokens (core/prices.ts). The reads cost their tokens at the read price; a held next answer spared writing what it read.
 type CachePrice = { read: number; write: number }
-export function keptNet(price: CachePrice | undefined, reads: number[], next: Facts3, held: boolean): { usd: number; spared: number; cost: number } | undefined {
+export function keptNet(price: CachePrice | undefined, reads: number[], nextFacts: Facts3, held: boolean): { usd: number; spared: number; cost: number } | undefined {
   if (price === undefined || reads.length === 0) return undefined
   const cost = (reads.reduce((n, r) => n + r, 0) * price.read) / 1e6
-  const spared = held ? (next.read * (price.write - price.read)) / 1e6 : 0
+  const spared = held ? (nextFacts.read * (price.write - price.read)) / 1e6 : 0
   return { usd: spared - cost, spared, cost }
 }
 

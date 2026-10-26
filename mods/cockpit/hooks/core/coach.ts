@@ -52,10 +52,10 @@ export const parseSeen = (raw: unknown): Seen => (typeof raw === 'object' && raw
 
 export function count(seen: Seen, key: string, now: number): { seen: Seen; offer: boolean } {
   const n = (seen[key]?.n ?? 0) + 1
-  const next: Seen = { ...seen, [key]: { n, at: now } }
-  const keys = Object.keys(next)
-  if (keys.length > KEEP) for (const k of keys.sort((a, b) => next[a].at - next[b].at).slice(0, keys.length - KEEP)) delete next[k]
-  return { seen: next, offer: n === COACH_AFTER }
+  const updated: Seen = { ...seen, [key]: { n, at: now } }
+  const keys = Object.keys(updated)
+  if (keys.length > KEEP) for (const k of keys.sort((a, b) => updated[a].at - updated[b].at).slice(0, keys.length - KEEP)) delete updated[k]
+  return { seen: updated, offer: n === COACH_AFTER }
 }
 
 export const skillName = (text: string): string => text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').split('-').slice(0, 4).join('-') || 'my-skill'
@@ -71,8 +71,8 @@ export const parseDecisions = (raw: unknown): Decision[] => (Array.isArray(raw) 
 export const cleanDecision = (text: string): string => text.replace(/\s+/g, ' ').trim().slice(0, DECISION_TEXT_MAX)
 export const addDecision = (list: Decision[], d: Decision): Decision[] => [d, ...list].slice(0, DECISIONS_MAX)
 
-export function decisionsText(list: Decision[], on: boolean): string {
-  if (list.length === 0) return `${tr('No decisions written down yet.')}${on ? '' : ` ${tr('The log is off: turn it on in Settings > Prompts and memory to keep your answers. /vaken-memory decide <sentence> works either way.')}`}`
+export function decisionsText(list: Decision[], isOn: boolean): string {
+  if (list.length === 0) return `${tr('No decisions written down yet.')}${isOn ? '' : ` ${tr('The log is off: turn it on in Settings > Prompts and memory to keep your answers. /vaken-memory decide <sentence> works either way.')}`}`
   return [fillIn(tr('Decisions ({n}), newest first:'), { n: list.length }), ...list.slice(0, 20).map(d => `  ${ymd(d.at)}  ${d.text}${d.how === 'asked' ? '' : ` (${tr('noted by you')})`}`)].join('\n')
 }
 // en-only: a file written to disk to keep

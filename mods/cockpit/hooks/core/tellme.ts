@@ -152,7 +152,7 @@ export function statusText(f: StatusFacts, tr: (name: string, vars?: Record<stri
 // What the band last worked out, so turn.complete can set the line with no read.
 export const statusMem: { on: boolean; facts: StatusFacts; shown?: string } = { on: true, facts: {} }
 // The text to set now: undefined clears it, null leaves the line as it is.
-export function statusNext(on: boolean, text: string | undefined, shown: string | undefined): string | undefined | null {
-  const want = on ? text : undefined
+export function statusNext(isOn: boolean, text: string | undefined, shown: string | undefined): string | undefined | null {
+  const want = isOn ? text : undefined
   return want === shown ? null : want
 }

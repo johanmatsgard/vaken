@@ -235,11 +235,11 @@ export function parseLaptop(at: number, out: Partial<Record<keyof typeof LAPTOP_
 
 // Flicker guard: a reading without memory figures (vm_stat timed out, or an older cockpit overwrote it) must not blank the card, so the last good figures are kept while still trusted.
 export const MEMORY_KEEP_MS = LAPTOP_IDLE_EVERY_MS + 2 * LAPTOP_EVERY_MS
-export function keepMemory(next: Laptop, good: Laptop | undefined): Laptop {
-  if (next.freeShare !== undefined || good === undefined || good.freeShare === undefined) return next
-  const age = next.at - good.at
-  if (age < 0 || age > MEMORY_KEEP_MS) return next
-  return { ...next, freeShare: good.freeShare, ...(next.pressure === undefined && good.pressure !== undefined ? { pressure: good.pressure } : {}), ...(next.memMb === undefined && good.memMb !== undefined ? { memMb: good.memMb } : {}) }
+export function keepMemory(latest: Laptop, good: Laptop | undefined): Laptop {
+  if (latest.freeShare !== undefined || good === undefined || good.freeShare === undefined) return latest
+  const age = latest.at - good.at
+  if (age < 0 || age > MEMORY_KEEP_MS) return latest
+  return { ...latest, freeShare: good.freeShare, ...(latest.pressure === undefined && good.pressure !== undefined ? { pressure: good.pressure } : {}), ...(latest.memMb === undefined && good.memMb !== undefined ? { memMb: good.memMb } : {}) }
 }
 
 export const isCurrent = (l: Laptop): boolean => (l.schema ?? 0) >= LAPTOP_SCHEMA

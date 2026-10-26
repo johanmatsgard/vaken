@@ -40,8 +40,8 @@ function fromCmd(c: Cmd): Install | undefined {
     const skip = new Set<string>()
     rest.forEach((a, i) => {
       if (a.t === '-r' || a.t === '-e' || a.t === '-c' || a.t === '--requirement' || a.t === '--editable' || a.t === '--constraint') {
-        const next = rest[i + 1]
-        if (next !== undefined) skip.add(next.t)
+        const following = rest[i + 1]
+        if (following !== undefined) skip.add(following.t)
       }
     })
     const names = f.positional

@@ -54,21 +54,21 @@ export const commandRisks = (command: string): string[] => RISKS.filter(([, re])
 const READ_TOOLS = new Set(['Read', 'Glob', 'Grep', 'LS', 'WebFetch', 'WebSearch', 'NotebookRead'])
 
 export function countCall(t: Turn, tool: string, args: Record<string, unknown>): Turn {
-  const next: Turn = { ...t, files: [...t.files], kinds: { ...t.kinds }, risks: [...t.risks] }
-  if (READ_TOOLS.has(tool)) next.reads += 1
+  const updated: Turn = { ...t, files: [...t.files], kinds: { ...t.kinds }, risks: [...t.risks] }
+  if (READ_TOOLS.has(tool)) updated.reads += 1
   else if (isEditTool(tool)) {
-    next.edits += 1
+    updated.edits += 1
     const p = typeof args.file_path === 'string' ? args.file_path : typeof args.notebook_path === 'string' ? args.notebook_path : undefined
-    if (p !== undefined && !next.files.includes(p) && next.files.length < FILES_KEPT) next.files.push(p)
+    if (p !== undefined && !updated.files.includes(p) && updated.files.length < FILES_KEPT) updated.files.push(p)
   } else if (isShellTool(tool)) {
-    next.commands += 1
+    updated.commands += 1
     const cmd = typeof args.command === 'string' ? args.command : ''
     const kind = commandKind(cmd)
-    next.kinds[kind] = (next.kinds[kind] ?? 0) + 1
-    for (const r of commandRisks(cmd)) if (!next.risks.includes(r)) next.risks.push(r)
-  } else if (tool === 'Agent' || tool === 'Task') next.agents += 1
-  else if (tool.startsWith('mcp__')) next.outside += 1
-  return next
+    updated.kinds[kind] = (updated.kinds[kind] ?? 0) + 1
+    for (const r of commandRisks(cmd)) if (!updated.risks.includes(r)) updated.risks.push(r)
+  } else if (tool === 'Agent' || tool === 'Task') updated.agents += 1
+  else if (tool.startsWith('mcp__')) updated.outside += 1
+  return updated
 }
 
 const base = (p: string): string => lastName(p)

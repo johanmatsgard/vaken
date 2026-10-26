@@ -380,9 +380,9 @@ export const stateWord = (k: ProofKind, st: Status, t: (s: string) => string): s
 // The one name of the answers that changed files and wait for the person's look; Checks and Ship say it the same way
 export const LOOK_TITLE = 'Changes to look at'
 
-export function doneLines(s: ProofState, list: ProofKind[], on: boolean): string[] {
+export function doneLines(s: ProofState, list: ProofKind[], isOn: boolean): string[] {
   if (list.length === 0) return [tr('Definition of done: not set. Set it with /vaken-ship done tests build lint.')]
-  const head = fillIn(tr('Definition of done: {list}{off}.'), { list: kindNames(list), off: on ? '' : ` ${tr('(switched off in Settings > Safety)')}` })
+  const head = fillIn(tr('Definition of done: {list}{off}.'), { list: kindNames(list), off: isOn ? '' : ` ${tr('(switched off in Settings > Safety)')}` })
   const rows = list.map(k => `  ${statusOf(s, k) === 'ok' ? '[x]' : '[ ]'} ${kindName(k)}: ${stateWord(k, statusOf(s, k), tr)}`)
   return [head, ...rows, doneMet(s, list) ? tr('Met: every check passed after the last edit.') : tr('Not met yet.')]
 }

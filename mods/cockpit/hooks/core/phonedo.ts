@@ -150,14 +150,14 @@ function consoleCommands(text: string): string {
   const lines = text.split(/\r?\n/)
   if (!lines.some(l => /^\s*[$%]\s/.test(l))) return text
   const out: string[] = []
-  let on = false
+  let joined = false
   for (const l of lines) {
     if (/^\s*[$%]\s/.test(l)) {
       out.push(l)
-      on = /(?:\\|&&|\|\||\|)\s*$/.test(l.trimEnd())
-    } else if (on) {
+      joined = /(?:\\|&&|\|\||\|)\s*$/.test(l.trimEnd())
+    } else if (joined) {
       out.push(l)
-      on = /(?:\\|&&|\|\||\|)\s*$/.test(l.trimEnd())
+      joined = /(?:\\|&&|\|\||\|)\s*$/.test(l.trimEnd())
     }
   }
   return out.join('\n')
@@ -514,13 +514,13 @@ export function listText(blocks: DoBlock[], t: Say): string {
   if (blocks.length === 0) return noneText(t)
   const rows = blocks.slice(0, DO_LIST_ROWS).map(b => `${b.n}. ${b.first} · ${verdictWord(b.verdict, t)}`)
   const go = blocks.find(b => b.verdict !== 'blocked')
-  const next = go === undefined ? fill(t(DO_T_MORE), { n: (blocks[0] as DoBlock).n }) : fill(t(go.verdict === 'safe' ? DO_T_TYPE_SAFE : DO_T_TYPE_RISKY), { n: go.n })
-  return [t(DO_T_HEAD), ...rows, '', next].join('\n')
+  const nextHint = go === undefined ? fill(t(DO_T_MORE), { n: (blocks[0] as DoBlock).n }) : fill(t(go.verdict === 'safe' ? DO_T_TYPE_SAFE : DO_T_TYPE_RISKY), { n: go.n })
+  return [t(DO_T_HEAD), ...rows, '', nextHint].join('\n')
 }
 
 export function showText(b: DoBlock, t: Say): string {
-  const next = b.verdict === 'blocked' ? '' : fill(t(b.verdict === 'safe' ? DO_T_TYPE_SAFE : DO_T_TYPE_RISKY), { n: b.n })
-  return [fill(t(DO_T_BLOCK), { n: b.n, a: verdictWord(b.verdict, t) }), ...b.script.split('\n').map(l => `  ${l}`), ...b.why.map(w => whyWord(w, t)), ...(next === '' ? [] : ['', next])].join('\n')
+  const nextHint = b.verdict === 'blocked' ? '' : fill(t(b.verdict === 'safe' ? DO_T_TYPE_SAFE : DO_T_TYPE_RISKY), { n: b.n })
+  return [fill(t(DO_T_BLOCK), { n: b.n, a: verdictWord(b.verdict, t) }), ...b.script.split('\n').map(l => `  ${l}`), ...b.why.map(w => whyWord(w, t)), ...(nextHint === '' ? [] : ['', nextHint])].join('\n')
 }
 
 export const needYesText = (n: number, t: Say): string => fill(t(DO_T_NEEDYES), { n })

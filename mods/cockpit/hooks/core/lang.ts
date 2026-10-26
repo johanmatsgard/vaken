@@ -301,7 +301,6 @@ export const VIEW_STRINGS: string[] = [
   ...englishOf('welcome'),
   ...englishOf('night'),
   ...englishOf('lean'),
-  ...englishOf('big'),
   ...englishOf('teach'),
   ...englishOf('tell'),
   ...englishOf('allow'),

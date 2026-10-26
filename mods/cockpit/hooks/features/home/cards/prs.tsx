@@ -51,17 +51,17 @@ async function noGitOf(i: Io, cwd: string, now: number): Promise<NoGit | undefin
 }
 
 // `copies`: Worktree cleanup is on, so the janitor's rows join from this session's last worktree scan (features/crew3.ts) and the shared PR answer
-export async function loadPrs(i: Io, hidden: boolean, on: boolean, me: { id: string; cwd: string; branch?: string }, rows: Row[], now: number, copies = false): Promise<PrsFacts | undefined> {
+export async function loadPrs(i: Io, hidden: boolean, isOn: boolean, me: { id: string; cwd: string; branch?: string }, rows: Row[], now: number, copies = false): Promise<PrsFacts | undefined> {
   if (hidden) return undefined
   const sessions: PrSession[] = rows.map(r => ({ id: r.rec.sessionId, name: r.name, cwd: r.rec.cwd, ...(r.rec.branch === undefined ? {} : { branch: r.rec.branch }) }))
   if (!sessions.some(s => s.id === me.id)) sessions.push({ id: me.id, name: 'This session', cwd: me.cwd, ...(me.branch === undefined ? {} : { branch: me.branch }) })
   const branch = me.branch ?? sessions.find(s => s.id === me.id)?.branch
-  const noGit = on && (branch === undefined || branch === '') ? await noGitOf(i, me.cwd, now) : undefined
-  const raw = on ? await i.get(PR_SHARED_KEY) : undefined
-  const f0 = prsFacts(raw, { id: me.id, ...(branch === undefined ? {} : { branch }), ...(noGit === undefined ? {} : { noGit }) }, sessions, now, on)
+  const noGit = isOn && (branch === undefined || branch === '') ? await noGitOf(i, me.cwd, now) : undefined
+  const raw = isOn ? await i.get(PR_SHARED_KEY) : undefined
+  const f0 = prsFacts(raw, { id: me.id, ...(branch === undefined ? {} : { branch }), ...(noGit === undefined ? {} : { noGit }) }, sessions, now, isOn)
   // The scan is of this session's folder; before the record knows that folder, the scan's own stands in
   const here = me.cwd === '' ? wtSeen.cwd : me.cwd
-  const c = on && copies && here !== undefined && wtSeen.cwd === here ? copiesOf(wtSeen.scan, wtSeen.repo, raw, here, now) : undefined
+  const c = isOn && copies && here !== undefined && wtSeen.cwd === here ? copiesOf(wtSeen.scan, wtSeen.repo, raw, here, now) : undefined
   const f = c === undefined || (c.merged.length === 0 && c.idle.length === 0) ? f0 : { ...f0, copies: c }
   return prShipShown.lines !== undefined && prShipShown.open !== undefined && flags.openWhat === prShipShown.open ? { ...f, ship: prShipShown.lines } : f
 }

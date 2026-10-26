@@ -256,9 +256,9 @@ export const itemShort = (it: InboxItem, now: number): string => `${whereOf(it)}
 export const LIMITS_NOTE = 'Vaken can only tell you where to go. It cannot press OK or answer a permission box for you, and it cannot send a push to your phone.'
 
 // The /vaken inbox answer: one numbered item per wait, its age and what to do in a paragraph of its own, so markdown keeps them apart
-export function inboxText(items: InboxItem[], now: number, on: boolean): string {
+export function inboxText(items: InboxItem[], now: number, isOn: boolean): string {
   const lines: string[] = []
-  if (!on) lines.push(t('chat.inbox_off'), '')
+  if (!isOn) lines.push(t('chat.inbox_off'), '')
   // Calm is quiet: no note on what vaken cannot do when nothing waits
   if (items.length === 0) return [...lines, tr('Nothing waits for you.')].join('\n')
   lines.push(t('chat.inbox_head', { things: t('words.thing', { n: items.length }) }), '')

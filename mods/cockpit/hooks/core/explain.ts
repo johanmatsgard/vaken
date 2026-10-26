@@ -50,7 +50,7 @@ type Explain = { means: string; why: string; next: string }
 export const EXPLAIN_MAX = 160
 export const SHAPE_WHAT = 'Changed the answer shape'
 
-const e = (title: string, means: string, why: string, next: string): [string, Explain] => [title, { means, why, next }]
+const e = (title: string, means: string, why: string, nextStep: string): [string, Explain] => [title, { means, why, next: nextStep }]
 
 const ENTRIES: [string, Explain][] = [
   e(LOOP_WHAT, 'Claude ran the same step 3 times in a row, and it failed the same way each time.', 'More tries only use up your plan. Claude was told to change its approach.', 'To stop the next try, set Settings > Safety > Loop breaker to Stop. /vaken-help run loops lists the repeated failures.'),

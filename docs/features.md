@@ -72,16 +72,15 @@ Know before you hit the wall.
 11. Auto-resume after a limit resets: remind you, or continue.
 12. Lean session: long test, build and install logs reach Claude cut to the errors and last lines.
 13. No double reads: an unchanged file is not read again.
-14. Big-file question: a huge @ file can send only its last 200 lines.
-15. Skips repeated reminders.
-16. Model and effort hint: a cheaper model or lower effort when the ask is small.
-17. A tip when a lookup agent could use a cheaper model.
-18. Warns that a model switch drops the prompt cache.
-19. Instruction-file diet: size and repeated lines of your CLAUDE.md files.
-20. Cost hint before a big job.
-21. Savings line: minutes saved and risky steps stopped.
-22. Picture cost check.
-23. Cache keeper: keeps the cache warm while you think. Off by default.
+14. Skips repeated reminders.
+15. Model and effort hint: a cheaper model or lower effort when the ask is small.
+16. A tip when a lookup agent could use a cheaper model.
+17. Warns that a model switch drops the prompt cache.
+18. Instruction-file diet: size and repeated lines of your CLAUDE.md files.
+19. Cost hint before a big job.
+20. Savings line: minutes saved and risky steps stopped.
+21. Picture cost check.
+22. Cache keeper: keeps the cache warm while you think. Off by default.
 
 ## 🧠 Context and auto-compacting
 

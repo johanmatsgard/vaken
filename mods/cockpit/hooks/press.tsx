@@ -28,9 +28,9 @@ function note(s: { columns: number; rows: number }, e: { type: string; x: number
   logCount += 1
   const ev = { n: logCount, type: e.type, x: e.x, y: e.y, columns: s.columns, rows: s.rows }
   if (e.type === 'down') downOf.set(s, ev)
-  const next = [...recent, ev].slice(-PRESSLOG_RECENT)
-  logging.set(s, next)
-  return next
+  const recentNow = [...recent, ev].slice(-PRESSLOG_RECENT)
+  logging.set(s, recentNow)
+  return recentNow
 }
 // What a press's post carries
 function withDown(s: object, recent: PostedEvent[]): PostedEvent[] {

@@ -92,9 +92,9 @@ export function keyTitle(text: string): string | undefined {
   if (kept.length === 0) return undefined
   let out = ''
   for (const word of kept) {
-    const next = out === '' ? capital(word) : `${out} ${word}`
-    if (next.length > TITLE_CHARS) break
-    out = next
+    const joinedText = out === '' ? capital(word) : `${out} ${word}`
+    if (joinedText.length > TITLE_CHARS) break
+    out = joinedText
   }
   return out === '' ? `${capital(kept[0]).slice(0, TITLE_CHARS - 1)}…` : out
 }

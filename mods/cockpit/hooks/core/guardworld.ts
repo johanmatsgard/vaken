@@ -146,9 +146,9 @@ export function outboxBand(box: Outbox): string {
   return writes.length === 0 ? '' : `Sent: ${itemWords(writes[0] as OutboxItem)}`.slice(0, 60)
 }
 
-export function outboxText(box: Outbox | undefined, on: boolean): string {
+export function outboxText(box: Outbox | undefined, isOn: boolean): string {
   const lines: string[] = []
-  if (!on) lines.push(tr('The outbox is off. Turn it on: Settings > Safety.'), '')
+  if (!isOn) lines.push(tr('The outbox is off. Turn it on: Settings > Safety.'), '')
   if (box === undefined || box.items.length === 0) lines.push(box?.open === false ? tr('Last answer: nothing left this computer that vaken saw.') : tr('This answer: nothing has left this computer that vaken saw.'))
   else {
     lines.push(`${box.open ? tr('This answer') : tr('Last answer')}: ${outboxLine(box.items)}.`)

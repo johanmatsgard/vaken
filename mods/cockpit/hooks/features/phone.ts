@@ -239,7 +239,7 @@ async function menuNow($: EngineInterface): Promise<string> {
 }
 
 // `/vaken`, `/vaken show` and `/vaken run` that came as prompt text; `/vaken pic` is answered in features/eyes.ts.
-async function wordsAsText($: EngineInterface, e: PromptSubmitInput, next: Next, fromPhone: boolean): Promise<PromptSubmitResult | undefined> {
+async function wordsAsText($: EngineInterface, e: PromptSubmitInput, proceed: Next, fromPhone: boolean): Promise<PromptSubmitResult | undefined> {
   const words = vakenWords(e.text)
   if (words === undefined || words.kind === 'pic') return undefined
   if (words.kind === 'menu') {
@@ -251,20 +251,20 @@ async function wordsAsText($: EngineInterface, e: PromptSubmitInput, next: Next,
   if (words.kind === 'quick') {
     const i = io($)
     const quick = await quickAnswer(i, words.rest, await sayOf(i), true)
-    return quick.prompt === undefined ? answer($, quick.said) : next({ ...e, text: quick.prompt })
+    return quick.prompt === undefined ? answer($, quick.said) : proceed({ ...e, text: quick.prompt })
   }
   const asked = words.kind === 'show' ? await showFor($, words.rest) : await runFor($, words.rest)
   if (asked.prompt === undefined) return answer($, asked.said)
-  return next({ ...e, text: asked.prompt })
+  return proceed({ ...e, text: asked.prompt })
 }
 
 // A digit right after the menu: its fixed prompt, the picture word, or the glance.
-async function pickAsText($: EngineInterface, e: PromptSubmitInput, next: Next, open: boolean): Promise<PromptSubmitResult | undefined> {
+async function pickAsText($: EngineInterface, e: PromptSubmitInput, proceed: Next, open: boolean): Promise<PromptSubmitResult | undefined> {
   if (!open) return undefined
   const pick = menuPick(e.text, menuShown)
   if (pick === undefined) return undefined
-  if (pick.kind === 'prompt') return next({ ...e, text: pick.text })
-  if (pick.kind === 'pic') return next({ ...e, text: '/vaken pic' })
+  if (pick.kind === 'prompt') return proceed({ ...e, text: pick.text })
+  if (pick.kind === 'pic') return proceed({ ...e, text: '/vaken pic' })
   return answer($, await glanceText($))
 }
 

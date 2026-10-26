@@ -347,10 +347,10 @@ export function actsOf(eng: HomeEngine): Acts {
       skillFind.all = !skillFind.all
       eng.io().invalidate()
     },
-    watch: (id, on, name, isWorking) => {
+    watch: (id, isOn, name, isWorking) => {
       void (async () => {
         const i = eng.io()
-        await setWatch(i, id, on, name, isWorking)
+        await setWatch(i, id, isOn, name, isWorking)
         i.invalidate()
       })()
     },
@@ -448,8 +448,8 @@ export function actsOf(eng: HomeEngine): Acts {
       }
       eng.io().invalidate()
     },
-    askPastClear: on => {
-      flags.pastClearAsk = on
+    askPastClear: isOn => {
+      flags.pastClearAsk = isOn
       eng.io().invalidate()
     },
     clearPast: () => {
@@ -577,12 +577,12 @@ export function actsOf(eng: HomeEngine): Acts {
         i.invalidate()
       })()
     },
-    askReset: on => {
-      flags.resetStep = on ? 'ask' : 'none'
+    askReset: isOn => {
+      flags.resetStep = isOn ? 'ask' : 'none'
       eng.io().invalidate()
     },
-    askErase: on => {
-      if (!on) {
+    askErase: isOn => {
+      if (!isOn) {
         flags.eraseStep = 'none'
         flags.erasePreview = undefined
         eng.io().invalidate()

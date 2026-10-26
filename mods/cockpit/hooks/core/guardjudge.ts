@@ -196,9 +196,9 @@ async function judgeWrite(io: Io, env: Env, tool: string, a: Record<string, unkn
     if (!inScope(path, scope)) out.found.push({ block: 'scope', key: `outside|${path}`, words: `${path} is outside the folders you set (${list(scope)}).` })
   }
   if (modes.tests !== 'off' && tool !== 'NotebookEdit' && looksLikeTest(path)) {
-    const { next, old } = editedText(tool, a)
+    const { next: newText, old } = editedText(tool, a)
     const before = tool === 'Write' ? await io.read(path).catch(() => '') : old
-    const t = checkTamper(path, before, next)
+    const t = checkTamper(path, before, newText)
     if (t !== undefined) out.found.push({ block: 'tests', key: `tamper|${path}`, words: describeTamper(path, t) })
   }
   return out
